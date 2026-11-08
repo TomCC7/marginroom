@@ -1,28 +1,24 @@
 node_modules/
-node_modules
 data/
+backups/
+.ops-*/
+.restore-*/
 *.log
 .DS_Store
 .env
-.env.local
-.env*
-
-# Deliverables are private content. The repo ships ONLY the synthetic example doc;
-# any real doc you upload/drop into docs/ stays out of git.
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+identity.json
+# Uploaded deliverables are private; only synthetic example content is tracked.
 docs/*
 !docs/example.html
 !docs/example.config.json
 !docs/assets/
 docs/assets/*
 !docs/assets/.gitkeep
-# Storyboard screenshots for the README are synthetic UI captures (no real
-# content) — ship them so the README renders.
-!docs/screenshots/
-docs/screenshots/*
-!docs/screenshots/*.png
-# Demo GIF + MP4 for the README (synthetic showcase doc, no real content).
-!docs/demo.gif
-!docs/demo.mp4
-
-# Local screen-recording demo scripts (throwaway, never shipped)
 .demo/
+playwright-report/
+test-results/

@@ -62,6 +62,21 @@ export function openDb(path = process.env.HS_DB_PATH || './data/app.db') {
   if (!cols.includes('span_occ')) db.exec('ALTER TABLE suggestions ADD COLUMN span_occ INTEGER NOT NULL DEFAULT -1');
   if (!cols.includes('base_text')) db.exec("ALTER TABLE suggestions ADD COLUMN base_text TEXT NOT NULL DEFAULT ''");
 
+  for (const [name, type] of [['range_start', 'INTEGER'], ['range_end', 'INTEGER'], ['request_id', 'TEXT'], ['request_caller', 'TEXT'], ['request_payload', 'TEXT']]) {
+    if (!cols.includes(name)) db.exec(`ALTER TABLE suggestions ADD COLUMN ${name} ${type}`);
+  }
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sugg_request ON suggestions(doc_id, request_caller, request_id);
+    CREATE TABLE IF NOT EXISTS suggestion_replies (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT NOT NULL REFERENCES suggestions(id) ON DELETE CASCADE,
+      author TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_reply_parent ON suggestion_replies(parent_id, created_at);
+  `);
+
   // Link access control (Google-Docs "Anyone with the link can…"): a per-doc level
   // the owner sets, gating what a GUEST who has the link may do. Default 'suggest'
   // preserves prior behavior (suggesting was open to anyone). Existing rows migrate
@@ -112,24 +127,43 @@ export function getVersion(db, docId, versionId) {
 // --- suggestions (tracked changes) ---
 // A suggestion proposes replacing a block's text (kind='rewrite') or leaves a
 // note (kind='comment'). It never touches the live overlay until accepted.
-const SUGG_COLS = 'id, doc_id, anchor, quote, body, kind, status, author, created_at, span_occ, base_text';
+const SUGG_COLS = 'id, doc_id, anchor, quote, body, kind, status, author, created_at, span_occ, base_text, range_start, range_end, request_id';
+
+function withReplies(db, row) {
+  if (!row) return row;
+  return { ...row, replies: db.prepare('SELECT id, parent_id, author, body, created_at FROM suggestion_replies WHERE parent_id = ? ORDER BY created_at, rowid').all(row.id) };
+}
 
 export function listSuggestions(db, docId, status = 'open') {
-  return db.prepare(
-    `SELECT ${SUGG_COLS} FROM suggestions WHERE doc_id = ? AND status = ? ORDER BY created_at ASC`
-  ).all(docId, status);
+  const rows = status === 'all'
+    ? db.prepare(`SELECT ${SUGG_COLS} FROM suggestions WHERE doc_id = ? ORDER BY created_at, rowid`).all(docId)
+    : db.prepare(`SELECT ${SUGG_COLS} FROM suggestions WHERE doc_id = ? AND status = ? ORDER BY created_at, rowid`).all(docId, status);
+  return rows.map((row) => withReplies(db, row));
 }
 
 export function addSuggestion(db, s) {
   db.prepare(
-    'INSERT INTO suggestions (id, doc_id, anchor, quote, body, kind, status, author, created_at, span_occ, base_text) VALUES (@id, @doc_id, @anchor, @quote, @body, @kind, @status, @author, @created_at, @span_occ, @base_text)'
-  ).run({ status: 'open', span_occ: -1, base_text: '', ...s });
+    'INSERT INTO suggestions (id, doc_id, anchor, quote, body, kind, status, author, created_at, span_occ, base_text, range_start, range_end, request_id, request_caller, request_payload) VALUES (@id, @doc_id, @anchor, @quote, @body, @kind, @status, @author, @created_at, @span_occ, @base_text, @range_start, @range_end, @request_id, @request_caller, @request_payload)'
+  ).run({ status: 'open', span_occ: -1, base_text: '', range_start: null, range_end: null, request_id: null, request_caller: null, request_payload: null, ...s });
   return getSuggestion(db, s.id);
 }
 
 export function getSuggestion(db, id) {
-  return db.prepare(`SELECT ${SUGG_COLS} FROM suggestions WHERE id = ?`).get(id);
+  return withReplies(db, db.prepare(`SELECT ${SUGG_COLS} FROM suggestions WHERE id = ?`).get(id));
 }
+
+export function findSuggestionRequest(db, docId, caller, requestId) {
+  return db.prepare('SELECT id, request_payload FROM suggestions WHERE doc_id = ? AND request_caller = ? AND request_id = ?').get(docId, caller, requestId);
+}
+
+export function addSuggestionReply(db, reply) {
+  db.prepare('INSERT INTO suggestion_replies (id, parent_id, author, body, created_at) VALUES (@id, @parent_id, @author, @body, @created_at)').run(reply);
+  return db.prepare('SELECT id, parent_id, author, body, created_at FROM suggestion_replies WHERE id = ?').get(reply.id);
+}
+
+// Decode only the encoding used by escapeText, once (not arbitrary HTML).
+const plainText = (s) => String(s).replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+const storedText = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 export function setSuggestionStatus(db, id, status) {
   const r = db.prepare('UPDATE suggestions SET status = ? WHERE id = ?').run(status, id);
@@ -177,6 +211,11 @@ export const acceptSuggestion = (db) => db.transaction((id, text, ts) => {
         setSuggestionStatus(db, id, 'stale');
         return { overlay, stale: true };
       }
+      const originals = String(s.base_text || s.quote || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+      if (originals.length !== anchors.length || anchors.some((a, i) => overlay[a] && overlay[a].text !== originals[i])) {
+        setSuggestionStatus(db, id, 'stale');
+        return { overlay, stale: true };
+      }
       for (let i = 0; i < anchors.length; i++) overlay[anchors[i]] = { text: pieces[i], updatedAt: ts };
       setSuggestionStatus(db, id, 'accepted');
       saveOverlay(db, s.doc_id, overlay, ts);
@@ -184,8 +223,21 @@ export const acceptSuggestion = (db) => db.transaction((id, text, ts) => {
         .run(s.doc_id, ts, JSON.stringify(overlay), `accept suggestion ${id.slice(0, 8)}`);
       return overlay;
     }
-    if (s.span_occ >= 0) {
+    if (s.range_start != null) {
+      const current = overlay[s.anchor]?.text ?? s.base_text;
+      const base = plainText(s.base_text);
+      if (current !== s.base_text || base.slice(s.range_start, s.range_end) !== plainText(s.quote)) {
+        setSuggestionStatus(db, id, 'stale');
+        return { overlay, stale: true };
+      }
+      applied = storedText(base.slice(0, s.range_start)) + s.body + storedText(base.slice(s.range_end));
+    } else if (s.span_occ >= 0) {
       const current = overlay[s.anchor]?.text ?? s.base_text ?? '';
+      // Never relocate a legacy Nth occurrence after its base block has drifted.
+      if ((s.base_text && current !== s.base_text) || (!s.base_text && (!s.quote || current.split(s.quote).length !== 2))) {
+        setSuggestionStatus(db, id, 'stale');
+        return { overlay, stale: true };
+      }
       const next = replaceNthOccurrence(current, s.quote, s.body, s.span_occ);
       if (next === null) {
         // Phrase no longer present (block was edited since the suggestion) —
@@ -194,6 +246,12 @@ export const acceptSuggestion = (db) => db.transaction((id, text, ts) => {
         return { overlay, stale: true };
       }
       applied = next;
+    } else {
+      const expected = s.base_text || s.quote;
+      if (overlay[s.anchor] && (!expected || overlay[s.anchor].text !== expected)) {
+        setSuggestionStatus(db, id, 'stale');
+        return { overlay, stale: true };
+      }
     }
     setSuggestionStatus(db, id, 'accepted');
     overlay[s.anchor] = { text: applied, updatedAt: ts };

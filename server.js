@@ -12,13 +12,14 @@ import { fileURLToPath } from 'node:url';
 import {
   openDb, getOverlay, setBlockAndSnapshot, listVersions, getVersion, restoreVersion,
   listSuggestions, addSuggestion, getSuggestion, setSuggestionStatus, acceptSuggestion,
+  findSuggestionRequest, addSuggestionReply,
   setDocOwner, getDocOwner, countDocsOwnedBy, countGuestOwners, deleteDocData, ownerMap,
   getDocAccess, setDocAccess, ACCESS_LEVELS,
 } from './db.js';
 import { makeGuardrails, LIMITS } from './guardrails.js';
 import { makeFeedbackHandler } from './feedback-api.js';
 import { patchSource } from './source-patch.js';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,8 +35,10 @@ const MAX_TEXT = 50_000;
 const MAX_DOC_BYTES = LIMITS.MAX_DOC_BYTES; // per-file size cap (default 2 MB)
 
 const SAFE_ID = /^[a-zA-Z0-9._-]+$/;
+// Reserve the internal source-file suffix: a document ID must never alias
+// another document's .raw.html file or acquire independent ownership over it.
 const isValidDocId = (id) =>
-  typeof id === 'string' && id.length > 0 && id.length <= 128 && SAFE_ID.test(id) && id !== '.' && id !== '..';
+  typeof id === 'string' && id.length > 0 && id.length <= 128 && SAFE_ID.test(id) && id !== '.' && id !== '..' && !/\.raw$/i.test(id);
 
 // Editor edits are stored as plain text and re-inserted as textContent, so
 // escaping here makes the stored overlay injection-proof even though the author
@@ -71,21 +74,10 @@ async function docHasRaw(id) {
   return access(file, fsConstants.F_OK).then(() => true).catch(() => false);
 }
 
-// Remove <script> elements (and their contents) and inline event-handler
-// attributes from uploaded HTML. The viewer renders via DOMParser (which never
-// executes scripts) AND strips scripts from the parsed DOM, but we also scrub at
-// the upload boundary so the stored file itself is inert — if it's ever opened
-// directly, served raw, or copied elsewhere, it can't run. Deliverables are
-// styled documents, not apps; nothing legitimate is lost.
-//   NOTE: this is a coarse regex scrub, deliberately conservative — it strips
-//   whole <script>…</script> blocks and on*="" handlers and javascript: URLs.
-//   The real render-time safety is that overlays/suggestions are text-only and
-//   the DOM is built with DOMParser (which never executes and drops scripts);
-//   this just keeps the on-disk file inert for the "opened raw" case. Because a
-//   regex can't fully model HTML, the handler/URL rules below are hardened
-//   against the known separator/encoding tricks (leading `/` instead of space,
-//   entity-encoded `javascript:`) that a naive `\son…=` / literal-string scrub
-//   would miss — see the upload test.
+// Coarse legacy cleanup of obvious scripts, handlers and javascript: URLs.
+// This is NOT an HTML sanitizer or a guarantee that a downloaded file is inert.
+// Viewer isolation is enforced separately at the parsed-DOM import boundary and
+// by the opaque-origin interactive iframe. Exports remain untrusted HTML.
 //
 // Collapse the HTML entities an attribute value can hide a scheme behind
 // (&#106;avascript:, &#x6a;…, &Tab;/&NewLine; inside the scheme) so the
@@ -218,7 +210,14 @@ export function createApp(db, opts = {}) {
   // Serve document assets (banner images, etc.) referenced by deliverable HTML.
   // Read-only static files under docs/assets — never the .html sources themselves
   // (those go through /api/doc so overlays apply).
-  app.use('/docs/assets', express.static(path.join(DOCS_DIR, 'assets')));
+  app.use('/docs/assets', express.static(path.join(DOCS_DIR, 'assets'), {
+    setHeaders(res) {
+      // SVG (or image-extension HTML) is untrusted active content when opened as
+      // a document. Preserve image rendering, but never grant it our origin or JS.
+      res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'");
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  }));
 
   // GET /api/assets -> { assets: [name, ...] }  (basenames already on the box, so
   // the landing page only asks the user for images we don't already have).
@@ -442,9 +441,10 @@ export function createApp(db, opts = {}) {
   // sandboxed frame to serialize its LIVE (post-JS) DOM and posts that string here.
   // That string is ATTACKER-CONTROLLED (the frame ran untrusted JS and could have
   // planted a <script>/on*=/javascript: that would fire when the user later opens
-  // the downloaded file OUTSIDE the sandbox). So we run it through the exact same
-  // stripActiveContent used on upload before handing anything back — the download is
-  // therefore inert. This never touches stored state; it's a pure sanitize service.
+  // the downloaded file OUTSIDE the sandbox). Apply the same coarse cleanup as
+  // upload, but do not promise an inert download: regex cleanup is not a complete
+  // HTML sanitizer. Exported HTML must still be treated as untrusted. No stored
+  // state is touched by this endpoint.
   app.post('/api/snapshot/:id', writeLimiter, async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
@@ -577,8 +577,10 @@ export function createApp(db, opts = {}) {
     // (they can't make them, and the owner may have chosen 'view' precisely to
     // keep a client from seeing pending edits). Owner/doc-owner always see them.
     if (!canSuggestDoc(req, id)) return res.status(403).json({ error: 'view_only' });
+    const status = req.query.status ?? 'open';
+    if (!['open', 'all', 'accepted', 'rejected', 'stale'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
     noStore(res);
-    res.json({ suggestions: listSuggestions(db, id, 'open') });
+    res.json({ suggestions: listSuggestions(db, id, status) });
   });
 
   // POST /api/suggest/:id { anchor, quote, body, kind, author } -> { ok, suggestion }
@@ -588,13 +590,29 @@ export function createApp(db, opts = {}) {
     if (await readDocHtml(id) == null) return res.status(404).json({ error: 'doc_not_found' });
     // Suggesting is open to any reviewer EXCEPT on a view-only doc (owner's choice).
     if (!canSuggestDoc(req, id)) return res.status(403).json({ error: 'suggest_not_allowed' });
-    const { anchor, quote, body, kind, author, spanOcc, baseText } = req.body || {};
+    const { anchor, quote, body, kind, author, spanOcc, baseText, rangeStart, rangeEnd, requestId } = req.body || {};
+    const hasRange = rangeStart !== undefined || rangeEnd !== undefined;
+    if (hasRange) {
+      if (!Number.isInteger(rangeStart) || !Number.isInteger(rangeEnd) ||
+          typeof baseText !== 'string' || baseText.length > MAX_TEXT || rangeStart < 0 ||
+          rangeEnd < rangeStart || rangeEnd > baseText.length || typeof quote !== 'string' ||
+          quote !== baseText.slice(rangeStart, rangeEnd) || (typeof anchor === 'string' && anchor.startsWith('m:')) ||
+          (spanOcc != null && spanOcc !== -1)) {
+        return res.status(400).json({ error: 'invalid_range' });
+      }
+      // Offsets are UTF-16 code units but must not bisect a surrogate pair.
+      const splitsPair = (i) => i > 0 && i < baseText.length && /[\uD800-\uDBFF]/.test(baseText[i - 1]) && /[\uDC00-\uDFFF]/.test(baseText[i]);
+      if (splitsPair(rangeStart) || splitsPair(rangeEnd)) return res.status(400).json({ error: 'invalid_range' });
+    }
+    if (requestId !== undefined && (typeof requestId !== 'string' || requestId.length < 1 || requestId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(requestId))) {
+      return res.status(400).json({ error: 'invalid_request_id' });
+    }
     if (kind !== 'rewrite' && kind !== 'comment') return res.status(400).json({ error: 'invalid_kind' });
     // A multi-block anchor ("m:a1,a2,…") packs several block anchors, so it needs a
     // larger cap than a single anchor. 1000 chars fits ~14 sha256 anchors — well
     // above the client's 8-block rewrite cap.
     if (typeof anchor !== 'string' || !anchor || anchor.length > 1000) return res.status(400).json({ error: 'invalid_anchor' });
-    if (typeof body !== 'string' || body.length === 0 || body.length > MAX_TEXT) return res.status(400).json({ error: 'invalid_body' });
+    if (typeof body !== 'string' || (body.length === 0 && !(hasRange && kind === 'rewrite' && rangeEnd > rangeStart)) || body.length > MAX_TEXT) return res.status(400).json({ error: 'invalid_body' });
     // span_occ: -2 = multi-block whole-paragraph rewrite (anchor is an "m:" list;
     // body is blank-line-separated paragraphs re-split at accept). -1 = whole block.
     // >=0 = replace the Nth occurrence of `quote`. A span-level rewrite MUST carry a
@@ -615,8 +633,22 @@ export function createApp(db, opts = {}) {
     // for display. base_text must be escaped too because span replacement happens
     // against the escaped overlay text (overlay is stored escaped), so all three
     // sides — needle (quote), haystack (base_text), overlay — share one encoding.
+    const requestPayload = JSON.stringify(Object.keys(req.body).filter((key) => key !== 'requestId').sort().map((key) => [key, req.body[key]]));
+    if (requestId !== undefined) {
+      const prior = findSuggestionRequest(db, id, req.caller.token, requestId);
+      if (prior) {
+        if (prior.request_payload !== requestPayload) return res.status(409).json({ error: 'request_id_conflict' });
+        noStore(res);
+        return res.json({ ok: true, suggestion: getSuggestion(db, prior.id), replayed: true });
+      }
+    }
     const suggestion = addSuggestion(db, {
       id: randomUUID(),
+      range_start: hasRange ? rangeStart : null,
+      range_end: hasRange ? rangeEnd : null,
+      request_id: requestId ?? null,
+      request_caller: requestId !== undefined ? req.caller.token : null,
+      request_payload: requestId !== undefined ? requestPayload : null,
       doc_id: id,
       anchor,
       quote: escapeText(String(quote || '').slice(0, MAX_TEXT)),
@@ -629,6 +661,33 @@ export function createApp(db, opts = {}) {
     });
     noStore(res);
     res.json({ ok: true, suggestion });
+  });
+
+  // Replies follow the existing document-scoped singular mutation route family.
+  app.post('/api/suggest/:id/:sid/replies', writeLimiter, async (req, res) => {
+    const { id, sid } = req.params;
+    if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
+    if (await readDocHtml(id) == null) return res.status(404).json({ error: 'doc_not_found' });
+    if (!canSuggestDoc(req, id)) return res.status(403).json({ error: 'suggest_not_allowed' });
+    const s = getSuggestion(db, sid);
+    if (!s || s.doc_id !== id) return res.status(404).json({ error: 'suggestion_not_found' });
+    const { body, author, requestId } = req.body || {};
+    if (typeof body !== 'string' || !body.trim() || body.length > MAX_TEXT) return res.status(400).json({ error: 'invalid_body' });
+    if (requestId !== undefined && (typeof requestId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))) return res.status(400).json({ error: 'invalid_request_id' });
+    const replyId = requestId === undefined ? randomUUID() : createHash('sha256').update(JSON.stringify([id, sid, req.caller.token, requestId])).digest('hex');
+    const storedBody = escapeText(body), storedAuthor = escapeText(String(author || 'reviewer').slice(0, 120));
+    const prior = s.replies.find(reply => reply.id === replyId);
+    if (prior) {
+      if (prior.body !== storedBody || prior.author !== storedAuthor) return res.status(409).json({ error: 'request_id_conflict' });
+      noStore(res);
+      return res.json({ ok: true, replayed: true, reply: prior, suggestion: s });
+    }
+    const reply = addSuggestionReply(db, {
+      id: replyId, parent_id: sid, body: storedBody,
+      author: storedAuthor, created_at: new Date().toISOString(),
+    });
+    noStore(res);
+    res.json({ ok: true, reply, suggestion: getSuggestion(db, sid) });
   });
 
   // POST /api/suggest/:id/:sid/accept -> { ok, overlay }
@@ -706,6 +765,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await seedDocs();
   const db = openDb();
   createApp(db).listen(PORT, HOST, () => {
-    console.log(`markmyword on http://${HOST}:${PORT}  (open / to list + add files)`);
+    console.log(`Marginroom on http://${HOST}:${PORT}  (open / to list + add files)`);
   });
 }

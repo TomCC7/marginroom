@@ -1,13 +1,20 @@
 {
-  "name": "markmyword",
+  "name": "marginroom",
   "version": "0.1.0",
   "private": true,
-  "description": "Google-Docs-style suggesting/commenting layer over any HTML deliverable",
+  "description": "Imported HTML review with comments and paragraph suggestions",
   "type": "module",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node test/anchoring.test.mjs && node test/formats.test.mjs && node test/group.test.mjs && node test/api.test.mjs && node test/suggestions.test.mjs && node test/upload.test.mjs && node test/interactive.test.mjs && node test/source-patch.test.mjs && node test/sha256-fallback.test.mjs && node test/frame-controller.test.mjs && node test/frame-tabs.test.mjs && node test/frame-suggest.test.mjs && node test/frame-messages.test.mjs && node test/span-select.test.mjs && node test/guardrails.test.mjs && node test/feedback.test.mjs && node test/identity.test.mjs && node test/viewer-ui.test.mjs && node test/anchoring-inline.test.mjs && node test/access.test.mjs && node test/scope-css.test.mjs && node test/mode-policy.test.mjs && node test/owner-promotion.test.mjs"
+    "test": "node test/run.mjs",
+    "test:unit": "node test/run.mjs unit",
+    "test:api": "node test/run.mjs api",
+    "test:browser": "node test/frontend.browser.mjs",
+    "test:all": "npm test && npm run test:browser && npm run test:security && npm run test:acceptance",
+    "browser:install": "playwright-core install chromium",
+    "test:acceptance": "node test/release-acceptance.mjs",
+    "test:security": "node test/security-release.test.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
@@ -17,5 +24,11 @@
   "devDependencies": {
     "jsdom": "^29.1.1",
     "playwright-core": "^1.62.1"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true
+  },
+  "engines": {
+    "node": ">=22.22.2 <23 || >=24.14.0"
   }
 }

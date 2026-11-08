@@ -1,7 +1,26 @@
 node_modules
-data
 .git
-*.log
-.DS_Store
 .env
-.env*
+.env.*
+!.env.example
+**/*.log
+.DS_Store
+data
+backups
+.restore-*
+.ops-*
+.playwright*
+coverage
+test-results
+playwright-report
+# Only allow the synthetic example in the image; never bake uploaded documents.
+docs/*
+!docs/example.html
+!docs/example.config.json
+!docs/assets
+docs/assets/*
+!docs/assets/.gitkeep
+# Local development evidence and throwaway snapshot helpers are not runtime assets.
+release
+snapshot.py
+check-sqlite.mjs

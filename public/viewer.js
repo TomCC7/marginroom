@@ -199,6 +199,20 @@ function writeGroupText(container, text) {
 
 function renderBaseHtml(baseHtml) {
   const parsed = new DOMParser().parseFromString(baseHtml, 'text/html');
+  // DOMParser makes scripts inert only in the detached document. Imported
+  // handlers, srcdoc frames and plugin documents would run at the viewer origin.
+  // Parse first, then remove executable contexts and decoded script URLs before
+  // importing any nodes (also protects legacy/seed files without a raw copy).
+  parsed.querySelectorAll('script, iframe, frame, frameset, object, embed, base, meta, template, animate, animateMotion, animateTransform, set').forEach(n => n.remove());
+  for (const el of parsed.querySelectorAll('*')) {
+    for (const attr of [...el.attributes]) {
+      const name = attr.localName.toLowerCase();
+      const value = attr.value.replace(/[\u0000-\u0020\u007f]/g, '');
+      if (name.startsWith('on') || name === 'srcdoc' ||
+          (['href', 'src', 'action', 'formaction', 'data'].includes(name) &&
+           /^(javascript|vbscript):/i.test(value))) el.removeAttributeNode(attr);
+    }
+  }
   // Preserve the deliverable's own styling (doc HTML is trusted) — but SCOPE it to
   // #hs-doc-root so it can't leak onto the viewer chrome (see DOC_SCOPE note above).
   const headBits = parsed.head
@@ -534,6 +548,34 @@ function currentSpanSelection() {
 let popupEl = null;
 function closeSuggestPopup() { if (popupEl) { popupEl.remove(); popupEl = null; } }
 
+// The visible viewport excludes the area covered by a phone keyboard.
+function syncComposerViewport() {
+  const vv = window.visualViewport;
+  document.documentElement.style.setProperty('--hs-vv-height', `${vv ? vv.height : window.innerHeight}px`);
+  document.documentElement.style.setProperty('--hs-vv-bottom', `${vv ? vv.offsetTop + vv.height : window.innerHeight}px`);
+}
+syncComposerViewport();
+window.addEventListener('resize', syncComposerViewport);
+window.visualViewport?.addEventListener('resize', syncComposerViewport);
+window.visualViewport?.addEventListener('scroll', syncComposerViewport);
+
+function decorateComposer(pop) {
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Review selected content');
+  const heading = document.createElement('div');
+  heading.className = 'hs-sp-heading';
+  heading.innerHTML = '<span>Review selected content</span><button type="button" class="hs-sp-close" aria-label="Close composer">×</button>';
+  heading.querySelector('button').onclick = closeSuggestPopup;
+  pop.prepend(heading);
+  pop.querySelector('textarea').setAttribute('aria-label', 'Rewrite or comment text');
+}
+
+function focusComposerText(ta) {
+  ta.focus({ preventScroll: true });
+  ta.setSelectionRange(0, 0);
+  ta.scrollTop = 0;
+}
+
 // A multi-paragraph rewrite is whole-paragraph granularity, so we cap how many
 // blocks one rewrite may span (the anchor list + re-split get unwieldy, and a
 // giant rewrite is better left as a comment). Over the cap the popup drops the
@@ -594,7 +636,7 @@ function openSuggestPopup(el, opts = {}) {
       ta.placeholder = multi ? 'Comment on these paragraphs…'
         : span ? 'Comment on the highlighted phrase…' : 'Leave a comment on this block…';
     }
-    ta.focus();
+    focusComposerText(ta);
   };
   pop.querySelectorAll('.hs-sp-tabs button').forEach((b) => b.onclick = () => setKind(b.dataset.kind));
   pop.querySelector('.hs-sp-cancel').onclick = closeSuggestPopup;
@@ -617,6 +659,7 @@ function openSuggestPopup(el, opts = {}) {
   };
 
   // Position near the block (block mode) or the selection (span/multi mode).
+  decorateComposer(pop);
   document.body.appendChild(pop);
   const r = (span && span.rect) ? span.rect : el.getBoundingClientRect();
   positionPopupNear(pop, r);
@@ -661,11 +704,12 @@ function openCommentPopup(el) {
     });
     closeSuggestPopup();
   };
+  decorateComposer(pop);
   document.body.appendChild(pop);
   const r = el.getBoundingClientRect();
   positionPopupNear(pop, r);
   popupEl = pop;
-  ta.focus();
+  focusComposerText(ta);
 }
 
 // Open a suggest/comment popup for an element clicked INSIDE the interactive
@@ -680,7 +724,7 @@ function openFrameCommentPopup({ anchor, isText, snippet, rect }) {
   const label = snippet || (isText ? 'this text' : 'this element');
   const pop = document.createElement('div');
   pop.className = 'hs-suggest-pop';
-  const tabs = isText
+  const tabs = isText && !document.body.hasAttribute('data-review-v3')
     ? `<div class="hs-sp-tabs"><button data-kind="rewrite">Suggest rewrite</button><button data-kind="comment">Comment</button></div>`
     : '';
   pop.innerHTML = `
@@ -693,14 +737,14 @@ function openFrameCommentPopup({ anchor, isText, snippet, rect }) {
     </div>`;
   const ta = pop.querySelector('.hs-sp-text');
   // Default kind: rewrite when the target is editable markup text, else comment.
-  let kind = isText ? 'rewrite' : 'comment';
+  let kind = isText && !document.body.hasAttribute('data-review-v3') ? 'rewrite' : 'comment';
   const setKind = (k) => {
     kind = k;
     pop.querySelectorAll('.hs-sp-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.kind === k));
     ta.placeholder = k === 'rewrite'
       ? 'Propose new wording for this text…'
       : 'Leave a comment (e.g. “make this header smaller”)…';
-    ta.focus();
+    focusComposerText(ta);
   };
   pop.querySelectorAll('.hs-sp-tabs button').forEach((b) => (b.onclick = () => setKind(b.dataset.kind)));
   pop.querySelector('.hs-sp-cancel').onclick = closeSuggestPopup;
@@ -710,6 +754,7 @@ function openFrameCommentPopup({ anchor, isText, snippet, rect }) {
     await submitSuggestion({ anchor, quote: label, body, kind, spanOcc: -1, baseText: '' });
     closeSuggestPopup();
   };
+  decorateComposer(pop);
   document.body.appendChild(pop);
   const r = frameToParentRect(rect);
   positionPopupNear(pop, r);
@@ -981,6 +1026,10 @@ function renderSuggestions() {
     card.querySelector('.hs-sg-goto')?.addEventListener('click', () => {
       const s = suggestions.find((x) => x.id === sid);
       if (!s) return;
+      // Phone: the suggestions list is a full-width overlay, so close it before
+      // scrolling — otherwise the block being jumped to stays hidden behind the
+      // sheet. Desktop keeps the side rail open, as before.
+      if (window.matchMedia('(max-width: 700px)').matches) document.body.classList.remove('hs-show-suggest');
       // Interactive doc: the element lives in the sandboxed frame, not our DOM.
       // Ask the frame to scroll to it + flash; it replies `commentMissing` if the
       // (best-effort) anchor can't be re-found, which marks the card.
@@ -1100,6 +1149,8 @@ function onFrameMessage(e) {
     // Push any existing overlay into the frame so saved edits show on load.
     if (currentOverlay) frame.contentWindow.postMessage({ type: 'applyOverlay', overlay: currentOverlay }, '*');
     frame.contentWindow.postMessage({ type: 'setMode', mode }, '*');
+    frame.style.pointerEvents = '';
+    if (frameReadyResolve) { frameReadyResolve(true); frameReadyResolve = null; }
     setStatus('saved', 'Ready');
     return;
   }
@@ -1127,7 +1178,8 @@ function onFrameMessage(e) {
     if (mode !== 'suggest') return;
     const t = parseSuggestTarget(m);
     if (!t) return;
-    openFrameCommentPopup(t);
+    if (document.body.hasAttribute('data-review-v3')) document.dispatchEvent(new CustomEvent('review-frame-comment', { detail: t }));
+    else openFrameCommentPopup(t);
     return;
   }
   if (m.type === 'commentMissing') {
@@ -1150,6 +1202,7 @@ function onFrameMessage(e) {
 // for these show a "couldn't locate on page" marker.
 const missingCommentAnchors = new Set();
 function markCommentMissing(anchor) {
+  if (document.body.hasAttribute('data-review-v3')) document.dispatchEvent(new CustomEvent('review-frame-missing', {detail: {anchor}}));
   missingCommentAnchors.add(anchor);
   renderSuggestions();
 }
@@ -1177,6 +1230,7 @@ function frameEdit(anchor, text) {
 }
 
 // Render an interactive doc into a sandboxed iframe. Returns true on success.
+let frameReadyResolve = null;
 async function bootInteractive(data) {
   interactive = true;
   currentOverlay = data.overlay || {};
@@ -1200,16 +1254,28 @@ async function bootInteractive(data) {
   f.setAttribute('sandbox', 'allow-scripts');
   f.setAttribute('title', 'Reviewed document (sandboxed)');
   f.style.cssText = 'width:100%;height:calc(100vh - var(--hs-bar-h));border:0;display:block;background:#fff;';
+  const v3 = document.body.hasAttribute('data-review-v3');
+  let readyTimer;
+  const ready = v3 ? new Promise(resolve => {
+    frameReadyResolve = resolve;
+    readyTimer = setTimeout(() => { frameReadyResolve = null; resolve(false); }, 8000);
+  }) : null;
+  if (v3) f.style.pointerEvents = 'none';
   f.srcdoc = buildSrcdoc(raw, controllerSrc, docId);
   root.appendChild(f);
   frame = f;
 
   window.addEventListener('message', onFrameMessage);
   // Honest banner: interactive docs edit markup text only.
-  warn('This document runs its own JavaScript, so it’s shown in a secure sandbox. '
+  warn('This document runs its own JavaScript inside a sandboxed frame. '
     + 'You can edit text that’s part of the page; text the page generates with JavaScript is shown but not editable here. '
-    + 'Download gives you the original interactive file with your text edits.');
+    + 'Download retains the original active content with your text edits. Only open exported HTML from authors you trust.');
   setStatus('', 'Rendering…');
+  if (ready) {
+    const ok = await ready;
+    clearTimeout(readyTimer);
+    if (!ok) { setStatus('error', '交互文稿初始化超时，请刷新重试'); return false; }
+  }
   return true;
 }
 
@@ -1295,11 +1361,10 @@ function saveHtmlFile(out, suffix) {
   URL.revokeObjectURL(url);
 }
 
-// Static "edited snapshot" of an interactive doc: freeze the LIVE (post-JS) page
-// with the reviewer's edits into inert HTML. The frame serializes its own DOM; the
-// SERVER sanitizes it (stripActiveContent) so the downloaded file has no runnable
-// JS. Not interactive by design — the JS is what made it interactive, and it's
-// stripped so it can't re-render over your edits or execute on open.
+// Edited snapshot of an interactive doc: freeze the LIVE (post-JS) page with the
+// reviewer's edits. The server removes obvious scripts/handlers, not all possible
+// active HTML. Like the original export, this file must be treated as untrusted;
+// neither download inherits the viewer's iframe sandbox.
 async function downloadSnapshot() {
   setStatus('', 'Preparing snapshot…');
   try {
@@ -1400,6 +1465,24 @@ async function downloadOriginal() {
     }
   }
 
+  // Make uploaded local images portable without re-encoding (animated GIF bytes
+  // must survive). Never fetch remote URLs while preparing an export.
+  const assets = await fetch('/api/assets').then(r => r.json()).catch(() => ({ assets: [] }));
+  for (const img of body.querySelectorAll('img[src]')) {
+    const src = img.getAttribute('src');
+    if (!src || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(src)) continue;
+    const name = src.split(/[?#]/)[0].split('/').pop();
+    if (!assets.assets?.includes(name)) continue;
+    const response = await fetch('/docs/assets/' + encodeURIComponent(name));
+    if (!response.ok) continue;
+    const blob = await response.blob();
+    img.src = await new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.onload = () => resolve(reader.result);
+      reader.onerror = reject; reader.readAsDataURL(blob);
+    });
+    // A responsive alternate could otherwise override the portable image.
+    img.removeAttribute('srcset');
+  }
   const out = '<!doctype html>\n' + doc.documentElement.outerHTML;
   saveHtmlFile(out, 'reviewed');
   setStatus('saved', 'Ready');
@@ -1513,8 +1596,12 @@ async function main() {
     paintTrigger(next);
     applyMode();
     // The suggestions panel opens with Suggesting mode and closes when you leave it
-    // (the standalone Suggestions button can still reopen it in any mode).
-    document.body.classList.toggle('hs-show-suggest', mode === 'suggest');
+    // (the standalone Suggestions button can still reopen it in any mode). On phone
+    // widths the panel is a full overlay, so opening it the moment you pick
+    // Suggesting would hide the article you just wanted to comment on — keep it
+    // closed there and let the Suggestions button open it on demand.
+    const phoneLayout = window.matchMedia('(max-width: 700px)').matches;
+    document.body.classList.toggle('hs-show-suggest', mode === 'suggest' && !phoneLayout);
     if (mode === 'suggest') loadSuggestions();
   }
   modeTrigger?.addEventListener('click', (e) => {
@@ -1583,4 +1670,13 @@ async function main() {
   startPolling();
 }
 
-main();
+if (!document.body.hasAttribute('data-review-v3')) main();
+export const reviewBridge = {
+ async init(id) { docId=id; mode='view'; return boot(); },
+ async reload() { return boot(); },
+ get state() { return {docId,anchorMap,commentMap,baseText,currentOverlay,canEdit,canSuggest,isDocOwner,interactive,frame}; },
+ readText(el) { return isGroup(el) ? readGroupText(el) : el.textContent; },
+ setMode(next) { mode=next; applyMode(); },
+ exportHtml: downloadOriginal,
+ exportSnapshot: downloadSnapshot,
+};
