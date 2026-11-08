@@ -12,6 +12,8 @@ npm run test:browser        # route-isolated frontend regressions, no server nee
 npm run test:security       # real isolated negative/security probes (Chromium required)
 npm run test:acceptance     # real npm start + browser/API upload/review/export/restart
 npm run test:all            # unit, API, frontend browser, security, release acceptance
+node test/mobile-selection.browser.mjs # isolated 360/390/440/1440 selection + viewport checks
+node test/mobile-selection-storage.mjs # disposable server/DB: precise quote, one submit, draft guard
 ```
 
 On a minimal Linux host use `npm run browser:install -- --with-deps` to install
@@ -43,4 +45,9 @@ fast UTF-16, surrogate-pair, insertion/deletion and DOM exclusion regressions.
 Browser checks use headless Chromium viewport simulation, not physical iOS,
 Safari, or a real software keyboard. They intentionally do not submit writes;
 the disposable API tests cover persistence. The separate release acceptance
-harness is not implicitly discovered by this runner.
+harness is not implicitly discovered by this runner. The two mobile-selection
+harnesses are also explicit commands, not part of `test:all`. Optional
+`SELECTION_SCREENSHOTS=/absolute/output` saves synthetic viewport screenshots;
+normal runs do not modify tracked assets. Neither harness reproduces iOS native
+selection menus: a physical iPhone/Safari selection-menu and keyboard trial is
+still required.

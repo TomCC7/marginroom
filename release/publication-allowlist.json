@@ -67,6 +67,8 @@
     "test/helpers/browser.mjs",
     "test/identity.test.mjs",
     "test/interactive.test.mjs",
+    "test/mobile-selection-storage.mjs",
+    "test/mobile-selection.browser.mjs",
     "test/mode-policy.test.mjs",
     "test/owner-promotion.test.mjs",
     "test/release-acceptance.mjs",
