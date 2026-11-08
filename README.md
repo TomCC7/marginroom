@@ -1,129 +1,90 @@
-# Marginroom — private alpha
+# Marginroom
 
-An enhanced derivative of [Alexa Griffith's markmyword](https://github.com/alexagriffith/markmyword), licensed under MIT. Original copyright and license are preserved in [LICENSE](LICENSE). This release adds a focused imported-HTML review workflow; it is not the upstream hosted demo. The copied source baseline is recorded in [release/source-snapshot.json](release/source-snapshot.json).
+Review HTML pages without moving them into a document editor.
 
-![Marginroom reviewing synthetic field notes](docs/screenshots/alpha-synthetic.png)
+Upload a newsletter, report, or other HTML page. Reviewers can comment on the page and suggest text changes. Accept the changes you want, then download the edited HTML.
 
-This screenshot was generated from invented text and a two-color synthetic animation, not a real article. The current viewer controls are primarily Chinese; the landing page is English.
+![Marginroom with an example document open for review](docs/screenshots/alpha-synthetic.png)
 
-## Scope and review workflow
+## What you can do
 
-- Import a styled HTML document by uploading or pasting it, then share its viewer link with trusted reviewers.
-- Select text within a normal single paragraph to propose a change. A pending change locks that review target until resolved; the owner accepts or rejects it.
-- Grouped content, selections crossing paragraphs, and interactive content are **comment-only** in this alpha. Do not assume every visible element is editable or that every HTML layout is supported.
-- Comments and suggestions are review state; accepted text changes and version history are stored separately from source files. Check the exported HTML before using it elsewhere.
-- A reviewer name is a display label, **not authentication**. There are no named accounts or verified reviewer identities.
-- The owner chooses link access: **read**, **suggest**, or **edit**. Read links still expose document HTML/assets, but hide discussion records from non-owners; suggest links add comments/proposals; edit links allow direct text changes. Only the document owner/global owner may accept, reject, restore history, or change link permissions. A link is not a private account boundary.
-- A clean static export contains accepted text, not discussion badges, pending/rejected changes, or review controls. Uploaded local `<img src>` assets are embedded byte-for-byte, including animated GIFs. Remote resources, CSS background images, responsive `<picture>` sources and interactive exports are not bundled; inspect those dependencies yourself. Local assets share a global basename namespace and existing names are not overwritten.
-- Paragraph edits store plain text, so inline bold/link markup in an edited paragraph can become plain text. Complex layouts and unsupported grouped/interactive editing remain limited. Interactive originals deliberately keep scripts; downloaded originals and regex-cleaned snapshots do **not** inherit the viewer sandbox and must be treated as untrusted active HTML.
+- Keep the page's layout while reviewing its text.
+- Leave comments on text, images, and other elements, then reply or resolve them.
+- Suggest changes directly in a paragraph. The document owner accepts or rejects them.
+- Find discussions in a separate list and jump back to the relevant passage.
+- Download the accepted text without the review controls. Uploaded images, including animated GIFs, are included in static exports.
 
-This is a small, stateful, single-instance application for a trusted private alpha, not a security-hardened public service. The release refreshed vulnerable transitive dependency patches; the release audit returned zero known advisories. This is not a guarantee against unknown vulnerabilities. Imported HTML can contain remote resources and interactive content. Isolation and sanitization are defensive measures, not a guarantee that arbitrary hostile documents are safe. Use non-sensitive test documents, avoid secrets in document content, and do not treat link possession as strong access control. The packaging/recovery rehearsal does not establish real Safari compatibility or a security audit.
+Marginroom is an early, self-hosted app. The review interface is currently mostly Chinese; a language switcher is not available yet.
 
-## Quickstart: fresh Docker installation
+## Run locally
 
-Requires Docker Engine with Compose v2 and a free local port. Run commands from the release repository. The Docker build installs locked dependencies using `npm ci --omit=dev`, including the native SQLite module; no host Node installation is needed.
+You need Docker with Compose v2. Clone this repository, open its directory, and run:
 
 ```sh
 cp .env.example .env
 docker compose up --build -d
-docker compose ps
-# Open http://localhost:3939/
 ```
 
-The default binding is **127.0.0.1 only**. Do not change it to a public binding without an appropriate HTTPS/authentication deployment review. To change the local port, set `MMW_PORT` in `.env`.
+Open **http://localhost:3939**. Upload an HTML file or paste its source to start reviewing.
 
-On first boot the image creates `/data/identity.json` with random, persistent `SESSION_SECRET` and `OWNER_KEY` values before loading the app. `/data` is a named volume containing the database, imported documents/assets, and identity secrets. Fresh data has no real imported documents; an optional synthetic `example` seed is included only if present in this source copy. Rebuilds and `docker compose down` keep the volume. **`docker compose down -v` destroys it.**
+The default setup listens only on your own machine. Documents, review history, and identity keys are stored in a Docker volume and survive restarts. Do not use `docker compose down -v` unless you intend to delete that data.
 
-Retrieve your owner recovery key on your own terminal (it is a secret):
+For configuration, administrator access, native Node setup, and backup instructions, see [Running Marginroom](docs/operations.md).
 
-```sh
-docker compose exec app node -e 'console.log(JSON.parse(require("fs").readFileSync("/data/identity.json","utf8")).OWNER_KEY)'
-```
+## Review a page
 
-Open `http://localhost:3939/?key=YOUR_KEY` once in your owner browser. Then use the plain URL; do not share key-bearing links or include them in screenshots/logs. The `x-owner-key` request header is also supported for operator API requests. Keep the key in a private password manager independently of the running volume.
+1. Upload your HTML and any local images it uses.
+2. Choose the link's access level and share the viewer URL with your reviewers.
+3. Reviewers select text to comment or switch to Suggesting to propose a change.
+4. As the owner, reply to comments and accept or reject suggestions.
+5. Download the result when you're ready.
 
-### Identity, ownership, and cookie recovery
+To review from another device, you need to make your instance reachable. Read the access notes below before exposing it outside your machine.
 
-The key grants **global owner** privileges, including actions on any document. An anonymous browser also has its own signed guest cookie and may own documents it uploaded, subject to limits. Someone typing the same display name does not become that browser or owner. Guest documents may be absent from other guests' home listings, but listing visibility is not document authentication.
+## Who can access a document?
 
-If the owner's browser cookie is cleared or expires, present the saved `OWNER_KEY` again to regain owner privileges. If a guest loses its cookie, its identity is not recoverable by typing its old name; ask the global owner to manage the document. Restoring a backup with the same `SESSION_SECRET` preserves the validity of existing signed cookies **if those cookies are still present in the browser**. It does not recreate deleted browser cookies. Losing both the key and all copies of `identity.json` is not a supported recovery path.
+**Anyone who can reach your instance and knows a document's URL can read it.** There are no user accounts, invitation-only documents, or per-person access lists.
 
-The image refuses to start if explicit environment secrets conflict with persisted identity; it does not silently rotate them. Changing `SESSION_SECRET` invalidates existing signatures. Changing just `OWNER_KEY` does **not** revoke existing signed owner cookies: rotate the session secret too when revocation is needed. Back up first and perform such manual changes only while stopped.
+The link's setting controls what visitors can do:
 
-## Runtime and configuration
+- **Read:** view the page. Visitors cannot see its discussion records.
+- **Suggest:** view the page, comment, and propose changes.
+- **Edit:** also change the document text directly.
 
-The supported/tested packaging baseline is **Node 22.23.4** on Debian Bookworm (Docker). Native dependencies make arbitrary Node upgrades or copying host `node_modules` into a container unsafe. Host `npm ci` was also exercised on Node 22.23.4; other runtimes/platforms are not certified by this release.
+These settings apply to all visitors, not to individual people. Only the document owner or instance administrator can accept or reject suggestions, restore history, or change sharing permissions.
 
-| Setting | App behavior / packaging value |
-| --- | --- |
-| `HS_DB_PATH` | Docker: `/data/app.db`; native default: `./data/app.db` |
-| `HS_DOCS_DIR` | Docker: `/data/docs`; native default: repository `docs/` |
-| `HOST`, `PORT` | Docker: `0.0.0.0:3939` internally; Compose publishes loopback only |
-| `SESSION_SECRET`, `OWNER_KEY` | Docker initializes/persists in `/data/identity.json`; plain `node server.js` does **not** do this |
-| `NODE_ENV` | Compose defaults to `development` for local HTTP cookie support. Use `production` with HTTPS to set Secure cookies. This flag is cookie behavior, not a security guarantee. |
-| `MMW_GUEST_DOC_LIMIT`, `MMW_MAX_GUEST_OWNERS` | App defaults: 1 document per guest; 15 distinct guest owners |
-| `MMW_MAX_DOC_BYTES` | App default: 2,000,000 bytes per uploaded file |
-| `MMW_READ_PER_MIN`, `MMW_WRITE_PER_MIN`, `MMW_UPLOAD_PER_HOUR` | Defaults: 300 reads/min, 60 writes/min, 10 uploads/hour per IP; global owner exempt |
+A signed browser cookie identifies the person who uploaded a document. A display name is only a label, not a verified identity. The instance administrator has a separate recovery key. See [ownership and cookie recovery](docs/operations.md#identity-ownership-and-cookie-recovery) if you lose access.
 
-Compose deliberately passes only the settings shown in `compose.yaml`. Add limit overrides explicitly to its `environment` section; placing arbitrary variables in `.env` alone does not pass them to the container. Feedback-to-GitHub is not configured or required: leave `GITHUB_TOKEN` unset. This packaging does not upload your documents to a hosted service, though imported remote URLs can cause browser network requests.
+For confidential documents, put the instance behind a login gate or private network. A private GitHub repository does not make a running instance private.
 
-For native development, run `npm ci` on Node 22.23.4. Explicitly export stable `SESSION_SECRET`, `OWNER_KEY`, an absolute `HS_DB_PATH`, and an absolute `HS_DOCS_DIR` pointing to a **fresh disposable directory** before `npm start`. The server does not load `.env` automatically. With no session secret native runs use a per-boot random secret; with no owner key owner-key recovery is disabled. Native operators must securely create `identity.json` matching the two exported secrets in their data directory to use the backup tools. The image's automatic initialization is the recommended quickstart.
+## Current limits
 
-## Backup and restore
+- Text suggestions work within one ordinary paragraph. Resolve a pending suggestion before proposing another in the same paragraph. Grouped content, cross-paragraph selections, and interactive pages support comments only in the current review interface.
+- Paragraph edits use plain text and can remove inline formatting such as links or bold text in that paragraph.
+- Static exports bundle uploaded `<img src>` images. Remote images, CSS backgrounds, `<picture>` sources, and dependencies of interactive pages are not bundled. Uploaded image filenames must be unique across the instance.
+- Downloaded interactive HTML can run its own scripts. Exports do not have the viewer's sandbox protection. Review untrusted HTML with care.
+- Browser tests use Chromium. Real iPhone and Safari behavior still needs testing.
 
-A backup must include **all three**: SQLite review state/history/ownership, the entire document tree (including raw interactive HTML/config/assets), and persistent identity secrets. Copying only `app.db` is insufficient, particularly in SQLite WAL mode.
+## Development
 
-The tools use SQLite's backup API and check integrity. **Stop the application and every other writer for the entire operation**: SQLite consistency alone cannot coordinate file uploads/deletions with database changes. `--writes-stopped` is your assertion, not an automatic lock. Do not run another app against the same volume. Backups are unencrypted directories containing content and owner credentials; store privately, encrypt at rest/off-host as appropriate, and never commit or publicly upload them. SHA-256 inventory checks detect accidental corruption, not maliciously replaced manifests.
-
-### Back up the Compose instance
-
-```sh
-mkdir -p backups
-chmod 700 backups
-docker compose stop app
-# Choose a NEW backup name; existing directories are refused.
-docker compose run --rm --no-deps -v "$PWD/backups:/backups" app \
-  node scripts/backup.mjs /data /backups/alpha-001 --writes-stopped
-docker compose start app
-```
-
-The image runs as UID/GID 1000 (`node`). On Linux the backup directory must be writable by that user; if your host UID differs, grant that user access to **only that directory** before running the command. Do not make backups world-readable. Check the command's exit status before considering a backup successful. A failed run can leave an incomplete directory; never restore it. Keep a separate private copy outside the application disk.
-
-### Restore rehearsal or recovery into a new volume
-
-Keep the original volume intact until the recovered service has been checked. Use the **same application image/version** first. The following creates a separate recovery Compose project and volume, leaving the original stopped and untouched. A recovery project uses port 3940 so there is no collision.
-
-```sh
-docker compose stop app
-mkdir -p backups
-# Replace alpha-001 with an existing successful backup.
-MMW_PORT=3940 docker compose -p mmw-recovery run --rm --no-deps \
-  -v "$PWD/backups:/backups:ro" app \
-  node scripts/restore.mjs /backups/alpha-001 /data --writes-stopped
-MMW_PORT=3940 docker compose -p mmw-recovery up -d
-# Open http://localhost:3940/ and recover owner access with the SAME saved key.
-# Check a real imported document, comments/suggestions/history, and its download.
-```
-
-Restore refuses nonempty destinations, checksum/inventory mismatches, links/special files, and invalid SQLite snapshots. It validates before copying but is not an atomic switch: a disk/copy failure can leave a partial destination, which must stay stopped. Never delete or replace the original data to make a restore command pass. Stop and remove the disposable recovery project only after checking it; use `down -v` **only with the explicitly named disposable recovery project**, never the live project. Restart the original with `docker compose start app` if returning to it.
-
-## Tests and evidence
+The tested Node version is **22.23.4**. To install dependencies and run the unit and API tests:
 
 ```sh
 npm ci
 npm test
+```
+
+For browser, security, and end-to-end tests:
+
+```sh
 npm run browser:install
-npm run test:browser
-npm run test:security
-npm run test:acceptance
-# or run all application suites after installing Chromium:
 npm run test:all
 ```
 
-`npm test` runs separate unit/DOM and real isolated API files, including v3 API persistence/permission cases. Browser suites require Chromium; see [test/README.md](test/README.md). `test:acceptance` starts a real `npm start` process on a random loopback port with fresh synthetic data and secrets, then drives upload/assets, anonymous comment/suggestion, owner acceptance/rejection, portable export and restart persistence. It never accesses an existing installation. `GENERATE_SCREENSHOT=1 npm run test:acceptance` regenerates only the synthetic README screenshot.
+See the [test guide](test/README.md) for individual suites. The [operations verification notes](release/operations-evidence.md) record the Docker and recovery checks performed for this alpha.
 
-See [release/operations-evidence.md](release/operations-evidence.md) for the actual Docker smoke and backup/restore rehearsal results, including limitations. Application tests do not by themselves establish browser/device compatibility. Release code is custom-copied from the upstream baseline; there is no upstream repository update or hosted deployment in this quickstart.
+## Credits and license
 
-## License and attribution
+Marginroom is based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith, with a revised review interface, inline suggestions, and self-hosting tools.
 
-MIT, copyright (c) 2026 **Alexa Griffith**. This enhanced derivative retains the original license and attribution; no endorsement by the upstream author is implied. See [LICENSE](LICENSE) for the complete terms and warranty disclaimer.
+[MIT license](LICENSE). Original copyright and license notices are preserved.

@@ -13,6 +13,7 @@
     "db.js",
     "docs/assets/.gitkeep",
     "docs/example.html",
+    "docs/operations.md",
     "docs/screenshots/alpha-synthetic.png",
     "feedback-api.js",
     "guardrails.js",
