@@ -30,7 +30,7 @@ const SEED_DOCS_DIR = path.join(__dirname, 'docs');
 const DOCS_DIR = process.env.HS_DOCS_DIR || SEED_DOCS_DIR;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PORT = process.env.PORT || 3939;
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '127.0.0.1';
 const MAX_TEXT = 50_000;
 const MAX_DOC_BYTES = LIMITS.MAX_DOC_BYTES; // per-file size cap (default 2 MB)
 

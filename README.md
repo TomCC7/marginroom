@@ -2,6 +2,10 @@
 
 An enhanced derivative of [Alexa Griffith's markmyword](https://github.com/alexagriffith/markmyword), licensed under MIT. Original copyright and license are preserved in [LICENSE](LICENSE). This release adds a focused imported-HTML review workflow; it is not the upstream hosted demo. The copied source baseline is recorded in [release/source-snapshot.json](release/source-snapshot.json).
 
+![Marginroom reviewing synthetic field notes](docs/screenshots/alpha-synthetic.png)
+
+This screenshot was generated from invented text and a two-color synthetic animation, not a real article. The current viewer controls are primarily Chinese; the landing page is English.
+
 ## Scope and review workflow
 
 - Import a styled HTML document by uploading or pasting it, then share its viewer link with trusted reviewers.
@@ -9,6 +13,9 @@ An enhanced derivative of [Alexa Griffith's markmyword](https://github.com/alexa
 - Grouped content, selections crossing paragraphs, and interactive content are **comment-only** in this alpha. Do not assume every visible element is editable or that every HTML layout is supported.
 - Comments and suggestions are review state; accepted text changes and version history are stored separately from source files. Check the exported HTML before using it elsewhere.
 - A reviewer name is a display label, **not authentication**. There are no named accounts or verified reviewer identities.
+- The owner chooses link access: **read**, **suggest**, or **edit**. Read links still expose document HTML/assets, but hide discussion records from non-owners; suggest links add comments/proposals; edit links allow direct text changes. Only the document owner/global owner may accept, reject, restore history, or change link permissions. A link is not a private account boundary.
+- A clean static export contains accepted text, not discussion badges, pending/rejected changes, or review controls. Uploaded local `<img src>` assets are embedded byte-for-byte, including animated GIFs. Remote resources, CSS background images, responsive `<picture>` sources and interactive exports are not bundled; inspect those dependencies yourself. Local assets share a global basename namespace and existing names are not overwritten.
+- Paragraph edits store plain text, so inline bold/link markup in an edited paragraph can become plain text. Complex layouts and unsupported grouped/interactive editing remain limited. Interactive originals deliberately keep scripts; downloaded originals and regex-cleaned snapshots do **not** inherit the viewer sandbox and must be treated as untrusted active HTML.
 
 This is a small, stateful, single-instance application for a trusted private alpha, not a security-hardened public service. The release refreshed vulnerable transitive dependency patches; the release audit returned zero known advisories. This is not a guarantee against unknown vulnerabilities. Imported HTML can contain remote resources and interactive content. Isolation and sanitization are defensive measures, not a guarantee that arbitrary hostile documents are safe. Use non-sensitive test documents, avoid secrets in document content, and do not treat link possession as strong access control. The packaging/recovery rehearsal does not establish real Safari compatibility or a security audit.
 
@@ -105,7 +112,15 @@ Restore refuses nonempty destinations, checksum/inventory mismatches, links/spec
 ```sh
 npm ci
 npm test
+npm run browser:install
+npm run test:browser
+npm run test:security
+npm run test:acceptance
+# or run all application suites after installing Chromium:
+npm run test:all
 ```
+
+`npm test` runs separate unit/DOM and real isolated API files, including v3 API persistence/permission cases. Browser suites require Chromium; see [test/README.md](test/README.md). `test:acceptance` starts a real `npm start` process on a random loopback port with fresh synthetic data and secrets, then drives upload/assets, anonymous comment/suggestion, owner acceptance/rejection, portable export and restart persistence. It never accesses an existing installation. `GENERATE_SCREENSHOT=1 npm run test:acceptance` regenerates only the synthetic README screenshot.
 
 See [release/operations-evidence.md](release/operations-evidence.md) for the actual Docker smoke and backup/restore rehearsal results, including limitations. Application tests do not by themselves establish browser/device compatibility. Release code is custom-copied from the upstream baseline; there is no upstream repository update or hosted deployment in this quickstart.
 

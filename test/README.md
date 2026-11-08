@@ -1,6 +1,6 @@
 # Portable regression tests
 
-Run from the repository root on Node 22 or newer:
+Run from the repository root on the tested Node 22.23.4 baseline:
 
 ```sh
 npm ci
@@ -9,7 +9,9 @@ npm run test:unit
 npm run test:api
 npm run browser:install     # download the Chromium version matching playwright-core
 npm run test:browser        # route-isolated frontend regressions, no server needed
-npm run test:all            # default tests followed by frontend browser regressions
+npm run test:security       # real isolated negative/security probes (Chromium required)
+npm run test:acceptance     # real npm start + browser/API upload/review/export/restart
+npm run test:all            # unit, API, frontend browser, security, release acceptance
 ```
 
 On a minimal Linux host use `npm run browser:install -- --with-deps` to install

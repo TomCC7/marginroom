@@ -24,3 +24,10 @@ docs/assets/*
 release
 snapshot.py
 check-sqlite.mjs
+.local
+review-artifacts
+**/*.db
+**/*.db-*
+**/*.sqlite*
+**/*cookies*
+prepare-release.py

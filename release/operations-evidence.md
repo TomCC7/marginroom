@@ -13,11 +13,11 @@ Commands below are relative to the release repository. The `mmw-ops-*` / `mmw-pa
 ### Build, configuration, and fresh image startup
 
 ```sh
-docker build -t marginroom-packaging-rehearsal:local .
+docker build -t markmyword-packaging-rehearsal:local .
 docker compose -p mmw-packaging-check config --quiet
 docker run -d --name mmw-packaging-check \
   --mount type=volume,src=mmw-packaging-check-data,dst=/data \
-  -p 127.0.0.1::3939 marginroom-packaging-rehearsal:local
+  -p 127.0.0.1::3939 markmyword-packaging-rehearsal:local
 docker inspect mmw-packaging-check --format '{{json .NetworkSettings.Ports}}'
 ```
 
@@ -51,13 +51,13 @@ This is an API/storage fixture, not a claim that the synthetic placeholder overl
 docker run --name mmw-ops-backup-fixed \
   --mount type=volume,src=mmw-ops-rehearsal-data,dst=/source \
   --mount type=volume,src=mmw-ops-rehearsal-backups,dst=/data \
-  marginroom-packaging-rehearsal:local \
+  markmyword-packaging-rehearsal:local \
   node scripts/backup.mjs /source /data/alpha-002 --writes-stopped
 
 docker run --name mmw-ops-restore-fixed \
   --mount type=volume,src=mmw-ops-rehearsal-restored,dst=/data \
   --mount type=volume,src=mmw-ops-rehearsal-backups,dst=/backups,readonly \
-  marginroom-packaging-rehearsal:local \
+  markmyword-packaging-rehearsal:local \
   node scripts/restore.mjs /backups/alpha-002 /data --writes-stopped
 ```
 
@@ -107,15 +107,35 @@ Build and finite Compose run exited **0**. The isolated Compose named volume was
 
 The first restore (`alpha-001`) failed with `SQLITE_CANTOPEN` when the snapshot was mounted read-only. SQLite's backup preserved a WAL-mode database header, so opening it attempted to create adjacent WAL/shared-memory files. `backup.mjs` now normalizes the completed standalone snapshot to **DELETE journal mode**, performs a second integrity check, closes it, and only then calculates the manifest. Rebuilding and repeating with `alpha-002` succeeded on the read-only backup mount. Use the successful final snapshot, not the earlier experimental directory.
 
-## Dependency audit: unresolved release limitation
+## Dependency audit: resolved before candidate handoff
 
-`npm audit --omit=dev --json` exited **1** and reported **3 production dependency vulnerabilities**:
+The initial packaging rehearsal found body-parser (high), proxy-addr (critical), and qs (moderate) advisories. A focused `npm audit fix` refreshed six transitive packages without a framework/runtime migration. Subsequent `npm ci`, `npm audit`, and Docker `npm ci --omit=dev` all exited 0 and reported **zero known vulnerabilities**. This is a registry-advisory check, not proof of security.
 
-- **body-parser — high**: GHSA-27r3-jxmh-p828 (compressed-body denial of service).
-- **proxy-addr — critical**: GHSA-jqcg-44mw-7w3h (IP trust/spoofing issue).
-- **qs — moderate**: GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g, GHSA-6pq8-jhm2-2vcw.
+## Final Marginroom image follow-up
 
-The Docker `npm ci --omit=dev` output also reported one critical, one high, and one moderate advisory. No automatic `npm audit fix`, package-file modification, or public deployment was performed by this task. The release owner should resolve/re-audit the lockfile and rerun the build/tests; do not interpret a passing smoke test as a clean dependency/security assessment.
+The earlier commands above retain their actual pre-rename image label for truthful provenance. The final release image is `marginroom-private-alpha:local`.
+
+```sh
+docker build -t marginroom-private-alpha:local .
+mkdir -p .local
+docker image inspect --format '{{json .Config.Cmd}}' marginroom-private-alpha:local > .local/image-command.json
+# Use a NEW volume/container name each time. The harness exits without publishing a port.
+docker run --name marginroom-final-smoke-v2 \
+  --mount type=volume,src=marginroom-final-smoke-data-v2,dst=/data \
+  --mount type=bind,src="$PWD/.local/image-command.json",dst=/image-command.json,readonly \
+  marginroom-private-alpha:local node test/container-smoke.mjs
+```
+
+Actual final run exited 0 as the image's non-root user. It executes the exact inspected image CMD as a child process, starts HTTP, uploads synthetic HTML, verifies owner-cookie issuance, restarts the child, verifies identity/cookie/overlay persistence, stops all writers, backs up, restores to a separate empty image-local directory, and opens the restored DB/docs with the existing identity. Both SQLite checks returned `ok`; four files were verified. The `/data` source volume is retained; the backup/restored directories are disposable container-local evidence. No host port or other service is touched.
+
+The first final-image harness attempt failed because `/app/checks` was not writable by the non-root user. Moving only disposable test output beneath the image's user-owned test directory fixed the harness; no permission broadening or production change was made. The successful harness reports:
+
+```text
+Backup complete: 4 files; SQLite integrity_check=ok. Contains secrets: store privately.
+Restore complete: 4 verified files; SQLite integrity_check=ok. Start the same app version and verify before switching traffic.
+PASS final image exact CMD: fresh volume, HTTP startup, synthetic upload, owner cookie + restart, consistent backup, isolated restore + original identity/overlay.
+```
+
 
 ## Limitations and resource handoff
 

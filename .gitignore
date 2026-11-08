@@ -22,3 +22,8 @@ docs/assets/*
 .demo/
 playwright-report/
 test-results/
+.local/
+review-artifacts/
+!docs/screenshots/
+docs/screenshots/*
+!docs/screenshots/alpha-synthetic.png

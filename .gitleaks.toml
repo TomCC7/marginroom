@@ -1,0 +1,12 @@
+title = "Marginroom release secret scan"
+[extend]
+useDefault = true
+
+# Exact disposable literals from the portable v3 API regression fixture only.
+# Never broaden this to all tests or to production secret variable names.
+[[allowlists]]
+description = "Documented synthetic regression credentials"
+condition = "AND"
+paths = ['''^test/v3-api\.test\.mjs$''']
+regexTarget = "secret"
+regexes = ['''^v3-disposable-(?:owner|secret)$''']
