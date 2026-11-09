@@ -35,7 +35,7 @@ try{
  await page.locator('#send-comment').evaluate(b=>{b.click();b.click()});await page.waitForFunction(()=>document.querySelector('#composer').hidden);
  const result=await ctx.request.get(base+'/api/suggestions/mobile-synthetic?status=all').then(r=>r.json());
  assert.equal(result.suggestions.length,1);const record=result.suggestions[0];assert.equal(record.quote,'same');assert.equal(record.range_start,18);assert.equal(record.range_end,22);assert.equal(record.body,'Disposable precise quote');assert.equal(submits,1);
- await page.locator('.close-drawer').tap();await frame.locator('.marker').tap();assert.equal(await page.locator('.discussion').isVisible(),true);
+ await page.locator('.close-drawer').tap();await frame.locator('.marker').tap();await page.locator('.discussion').waitFor({state:'visible'});assert.equal(await page.locator('.discussion').isVisible(),true);
  await page.locator('.close-drawer').tap();
  // Existing paragraph suggestion remains protected; selecting it cannot open a comment.
  await page.locator('.dock [data-mode="suggest"]').tap();await frame.waitForFunction(()=>document.querySelector('#repeat').contentEditable==='true');await frame.locator('#repeat').focus();await page.keyboard.press('End');await page.keyboard.insertText(' draft');await page.locator('#draft-actions').waitFor({state:'visible'});

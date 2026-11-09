@@ -17,9 +17,16 @@ export function initPreview({docId,bridge,staticPreview}){
  controls.id='preview-controls';document.body.append(controls);
  const visibilityKey='marginroom.preview-dock.v1';let dockVisible=true;
  try{dockVisible=localStorage.getItem(visibilityKey)!=='hidden'}catch{}
- const toggle=document.createElement('button');toggle.id='preview-dock-toggle';toggle.type='button';toggle.textContent='尺寸';toggle.setAttribute('aria-controls',controls.id);header.insertBefore(toggle,document.querySelector('#more-btn'));
+ const toggle=document.createElement('button');toggle.id='preview-dock-toggle';toggle.type='button';toggle.setAttribute('aria-controls',controls.id);
+ function placeToggle(){const focused=document.activeElement===toggle;if(dockVisible)controls.prepend(toggle);else if(matchMedia('(max-width:600px)').matches)document.querySelector('.dock').append(toggle);else document.body.append(toggle);if(focused)toggle.focus({preventScroll:true})}
  function showDock(visible,persist=true){
-  dockVisible=visible;controls.hidden=!visible;toggle.setAttribute('aria-expanded',String(visible));toggle.title=visible?'收起尺寸栏':'显示尺寸栏';toggle.setAttribute('aria-label',toggle.title);toggle.classList.toggle('selected',visible);
+  const focused=document.activeElement===toggle;
+  dockVisible=visible;controls.hidden=!visible;toggle.setAttribute('aria-expanded',String(visible));toggle.title=visible?'收起尺寸栏':'显示尺寸栏';toggle.setAttribute('aria-label',toggle.title);toggle.textContent=visible?'收起':'尺寸 ↑';
+  // One native control lives beside the dock, or becomes a compact edge handle.
+  // Reparent the same node so focus and keyboard activation survive the toggle.
+  placeToggle();
+  if(focused)toggle.focus({preventScroll:true});
+  document.body.classList.toggle('preview-dock-hidden',!visible);
   document.documentElement.style.setProperty('--preview-dock-h',visible?controls.getBoundingClientRect().height+'px':'0px');
   if(persist)try{localStorage.setItem(visibilityKey,visible?'visible':'hidden')}catch{}
   schedule();
@@ -113,7 +120,7 @@ export function initPreview({docId,bridge,staticPreview}){
  new ResizeObserver(schedule).observe(article);new ResizeObserver(schedule).observe(header);
  new ResizeObserver(schedule).observe(document.querySelector('.dock'));
  window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);
- window.addEventListener('resize',schedule);window.addEventListener('scroll',schedule,{passive:true});
+ window.addEventListener('resize',()=>{placeToggle();schedule()});window.addEventListener('scroll',schedule,{passive:true});
  new MutationObserver(()=>{const f=staticPreview?.frame||bridge.state.frame;if(f!==currentFrame)update();else schedule()}).observe(root,{childList:true});
  document.addEventListener('preview-change',schedule);
  article.addEventListener('scroll',()=>document.dispatchEvent(new Event('preview-geometry')),{passive:true});

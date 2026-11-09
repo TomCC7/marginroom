@@ -1,4 +1,21 @@
 // UTF-16 DOM coordinates, matching Selection and the persisted API ranges.
+// Native triple-click can end at the next block's offset 0. Accept only an
+// equivalent DOM boundary, never text (or a whole empty sibling) beyond it.
+export function singleBlockRange(source,expected=null) {
+ const r=source.cloneRange(),node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;
+ const el=expected||node.closest?.('[data-hs-anchor]');
+ if(!el||!el.contains(r.startContainer))return null;
+ if(!el.contains(r.endContainer)){
+  const edge=(node,offset)=>{while(node.parentNode){const length=node.nodeType===3?node.length:node.childNodes.length;if(offset!==0&&offset!==length)break;const end=offset!==0,index=Array.prototype.indexOf.call(node.parentNode.childNodes,node);node=node.parentNode;offset=index+(end?1:0)}return {node,offset}};
+  const end=edge(r.endContainer,r.endOffset),limit=edge(el,el.childNodes.length);
+  if(end.node!==limit.node||end.offset<limit.offset)return null;
+  // Pretty-printed HTML may have indentation between otherwise adjacent blocks.
+  // Never skip an element (including an empty paragraph), only HTML whitespace.
+  if(end.offset!==limit.offset&&![...limit.node.childNodes].slice(limit.offset,end.offset).every(n=>n.nodeType===3&&/^[\t\n\f\r ]*$/.test(n.data)))return null;
+  r.setEnd(el,el.childNodes.length);
+ }
+ return {el,range:r};
+}
 export function textOf(node, exclude='[data-review-del],[data-review-point]') {
  const copy=node.cloneNode(true); copy.querySelectorAll?.(exclude).forEach(n=>n.remove()); return copy.textContent;
 }

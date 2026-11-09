@@ -1,6 +1,6 @@
 import {reviewBridge as bridge} from './viewer.js';
 import {reviewerName,setReviewerName} from './identity.js';
-import {textOf,rangeAt,difference,locateRecord} from './review-ranges.js';
+import {textOf,rangeAt,difference,locateRecord,singleBlockRange} from './review-ranges.js';
 import {createStaticPreview} from './static-preview.js';
 import {initPreview} from './preview-viewport.js';
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -11,20 +11,25 @@ let mode='read', records=[], filter='open', listStatus='all', listType='all', ac
 let clean=new Map(), locations=new Map(), reloading=false;
 const editBuffers=new Map();
 let staticPreview=null, frameSelection=null;
+function staticSelection(m){
+ const s=m.selection,c=clean.get(m.anchor),r=s?.rect,grouped=getBlock(m.anchor)?.hasAttribute('data-hs-group');
+ if(!s||!c||typeof s.quote!=='string'||s.quote.length>100000||!Number.isInteger(s.rangeStart)||!Number.isInteger(s.rangeEnd)||s.rangeStart<0||s.rangeEnd<s.rangeStart||!grouped&&c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote||!r||!['left','top','width','height'].every(k=>Number.isFinite(r[k])&&Math.abs(r[k])<100000))return null;
+ const frame=staticPreview.frame,box=frame.getBoundingClientRect(),sx=box.width/frame.offsetWidth,sy=box.height/frame.offsetHeight;
+ const result={anchor:m.anchor,baseText:c.text,quote:s.quote,rangeStart:s.rangeStart,rangeEnd:s.rangeEnd,rect:{left:box.left+(r.left+frame.clientLeft)*sx,top:box.top+(r.top+frame.clientTop)*sy}};
+ if(grouped){delete result.rangeStart;delete result.rangeEnd}return result;
+}
 function staticMessage(m){
  if(state().interactive)return;
  if(m.type==='located'&&m.rect&&['left','top','width','height'].every(k=>Number.isFinite(m.rect[k])&&Math.abs(m.rect[k])<100000)){document.dispatchEvent(new CustomEvent('preview-reveal',{detail:{frame:staticPreview.frame,rect:m.rect}}));return}
  if(m.type==='selection'){
   if(!m.selection){frameSelection=null;if(!selectionPress&&$('#composer').hidden){selected=null;selectionUI(null)}return}
-  const s=m.selection,c=clean.get(m.anchor),r=s.rect,grouped=getBlock(m.anchor)?.hasAttribute('data-hs-group');
-  if(!c||typeof s.quote!=='string'||s.quote.length>100000||!Number.isInteger(s.rangeStart)||!Number.isInteger(s.rangeEnd)||s.rangeStart<0||s.rangeEnd<s.rangeStart||!grouped&&c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote||!r||!['left','top','width','height'].every(k=>Number.isFinite(r[k])&&Math.abs(r[k])<100000))return;
-  const frame=staticPreview.frame,box=frame.getBoundingClientRect(),sx=box.width/frame.offsetWidth,sy=box.height/frame.offsetHeight;
-  frameSelection={anchor:m.anchor,baseText:c.text,quote:s.quote,rangeStart:s.rangeStart,rangeEnd:s.rangeEnd,rect:{left:box.left+(r.left+frame.clientLeft)*sx,top:box.top+(r.top+frame.clientTop)*sy}};
-  if(grouped){delete frameSelection.rangeStart;delete frameSelection.rangeEnd}
+  const current=staticSelection(m);if(!current)return;frameSelection=current;
   if(state().canSuggest&&!draft&&!composing){selected=frameSelection;selectionUI(selected)}
  }else if(m.type==='input'){
   const el=getBlock(m.anchor);if(!el||typeof m.text!=='string'||m.text.length>200000||el.contentEditable!=='true'||mode==='read'||reloading||busy)return;
-  let blocked=false;beginInput({target:el,inputType:'insertText',preventDefault(){blocked=true}});if(blocked){staticPreview.sync();return}
+  // The controller validated its own document's Range before sending input.
+  // A shell Selection can remain outside this hidden authority block.
+  let blocked=false;beginInput({target:el,inputType:'insertText',preventDefault(){blocked=true}},null);if(blocked){staticPreview.sync();return}
   const d=difference(textOf(el),m.text),r=rangeAt(el,d.start,d.end,'[data-review-del],[data-review-point]');
   if(!r){staticPreview.sync();return}r.deleteContents();r.insertNode(document.createTextNode(d.next));handleInput({target:el});staticPreview.sync();
  }else if(m.type==='thread'&&typeof m.id==='string'&&m.id.length<256&&records.some(s=>s.id===m.id))openDiscussion(m.id);
@@ -145,8 +150,8 @@ function buildToc(){
 function selectionInfo(){
  if(staticPreview?.active)return frameSelection;
  const sel=getSelection();if(!sel?.rangeCount||sel.isCollapsed)return null;
- const r=sel.getRangeAt(0),node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement,el=node.closest('[data-hs-anchor]');
- if(!el||!root.contains(el)||!el.contains(r.endContainer))return null;
+ const block=singleBlockRange(sel.getRangeAt(0));if(!block||!root.contains(block.el))return null;
+ const {range:r,el}=block,node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;
  if(el.hasAttribute('data-hs-group'))return {anchor:el.dataset.hsAnchor,baseText:bridge.readText(el),quote:r.toString(),rect:r.getBoundingClientRect()};
  if(r.cloneContents().querySelector('[data-review-ins],[data-review-del]')||node.closest('[data-review-ins],[data-review-del]'))return null;
  const pre=document.createRange();pre.selectNodeContents(el);pre.setEnd(r.startContainer,r.startOffset);
@@ -163,7 +168,7 @@ function selectionUI(s){
  $('#selection-action').hidden=!(available&&!phone.matches);
  if(available&&!phone.matches){$('#selection-action').style.left=Math.min(innerWidth-145,Math.max(10,s.rect.left))+'px';$('#selection-action').style.top=Math.min(innerHeight-120,Math.max(70,s.rect.top-49))+'px'}
 }
-function clearSelection(remove=false){clearTimeout(selectionPressTimer);selectionPress=null;selected=null;frameSelection=null;selectionUI(null);if(remove){getSelection()?.removeAllRanges();staticPreview?.send({type:'clear-selection'})}}
+function clearSelection(remove=false){clearTimeout(selectionPressTimer);selectionPress=null;selectionCapture=null;selected=null;frameSelection=null;selectionUI(null);if(remove){getSelection()?.removeAllRanges();staticPreview?.send({type:'clear-selection'})}}
 function captureSelection(){
  if(selectionPress||!$('#composer').hidden)return;
  if(composing||draft||reloading||!state().canSuggest||state().interactive){clearSelection();return}
@@ -172,11 +177,15 @@ function captureSelection(){
 function armSelection(e){
  const s=selectionInfo()||selected;if(!s)return;
  selectionPress={...s};clearTimeout(captureSelection.timer);
+ if(staticPreview?.active){selectionCapture=staticPreview.captureSelection();selectionCapture.catch(()=>{})}
  // Prevent focus only on our action, never on the article or native selection UI.
  e.preventDefault();clearTimeout(selectionPressTimer);
  selectionPressTimer=setTimeout(()=>{selectionPress=null;captureSelection()},1500);
 }
-function showComposer(id){
+let openingComposer=false,selectionCapture=null;
+async function showComposer(id){
+ if(openingComposer)return;
+ if(!id&&staticPreview?.active){openingComposer=true;try{const m=await (selectionCapture||staticPreview.captureSelection());if(m.reason==='invalid'){clearSelection();return}if(m.selection){const current=staticSelection(m);if(!current){clearSelection();return}selectionPress=current}}catch(e){toast(e.message);return}finally{openingComposer=false;selectionCapture=null}}
  if(!$('#composer').hidden||draft||busy)return;
  if(!id){selected=selectionPress||selectionInfo()||selected;if(!selected||(!state().interactive&&selected.rangeStart!=null&&!getBlock(selected.anchor)))return}
  clearTimeout(selectionPressTimer);selectionPress=null;replyTo=id||null;showComposer.requestId=crypto.randomUUID?.()||'r'+Date.now();
@@ -208,11 +217,11 @@ async function submitDraft(){
   draft=null;$('#draft-actions').hidden=true;await refresh();active=res.suggestion.id;render();status('建议已保存，等待确认');toast('建议已保存；继续修改此段前，请先处理该段建议');
  }catch(e){current.el.contentEditable='true';toast(e.message);status('草稿未提交，可重试或取消','error')}finally{busy=false;$('#submit-draft').disabled=false}
 }
-function beginInput(e){
+function beginInput(e,sel=getSelection()){
  if(reloading){e.preventDefault();return}
  if(mode==='read'||state().interactive)return;
  const el=e.target.closest?.('[data-hs-anchor]');if(!el)return;
- const sel=getSelection();if(sel?.rangeCount){const r=sel.getRangeAt(0);if(!el.contains(r.startContainer)||!el.contains(r.endContainer)){e.preventDefault();toast('原位修改限单个段落；跨段请选择分别处理');return}}
+ if(sel?.rangeCount){const r=sel.getRangeAt(0),block=singleBlockRange(r,el);if(!block){e.preventDefault();toast('原位修改限单个段落；跨段请选择分别处理');return}if(!el.contains(r.endContainer)){sel.removeAllRanges();sel.addRange(block.range)}}
  if(mode==='suggest'){
   if(['insertParagraph','insertLineBreak'].includes(e.inputType)){e.preventDefault();submitDraft();return}
   if(draft&&draft.el!==el){e.preventDefault();toast('请先提交或取消当前段落草稿');return}
@@ -301,9 +310,9 @@ async function main(){
  });
  document.addEventListener('review-frame-comment',e=>{if(!state().canSuggest)return;selected={anchor:e.detail.anchor,quote:e.detail.snippet||'交互文稿元素',baseText:''};showComposer()});
  document.addEventListener('review-frame-missing',e=>{for(const s of records)if(s.anchor===e.detail.anchor)locations.set(s.id,{stale:true,reason:'交互元素已变化或不存在，无法安全定位'});render()});
- document.addEventListener('selectionchange',()=>{clearTimeout(captureSelection.timer);captureSelection.timer=setTimeout(captureSelection,120)});
+ document.addEventListener('selectionchange',captureSelection);
  document.addEventListener('preview-geometry',()=>{if(staticPreview?.active)staticPreview.send({type:'measure-selection'})});
- for(const button of [$('#selection-action'),$('#mobile-add-comment')]){button.onpointerdown=armSelection;button.onpointercancel=()=>{selectionPress=null;captureSelection()};button.onclick=()=>showComposer()}
+ for(const button of [$('#selection-action'),$('#mobile-add-comment')]){button.onpointerdown=armSelection;button.onpointercancel=()=>{selectionPress=null;selectionCapture=null;captureSelection()};button.onclick=()=>showComposer()}
  $('#cancel-selection').onclick=()=>clearSelection(true);$('#close-composer').onclick=closeComposer;phone.addEventListener('change',captureSelection);$('#cancel-comment').onclick=closeComposer;$('#shade').onclick=closeComposer;$('#send-comment').onclick=sendComment;
  root.addEventListener('beforeinput',beginInput);root.addEventListener('input',handleInput);root.addEventListener('compositionstart',e=>{beginInput(e);composing=true});root.addEventListener('compositionend',e=>{composing=false;handleInput(e)});
  root.addEventListener('paste',e=>{if(mode==='read'||state().interactive||reloading)return;e.preventDefault();const text=e.clipboardData.getData('text/plain');if(/[\r\n]/.test(text)){toast('原位修改限单段，请分段粘贴');return}let blocked=false;beginInput({target:e.target,inputType:'insertText',preventDefault(){blocked=true}});if(blocked)return;document.execCommand('insertText',false,text);handleInput(e)});

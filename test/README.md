@@ -10,6 +10,7 @@ npm run test:api
 npm run browser:install     # download the Chromium version matching playwright-core
 npm run test:browser        # route-isolated frontend regressions, no server needed
 npm run test:chrome         # borderless shell, bottom dock, legacy migration, rail list
+npm run test:selection      # native list input, double→triple quote, disposable SQLite/export
 npm run test:toggle         # bounded 1440/390 discussion toggle + force-open/draft/state safety
 npm run test:preview        # static bridge + true viewport/state matrix + disposable DB
 npm run test:security       # real isolated negative/security probes (Chromium required)
@@ -44,6 +45,20 @@ height, mobile discussion geometry and independent scrolling, composer draft
 preservation, marker navigation without article jumps, suggest-mode cancellation,
 and exact repeated-quote/stale rewrite decoration. `review-ranges.test.mjs` adds
 fast UTF-16, surrogate-pair, insertion/deletion and DOM exclusion regressions.
+
+`test:selection` exercises both ordinary authority DOM and the sandbox preview.
+Native triple-click can end at the next block's offset 0; only that equivalent
+boundary is clamped, never actual sibling text. The fixture tests use real mouse,
+keyboard, DOM Ranges and CDP IME, with all API writes denied. The storage test
+uploads synthetic HTML into its own temporary server/SQLite, checks persisted
+whole-paragraph/repeated-word UTF-16 ranges, accepts one list-item replacement,
+then independently parses the viewer's downloaded HTML. It never uses live data.
+`LIST_ARTIFACTS`, `TRIPLE_ARTIFACTS`, `STORAGE_ARTIFACTS` optionally save evidence;
+normal tests leave the tree clean. `FRONTEND_PUBLIC` can select isolated candidate
+assets for fixture tests (the disposable server always serves this checkout).
+Accepted leaf overlays retain existing text-only semantics; untouched sibling
+inline markup and original source HTML must remain unchanged. These tests do not
+claim a new rich-text accept/export feature or physical Safari validation.
 
 Browser checks use headless Chromium viewport simulation, not physical iOS,
 Safari, or a real software keyboard. They intentionally do not submit writes;

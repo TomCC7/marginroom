@@ -19,23 +19,26 @@
     const controls=[...el.querySelectorAll('input,textarea,select')].map(n=>({value:n.value,checked:n.checked}));
     el.innerHTML=b.html;[...el.querySelectorAll('input,textarea,select')].forEach((n,i)=>{if(controls[i]){n.value=controls[i].value;n.checked=controls[i].checked}});
     if(n!==null)caret(el,n);
-   }el.contentEditable=b.editable;el.dataset.reviewBlockThread=b.thread;
+   }el.contentEditable=b.editable;el.title=b.title||'';el.dataset.reviewBlockThread=b.thread;
   }
   if(m.type==='locate'){const el=document.querySelector(`[data-thread="${CSS.escape(m.id)}"]`)||find(m.anchor);if(el){reveal(el);el.classList.add('record-focus');setTimeout(()=>el.classList.remove('record-focus'),1800)}}
   if(m.type==='visibility'){const controls=[...document.querySelectorAll('input,textarea,select')];if(!m.active){window.__staticScroll={x:scrollX,y:scrollY};send({type:'suspended',forms:controls.map(n=>({value:n.value,checked:n.checked,selected:n.tagName==='SELECT'?[...n.options].map(o=>o.selected):null}))})}else{if(Array.isArray(m.forms))controls.forEach((n,i)=>{const v=m.forms[i];if(v){n.value=v.value;n.checked=v.checked;if(n.tagName==='SELECT'&&Array.isArray(v.selected))[...n.options].forEach((o,j)=>o.selected=v.selected[j]===true)}});if(window.__staticScroll){const p=window.__staticScroll;scrollTo(p.x,p.y);requestAnimationFrame(()=>scrollTo(p.x,p.y))}}}
   if(m.type==='clear-selection')getSelection().removeAllRanges();
-  if(m.type==='measure-selection')selection();
+  if(m.type==='measure-selection')selection(m.requestId);
  });
- function selection(){const s=getSelection();if(!s.rangeCount||s.isCollapsed){send({type:'selection',selection:null});return}const r=s.getRangeAt(0),node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement,el=node.closest('[data-hs-anchor]');if(!el||!el.contains(r.endContainer)||node.closest('[data-review-del],[data-review-ins]')||r.cloneContents().querySelector('[data-review-del],[data-review-ins]'))return;
-  const pre=document.createRange();pre.selectNodeContents(el);pre.setEnd(r.startContainer,r.startOffset);const quote=text(r.cloneContents()),start=text(pre.cloneContents(),'[data-review-ins],[data-review-point]').length,rect=r.getBoundingClientRect();if(quote.trim())send({type:'selection',anchor:el.dataset.hsAnchor,selection:{quote,rangeStart:start,rangeEnd:start+quote.length,rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height}}});
+ function selection(requestId){const empty=reason=>send({type:'selection',selection:null,reason,requestId}),s=getSelection();if(!s.rangeCount||s.isCollapsed){empty('collapsed');return}const block=singleBlockRange(s.getRangeAt(0));if(!block){empty('invalid');return}const {range:r,el}=block,node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;if(node.closest('[data-review-del],[data-review-ins]')||r.cloneContents().querySelector('[data-review-del],[data-review-ins]')){empty('invalid');return}
+  const pre=document.createRange();pre.selectNodeContents(el);pre.setEnd(r.startContainer,r.startOffset);const quote=text(r.cloneContents()),start=text(pre.cloneContents(),'[data-review-ins],[data-review-point]').length,rect=r.getBoundingClientRect();if(quote.trim())send({type:'selection',requestId,anchor:el.dataset.hsAnchor,selection:{quote,rangeStart:start,rangeEnd:start+quote.length,rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height}}});else empty('invalid');
  }
- document.addEventListener('selectionchange',()=>{clearTimeout(selectionTimer);selectionTimer=setTimeout(selection,80)});
+ document.addEventListener('selectionchange',()=>selection());
+ document.addEventListener('pointerup',()=>selection());
+ document.addEventListener('keyup',()=>selection());
  document.addEventListener('scroll',()=>{clearTimeout(selectionTimer);selectionTimer=setTimeout(selection,80)},true);
  window.addEventListener('resize',()=>{clearTimeout(selectionTimer);selectionTimer=setTimeout(selection,80)});
  function input(e){const el=e.target.closest('[data-hs-anchor]');if(!el||composing)return;const s=getSelection();send({type:'input',anchor:el.dataset.hsAnchor,text:text(el),caret:s.rangeCount&&el.contains(s.focusNode)?offset(el,s.focusNode,s.focusOffset):null})}
- document.addEventListener('beforeinput',e=>{const el=e.target.closest('[data-hs-anchor]');if(!el||el.contentEditable!=='true')return;const s=getSelection();if(s.rangeCount&&(!el.contains(s.anchorNode)||!el.contains(s.focusNode))||mode==='suggest'&&['insertParagraph','insertLineBreak','historyUndo','historyRedo'].includes(e.inputType)){e.preventDefault();send({type:'key',key:e.inputType})}});
+ function editRange(el){const s=getSelection();if(!s.rangeCount)return false;const r=s.getRangeAt(0),block=singleBlockRange(r,el);if(!block)return false;if(!el.contains(r.endContainer)){s.removeAllRanges();s.addRange(block.range)}return true}
+ document.addEventListener('beforeinput',e=>{const el=e.target.closest('[data-hs-anchor]');if(!el||el.contentEditable!=='true')return;if(!editRange(el)||mode==='suggest'&&['insertParagraph','insertLineBreak','historyUndo','historyRedo'].includes(e.inputType)){e.preventDefault();send({type:'key',key:e.inputType})}});
  document.addEventListener('input',input);document.addEventListener('compositionstart',()=>composing=true);document.addEventListener('compositionend',e=>{composing=false;input(e)});
- document.addEventListener('paste',e=>{if(!e.target.closest('[contenteditable="true"]'))return;e.preventDefault();const t=e.clipboardData.getData('text/plain');if(!/[\r\n]/.test(t))document.execCommand('insertText',false,t)});
+ document.addEventListener('paste',e=>{const el=e.target.closest('[data-hs-anchor][contenteditable="true"]');if(!el)return;e.preventDefault();const t=e.clipboardData.getData('text/plain');if(!/[\r\n]/.test(t)&&editRange(el))document.execCommand('insertText',false,t)});
  document.addEventListener('click',e=>{const t=e.target.closest('[data-thread],[data-review-block-thread]');if(t&&(t.dataset.thread||t.dataset.reviewBlockThread)){send({type:'thread',id:t.dataset.thread||t.dataset.reviewBlockThread});return}const image=e.target.closest('[data-hs-comment-anchor]');if(image)send({type:'comment',anchor:image.dataset.hsCommentAnchor})});
  document.addEventListener('keydown',e=>{if(e.key==='Escape'||(e.ctrlKey||e.metaKey)&&['Enter','z','Z'].includes(e.key)){e.preventDefault();send({type:'key',key:e.key,shift:!!e.shiftKey})}});
  send({type:'ready'});
