@@ -18,10 +18,10 @@ async function start(){
  for(let i=0;i<150;i++){try{if((await fetch(base+'/api/whoami')).ok)return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Startup failed: '+output);
 }
 async function stop(){if(child){process.kill(-child.pid,'SIGTERM');await new Promise(r=>child.once('exit',r));child=null;}}
-// This scenario intentionally exercises comfortable Article-mode DOM editing/export.
-async function ready(page){await page.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));}
-async function selectText(page,selector){await page.locator(selector).evaluate(el=>{const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));});}
-async function rewrite(page,selector,text){await page.locator('[data-mode="suggest"]').first().click();await page.locator(selector).click();await selectText(page,selector);await page.keyboard.insertText(text);await page.locator('#submit-draft').click();await page.waitForFunction(()=>document.querySelector('#draft-actions').hidden);}
+// Exercise normal static paragraphs through the unified Auto iframe and export.
+async function ready(page){await page.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));await page.waitForFunction(()=>document.querySelector('iframe')?.dataset.previewScale);}
+async function selectText(page,selector){await page.frames()[1].locator(selector).evaluate(el=>{const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));});}
+async function rewrite(page,selector,text){await page.locator('[data-mode="suggest"]').first().click();await page.frames()[1].locator(selector).click();await selectText(page,selector);await page.keyboard.insertText(text);await page.locator('#submit-draft').click();await page.waitForFunction(()=>document.querySelector('#draft-actions').hidden);}
 try{
  await mkdir(path.join(dir,'docs'));
  await writeFile(path.join(dir,'identity.json'),JSON.stringify({SESSION_SECRET:secret,OWNER_KEY:key}),{mode:0o600});
@@ -45,11 +45,11 @@ try{
  assert.equal(await gp.locator('[data-mode="edit"]').first().isDisabled(),true);
  await selectText(gp,'#third');await gp.locator('#selection-action').click();await gp.locator('#comment-body').fill('A synthetic guest comment.');await gp.locator('#send-comment').click();await gp.waitForFunction(()=>document.querySelector('#composer').hidden);
  await rewrite(gp,'#first','The first paragraph now contains accepted text.');
- assert.equal(await gp.locator('#first').getAttribute('contenteditable'),'false','pending rewrite locks paragraph');
- await op.reload();await ready(op);await op.locator('.show-discussion').first().click();await op.locator('[data-accept]').click();
+ assert.equal(await gp.frames()[1].locator('#first').getAttribute('contenteditable'),'false','pending rewrite locks paragraph');
+ await op.reload();await ready(op);if(await op.locator('#discussion').isHidden())await op.locator('.show-discussion').first().click();await op.locator('[data-accept]').click();
  await op.waitForFunction(()=>document.querySelector('#first')?.textContent==='The first paragraph now contains accepted text.');
  await gp.reload();await ready(gp);await rewrite(gp,'#second','This change must be rejected.');
- await op.reload();await ready(op);await op.locator('.show-discussion').first().click();await op.locator('[data-reject]').click();
+ await op.reload();await ready(op);if(await op.locator('#discussion').isHidden())await op.locator('.show-discussion').first().click();await op.locator('[data-reject]').click();
  await op.waitForFunction(()=>!document.querySelector('[data-reject]'));
  await gp.reload();await ready(gp);await rewrite(gp,'#fourth','Pending rewrite should never be exported.');
  await op.reload();await ready(op);

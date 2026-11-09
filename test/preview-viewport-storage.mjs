@@ -20,11 +20,11 @@ try{
  const page=await ctx.newPage();await page.goto(base+'/?key='+key);await page.waitForFunction(()=>!location.search.includes('key='));
  await page.locator('input[type=file]').first().setInputFiles({name:'viewport-synthetic.html',mimeType:'text/html',buffer:Buffer.from('<style>body{margin:0}p{width:800px;padding:20px}#nested{height:180px;overflow:auto}</style><h1>Viewport storage</h1><input id="form" value="initial"><div style="height:1000px"></div><div id="nested"><div style="height:400px"></div><p id="repeat">same same 😀 same same.</p><div style="height:500px"></div></div><div style="height:1000px"></div>')});
  await page.waitForURL('**/viewer.html?doc=viewport-synthetic');await page.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));
- await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));
- const anchor=await page.locator('#repeat').getAttribute('data-hs-anchor');
- await page.locator('#form').fill('article input');await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
- const frame=page.frames()[1];await frame.waitForFunction(()=>innerWidth===1440);
- assert.equal(await frame.locator('#form').inputValue(),'article input');await frame.locator('#form').fill('device input');
+ await page.selectOption('#preview-mode','auto');await page.waitForFunction(()=>document.querySelector('iframe')?.dataset.previewScale);
+ const frame=page.frames()[1];const anchor=await frame.locator('#repeat').getAttribute('data-hs-anchor');
+ await frame.locator('#form').fill('auto input');await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
+ await frame.waitForFunction(()=>innerWidth===1440);
+ assert.equal(await frame.locator('#form').inputValue(),'auto input');await frame.locator('#form').fill('device input');
  for(const zoom of ['fit','actual']){
   await page.selectOption('#preview-zoom',zoom);
   await frame.evaluate(()=>{const el=document.querySelector('#repeat');document.querySelector('#nested').scrollTop=400;scrollTo(0,800);const r=document.createRange(),walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n,offset=0,start=false;while(n=walker.nextNode()){if(n.parentElement.closest('[data-review-point],[data-review-ins]'))continue;if(!start&&offset+n.length>=18){r.setStart(n,18-offset);start=true}if(offset+n.length>=22){r.setEnd(n,22-offset);break}offset+=n.length}getSelection().removeAllRanges();getSelection().addRange(r)});
@@ -46,15 +46,16 @@ try{
   assert.equal(await page.evaluate(()=>scrollY),0,'list-to-passage must retain top-level scroll');
  }
  assert.equal(submits,2);
- await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));assert.equal(await page.locator('#form').inputValue(),'device input');assert.equal(await page.locator('#repeat').getAttribute('data-hs-anchor'),anchor);
+ await page.selectOption('#preview-mode','auto');await page.waitForFunction(()=>document.querySelector('iframe')?.dataset.previewScale);assert.equal(await frame.locator('#form').inputValue(),'device input');assert.equal(await frame.locator('#repeat').getAttribute('data-hs-anchor'),anchor);
  const guest=await browser.newContext({viewport:{width:390,height:844}}),g=await guest.newPage();await g.goto(base+'/viewer.html?doc=viewport-synthetic');await g.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));assert.equal(await g.locator('.dock [data-mode="edit"]').isDisabled(),true);
  await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));await page.locator('.topbar [data-mode="suggest"]').click();
  await frame.locator('#repeat').focus();await page.keyboard.press('End');await page.keyboard.insertText(' accepted');await page.locator('#draft-actions').waitFor({state:'visible'});
- for(const preset of ['phone','article','desktop']){await page.selectOption('#preview-mode',preset);await page.waitForFunction(device=>document.body.classList.contains('preview-device')===device,preset!=='article');assert.equal(await page.locator('#draft-actions').isVisible(),true)}
+ await page.locator('#preview-dock-toggle').click();assert(await page.locator('#draft-actions').isVisible());await page.locator('#preview-dock-toggle').click();assert(await page.locator('#draft-actions').isVisible());
+ for(const preset of ['phone','auto','desktop']){await page.selectOption('#preview-mode',preset);await page.waitForFunction(()=>document.body.classList.contains('preview-device'));assert.equal(await page.locator('#draft-actions').isVisible(),true)}
  assert.match(await frame.locator('#repeat').textContent(),/accepted/);await page.locator('#submit-draft').click();await page.waitForFunction(()=>document.querySelector('#draft-actions').hidden);
  const changes=await ctx.request.get(base+'/api/suggestions/viewport-synthetic?status=all').then(r=>r.json()),rewrite=changes.suggestions.find(s=>s.kind==='rewrite');assert(rewrite);await page.locator(`[data-accept="${rewrite.id}"]`).click();
  await page.waitForFunction(()=>document.querySelector('#hs-status').textContent.includes('已接受修改'));const acceptedFrame=page.frames().find(f=>f!==page.mainFrame());assert(acceptedFrame);await acceptedFrame.waitForFunction(()=>document.querySelector('#repeat').textContent.includes('accepted'));assert.equal(await acceptedFrame.locator('#repeat').getAttribute('data-hs-anchor'),anchor);
  await g.selectOption('#preview-mode','phone');await g.waitForFunction(()=>document.body.classList.contains('preview-device'));assert.equal(await g.frames()[1].locator('#repeat').getAttribute('contenteditable'),'false'); // Read mode is locked inside the static sandbox too.
  await guest.close();
- console.log('PASS disposable SQLite: source import, stable storage anchor, exact repeated UTF-16 offsets 18..22 at Fit and 100% with inner/nested scroll and stage pan; stored-thread navigation owns frame/nested scroll; form and unsent suggestion survive Article/device; real suggestion submit+owner accept reconnects correct anchor; guest direct-edit control remains restricted.');
+ console.log('PASS disposable SQLite: source import, stable storage anchor, exact repeated UTF-16 offsets 18..22 at Fit and 100% with inner/nested scroll and stage pan; stored-thread navigation owns frame/nested scroll; form and unsent suggestion survive Auto/presets; real suggestion submit+owner accept reconnects correct anchor; guest direct-edit control remains restricted.');
 }catch(e){console.error(output);throw e}finally{await browser?.close();if(child){child.kill('SIGTERM');await new Promise(r=>child.once('exit',r))}await rm(dir,{recursive:true,force:true})}

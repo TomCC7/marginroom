@@ -9,6 +9,7 @@ npm run test:unit
 npm run test:api
 npm run browser:install     # download the Chromium version matching playwright-core
 npm run test:browser        # route-isolated frontend regressions, no server needed
+npm run test:chrome         # borderless shell, bottom dock, legacy migration, rail list
 npm run test:toggle         # bounded 1440/390 discussion toggle + force-open/draft/state safety
 npm run test:preview        # static bridge + true viewport/state matrix + disposable DB
 npm run test:security       # real isolated negative/security probes (Chromium required)
@@ -76,16 +77,16 @@ combination do not compensate for the iframe CSS transform reliably.
 
 Fresh document preferences now default to **Auto · fill available space**. It
 sizes the real iframe viewport to the stage, so responsive breakpoints naturally
-change as rails open/close. Saved explicit Article/device/custom choices remain
-valid. The zoom menu is paint-only (Fit, 50/75/100/125/150/200%); the output shows
+change as rails open/close. Saved explicit device/custom choices remain valid; legacy Article migrates to
+Auto and is no longer exposed. The zoom menu is paint-only (Fit, 50/75/100/125/150/200%); the output shows
 layout CSS-pixel dimensions separately from the painted percentage. Use Auto to
-reset a custom/device layout. Article-mode suites explicitly select Article.
+reset a custom/device layout. All normal paragraph tests now exercise the unified iframe.
 
 `workspace.browser.mjs` asserts full-width rail edges (240px left, 320px right;
 zero external gutter), full column release, neutral device stage, exact scaled
-frame bounds, article max-width and phone panning. Its optional
+frame bounds, Auto fill and phone panning. Its optional
 `WORKSPACE_ARTIFACTS=/absolute/output` captures 1700/1440/1024 expanded/collapsed
-desktop/tablet plus article and 390/360 Fit/100% states.
+desktop/tablet plus Auto and 390/360 Fit/100% states.
 
 `preview-resize.browser.mjs` tests fresh Auto, rail-driven layout resizing vs fixed
 preset invariance, percentage zoom, actual mouse and CDP touch resizing, capture
@@ -94,3 +95,11 @@ keyboard arrows/Shift/Enter and custom size input. The visible 28px corner handl
 changes real viewport dimensions, not imported content or application/browser
 zoom. Optional `RESIZE_ARTIFACTS=/absolute/output` saves Auto and custom states.
 Physical Safari touch/selection/keyboard behavior still needs a device trial.
+
+
+`review-chrome.browser.mjs` checks dock pointer/Enter/Space toggling, saved hidden
+state and visible restore entry, recovered Auto height, invariant explicit sizes,
+source borders, rail list/filter/jump, iframe identity/input/state and unsent drafts
+at 1440/1024/1700/360/390. It also tests legacy/corrupt/denied storage and simulated
+keyboard geometry. `CHROME_ARTIFACTS=/absolute/output` saves native viewport
+captures and measured metrics; no real device/OS keyboard fidelity is implied.

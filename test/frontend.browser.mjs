@@ -3,7 +3,7 @@ import { launchBrowser, isolate, syntheticFixture, openFixture } from './helpers
 const browser = await launchBrowser();
 const fixture = syntheticFixture();
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-// This suite exercises the intentionally retained longform Article mode.
+// Legacy Article preferences migrate to the unified Auto iframe.
 await context.addInitScript(()=>{try{if(window===top)localStorage.setItem('marginroom.preview.v1:synthetic',JSON.stringify({mode:'article'}))}catch{}});
 const evidence = await isolate(context, fixture);
 let cases = 0;
@@ -26,9 +26,9 @@ try {
   async function toc(index, mobile) {
     if (await page.locator('.nav').isHidden()) await page.locator('#nav-toggle').click();
     await page.locator('#toc button').nth(index).click();
-    await page.waitForFunction(i => {
-      const h = document.querySelectorAll('#hs-doc-root :is(h1,h2,h3)')[i].getBoundingClientRect();
-      return h.top >= document.querySelector('.topbar').getBoundingClientRect().bottom + 15 && h.top < innerHeight - 20;
+    await page.frames()[1].waitForFunction(i => {
+      const h = document.querySelectorAll(':is(h1,h2,h3)')[i].getBoundingClientRect();
+      return h.top >= 0 && h.top < innerHeight;
     }, index);
     if (mobile) assert(await page.locator('.nav').isHidden());
   }
@@ -41,7 +41,7 @@ try {
     for (const mode of ['edit', 'suggest', 'read']) { await page.locator(`.topbar [data-mode=${mode}]`).click(); assert.equal(await page.locator(`.topbar [data-mode=${mode}]`).getAttribute('aria-pressed'), 'true'); }
     for (const id of ['name-btn', 'share-btn', 'more-btn']) { await page.locator('#' + id).click(); assert(await page.locator('#popover').isVisible()); await page.keyboard.press('Escape'); assert(await page.locator('#popover').isHidden()); }
     await page.locator('#share-btn').click(); assert.equal(await page.locator('#access-level option').count(), 3); await page.keyboard.press('Escape');
-    await page.locator('[data-view=list]').click(); assert.equal(await page.locator('.annotation-row').count(), 5);
+    if(await page.locator('#discussion').isHidden())await page.locator('.show-discussion').click();await page.locator('[data-view=list]').click(); assert.equal(await page.locator('.annotation-row').count(), 5);
     await page.locator('[data-status=done]').click(); assert.equal(await page.locator('.annotation-row').count(), 1);
     await page.locator('[data-status=all]').click(); await page.locator('[data-type=suggestion]').click(); assert.equal(await page.locator('.annotation-row').count(), 0);
     await page.locator('[data-view=article]').click();
@@ -85,7 +85,7 @@ try {
     await page.locator('#threads').evaluate(e => e.scrollTop = e.scrollHeight);
     assert.equal(await page.evaluate(() => scrollY), y); assert.deepEqual(await page.locator('.discussion-head').boundingBox(), head);
     const sheet = await page.locator('#discussion').boundingBox(), dock = await page.locator('.dock').boundingBox();
-    assert(Math.abs(sheet.y + sheet.height - dock.y) < 1); assert(head.y >= 0 && head.y + head.height <= height);
+    assert(Math.abs(sheet.y + sheet.height - (await page.locator('.preview-controls').boundingBox()).y) < 1); assert(head.y >= 0 && head.y + head.height <= height);
     assert.equal(await page.locator('#discussion>.discussion-note').count(), 0);
     assert.deepEqual(await page.evaluate(() => { const c = getComputedStyle(document.body, '::after'); return [c.position, c.top, c.bottom, c.pointerEvents]; }), ['fixed', '0px', '0px', 'none']);
     await page.locator('.close-drawer').click(); assert(await page.locator('#discussion').isHidden());
@@ -95,7 +95,7 @@ try {
   }
   // Real editable DOM draft, cancellation and marker navigation without API writes.
   await page.setViewportSize({ width: 1440, height: 900 }); await openFixture(page);
-  const marker = page.locator('[data-review-point][data-thread="thread-3"]');
+  const content=page.frames()[1];const marker = content.locator('[data-review-point][data-thread="thread-3"]');
   await marker.scrollIntoViewIfNeeded(); await page.evaluate(() => scrollBy(0, -120));
   const beforeMarker = await page.evaluate(() => scrollY);
   await marker.click();
@@ -103,7 +103,7 @@ try {
   assert.equal(await page.evaluate(() => scrollY), beforeMarker, 'marker scroll must not move article');
   await page.locator('.close-drawer').click();
   await page.locator('.topbar [data-mode=suggest]').click();
-  const editable = page.locator('#hs-doc-root p[data-hs-anchor]').nth(6);
+  const editable = content.locator('p[data-hs-anchor]').nth(6);
   const original = await editable.textContent();
   await editable.click(); await page.keyboard.press('Home'); await page.keyboard.type('Synthetic draft ');
   assert(await page.locator('#draft-actions').isVisible());

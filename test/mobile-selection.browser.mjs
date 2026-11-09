@@ -6,7 +6,7 @@ import {launchBrowser,isolate,syntheticFixture,openFixture} from './helpers/brow
 const browser=await launchBrowser(), shots=process.env.SELECTION_SCREENSHOTS;
 if(shots)await mkdir(shots,{recursive:true});
 async function select(page,start=11,end=15){
- return page.locator('#selection-fixture').evaluate((el,{start,end})=>{const r=document.createRange();r.setStart(el.firstChild,start);r.setEnd(el.firstChild,end);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));return r.toString()},{start,end});
+ return page.frames()[1].locator('#selection-fixture').evaluate((el,{start,end})=>{const r=document.createRange();r.setStart(el.firstChild,start);r.setEnd(el.firstChild,end);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));return r.toString()},{start,end});
 }
 try{
  for(const width of [360,390,440,1440]){
@@ -20,7 +20,7 @@ try{
  if(!assets)return route.fallback();
  return route.fulfill({body:await readFile(path.join(assets,u.pathname)),contentType:u.pathname.endsWith('.js')?'text/javascript':u.pathname.endsWith('.css')?'text/css':'text/html'});
  });
- // Native shell selection is an Article-mode contract; Auto iframe has separate coverage.
+ // Legacy saved Article must migrate to Auto; selection uses the unified iframe.
  await ctx.addInitScript(()=>{try{if(window===top)localStorage.setItem('marginroom.preview.v1:synthetic',JSON.stringify({mode:'article'}))}catch{}});
  const page=await ctx.newPage();await openFixture(page);
  const mobile=width<600, action=page.locator(mobile?'#mobile-add-comment':'#selection-action');
@@ -31,11 +31,13 @@ try{
  assert.equal(await page.locator('#selection-action').isVisible(),false);
  const b=await action.boundingBox(), dock=await page.locator('.dock').boundingBox();assert.ok(b.y>=dock.y&&b.height>=44);
  // Reserve a native-menu-equivalent rectangle above the selected text; no fake OS screenshot.
- const r=await page.locator('#selection-fixture').boundingBox();assert.ok(b.y>r.y+r.height);
+ const r=await page.locator('iframe').boundingBox();assert.ok(b.y>r.y+r.height);
  assert.equal(await page.locator('.dock>.modes').isVisible(),false);
  }
  // Reselection/handle-drag equivalent must replace offsets, including repeated text.
  await select(page,18,22);await page.waitForTimeout(180);
+ await page.locator('#preview-dock-toggle').click();await page.locator('#preview-dock-toggle').click();await action.waitFor({state:'visible'});assert.equal(await page.frames()[1].evaluate(()=>getSelection().toString()),'same');
+ if(mobile){await page.addStyleTag({content:'.dock{padding-bottom:34px!important}.preview-controls{padding-bottom:14px!important}'});await page.waitForTimeout(100);const a=await action.boundingBox(),d=await page.locator('.preview-controls').boundingBox();assert(a.y>=d.y+d.height,'measured simulated safe-area dock separation')}
  await page.evaluate(()=>window.scrollBy(0,80));
  if(shots)await page.screenshot({path:path.join(shots,`${width}-selection.png`)});
  // Real touch opens composer; focus collapse must not alter the saved quote.
@@ -54,13 +56,13 @@ try{
  // Explicit pointerdown -> OS selection collapse -> delayed click race.
  await select(page,13,17);await action.waitFor({state:'visible'});
  await action.dispatchEvent('pointerdown',{pointerType:mobile?'touch':'mouse'});
- await page.evaluate(()=>{getSelection().removeAllRanges();document.dispatchEvent(new Event('selectionchange'))});
+ await page.frames()[1].evaluate(()=>{getSelection().removeAllRanges();document.dispatchEvent(new Event('selectionchange'))});
  await page.waitForTimeout(180);await action.dispatchEvent('click');
  assert.equal(await page.locator('#selected-quote').textContent(),'same');
  await page.locator('#cancel-comment').click();
  await select(page,13,17);await action.waitFor({state:'visible'});
  if(mobile){await page.locator('#cancel-selection').tap();assert.equal(await action.isVisible(),false)}else{assert.equal(await page.locator('.header-tools .modes').isVisible(),true);assert.equal(await page.locator('.header-tools .show-discussion').isVisible(),true);assert.equal(await page.locator('.nav').evaluate(e=>getComputedStyle(e).position),'sticky');}
- await page.evaluate(()=>getSelection().removeAllRanges());await page.waitForTimeout(180);assert.equal(await action.isVisible(),false);
+ await page.frames()[1].evaluate(()=>getSelection().removeAllRanges());await page.waitForTimeout(180);assert.equal(await action.isVisible(),false);
  await page.locator('#share-btn').click();assert.equal(await page.locator('#composer').isVisible(),false);
  await page.locator('#more-btn').click();assert.equal(await page.locator('#composer').isVisible(),false);
  assert.deepEqual(log.errors,[]);assert.deepEqual(log.writes,[]);await ctx.close();

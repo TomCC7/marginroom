@@ -19,8 +19,8 @@ try{
   await ctx.addInitScript(()=>{if(window===top){window.__previewLoads=0;document.addEventListener('load',e=>{if(e.target.tagName==='IFRAME')window.__previewLoads++},true)}});
   const page=await ctx.newPage();page.setDefaultTimeout(10000);await openFixture(page);
   assert.equal(await page.locator('#preview-mode').inputValue(),'auto');
-  await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));
-  if(out){const file=`${interactive?'interactive':'static'}-article.png`;await page.screenshot({path:out+'/'+file});screenshots.push({file,mode:'article',host:await page.viewportSize()})}
+  await page.selectOption('#preview-mode','auto');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
+  if(out){const file=`${interactive?'interactive':'static'}-auto.png`;await page.screenshot({path:out+'/'+file});screenshots.push({file,mode:'auto',host:await page.viewportSize()})}
   await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
   let frame=page.frames().find(f=>f!==page.mainFrame());assert(frame);
   await frame.waitForFunction(()=>innerWidth===1440&&innerHeight===900);
@@ -37,7 +37,7 @@ try{
   assert.equal(await page.locator('#composer').isHidden(),true);
   for(const hostWidth of [1440,1024,390,360]){
    await page.setViewportSize({width:hostWidth,height:1000});
-   if(out){await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));const file=`${interactive?'interactive':'static'}-${hostWidth}-article.png`;await page.screenshot({path:out+'/'+file});screenshots.push({file,mode:'article',host:await page.viewportSize()});await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'))}
+   if(out){await page.selectOption('#preview-mode','auto');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));const file=`${interactive?'interactive':'static'}-${hostWidth}-auto.png`;await page.screenshot({path:out+'/'+file});screenshots.push({file,mode:'auto',host:await page.viewportSize()});await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'))}
    for(const [mode,w,h] of [['desktop',1440,900],['laptop',1366,768],['tablet',768,1024],['phone',390,844]]){
     await page.selectOption('#preview-mode',mode);await frame.waitForFunction(([w,h])=>innerWidth===w&&innerHeight===h,[w,h]);
     assert.equal(await frame.evaluate(()=>getComputedStyle(document.querySelector('#breakpoint'),'::after').content),w<=600?'"PHONE"':'"DESKTOP"');
@@ -62,7 +62,7 @@ try{
   await page.selectOption('#preview-mode','desktop');await page.selectOption('#preview-zoom','actual');await frame.waitForFunction(()=>innerWidth===1440&&innerHeight===900);
   await page.setViewportSize({width:390,height:844});await page.evaluate(()=>{const a=document.querySelector('#article');a.scrollTo(a.scrollWidth,a.scrollHeight)});
   assert.equal(await page.evaluate(()=>document.querySelector('#article').scrollLeft>0),true);
-  await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
+  await page.selectOption('#preview-mode','auto');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
   assert.equal(await frame.locator('#input').inputValue(),'retained form');if(interactive)assert.equal(await frame.locator('#counter').textContent(),'1');assert.equal(await page.evaluate(()=>window.__previewLoads),originalLoads);
   if(interactive){
    await page.selectOption('#preview-mode','phone');await frame.waitForFunction(()=>innerWidth===390);await page.selectOption('#preview-zoom','fit');
@@ -75,5 +75,5 @@ try{
   assert.deepEqual(evidence.errors,[]);assert.deepEqual(evidence.writes,[]);await ctx.close();
  }
  if(out)await writeFile(out+'/viewport-metadata.json',JSON.stringify({cases,screenshots},null,2));
- console.log(`PASS ${cases} real static/interactive viewport combinations; media queries/vw/vh/fixed footer, stable identity/exact load counts/form+counter, rotate/custom validation, sidebar Fit, 100% pan, Article roundtrip, interactive modal/comment composer, sandbox/source isolation.`);
+ console.log(`PASS ${cases} real static/interactive viewport combinations; media queries/vw/vh/fixed footer, stable identity/exact load counts/form+counter, rotate/custom validation, sidebar Fit, 100% pan, Auto/preset roundtrip, interactive modal/comment composer, sandbox/source isolation.`);
 }finally{await browser.close()}

@@ -79,6 +79,7 @@
     "test/preview-viewport-storage.mjs",
     "test/preview-viewport.browser.mjs",
     "test/release-acceptance.mjs",
+    "test/review-chrome.browser.mjs",
     "test/review-ranges.test.mjs",
     "test/run.mjs",
     "test/scope-css.test.mjs",

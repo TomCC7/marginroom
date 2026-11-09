@@ -41,11 +41,12 @@ async function api(path,body,method='POST'){
 function state(){return bridge.state}
 function getBlock(anchor){return state().anchorMap.get(anchor)||state().commentMap.get(anchor)}
 function setView(next){
- clearSelection();
  if(draft){toast('请先提交或取消当前段落草稿');return}
- document.body.classList.toggle('list-view',next==='list');$('#annotation-list').hidden=next!=='list';
+ const list=next==='list';$('#annotation-list').hidden=!list;$('#threads').hidden=list;$('.discussion>.filters').hidden=list;
+ document.body.classList.remove('list-view');
  $$('[data-view]').forEach(b=>{b.classList.toggle('selected',b.dataset.view===next);b.setAttribute('aria-pressed',String(b.dataset.view===next))});
- $('#nav-article').classList.toggle('active',next==='article');$('#nav-comments').classList.toggle('active',next==='list');if(next==='list'){closeDiscussion();renderList();window.scrollTo(0,0)}syncDiscussion()
+ $('#nav-article').classList.toggle('active',!list);$('#nav-comments').classList.toggle('active',list);
+ if(list){document.body.classList.remove('drawer-closed');document.body.classList.add('drawer-open');renderList()}syncDiscussion();
 }
 function closeNav(){document.body.classList.remove('nav-open');$('#nav-shade').hidden=true;if(innerWidth<=1100)$('#nav-toggle').setAttribute('aria-expanded','false')}
 function toggleNav(force){
@@ -262,6 +263,13 @@ async function poll(){
 async function main(){
  // Standing help belongs in the existing help menu, not the discussion viewport.
  $('.discussion>.discussion-note')?.remove();
+ // Reuse the full list and its filters inside the existing rail, not a second canvas.
+ $('.view-switch')?.remove();
+ const list=$('#annotation-list');$('#discussion').append(list);
+ list.querySelector('.list-heading')?.remove();list.querySelector('.discussion-note')?.remove();
+ const listButton=document.createElement('button');listButton.type='button';listButton.dataset.view='list';listButton.id='discussion-list-toggle';listButton.textContent='列表';listButton.title='筛选全部批注';listButton.setAttribute('aria-controls','annotation-list');
+ const back=document.createElement('button');back.type='button';back.dataset.view='article';back.id='discussion-thread-toggle';back.textContent='讨论';back.title='返回批注讨论';back.setAttribute('aria-controls','threads');
+ $('.discussion-head').insertBefore(back,$('.close-drawer'));$('.discussion-head').insertBefore(listButton,back);setView('article');
  // Measure the safe-area-aware dock so the sheet never reserves a guessed footer.
  // Reserve the measured warning while it occupies space above the workspace.
  const warning=$('#hs-warn');

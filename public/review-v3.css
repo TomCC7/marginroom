@@ -80,12 +80,14 @@ html:has(> body[data-review-v3])::-webkit-scrollbar,body[data-review-v3]::-webki
 @media(max-width:1100px){.nav,.discussion,#nav-shade{top:var(--hs-bar-h)}}
 @media(max-width:600px){.discussion{top:max(var(--hs-bar-h),min(155px,calc(var(--hs-vv-bottom,100dvh) - var(--hs-dock-h,70px) - 240px)))}}
 
-/* A compact secondary header row; never scale shell controls or discussion. */
-.topbar{height:auto;min-height:70px;flex-wrap:wrap;padding-block:8px;row-gap:4px}
-.preview-controls{flex:0 0 100%;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px}
+/* Dimensions are a measured bottom dock, separate from the mobile action dock. */
+.topbar{height:auto;min-height:70px;flex-wrap:nowrap;padding-block:8px;row-gap:4px}
+.preview-controls{position:fixed;z-index:41;bottom:0;left:0;right:0;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;padding:6px 12px max(6px,env(safe-area-inset-bottom));background:var(--canvas)}
+#preview-dock-toggle{font-size:12px;min-height:38px;padding-inline:8px;white-space:nowrap;flex-shrink:0}
+#preview-dock-toggle.selected{color:var(--accent);background:var(--accent-soft)}
 .preview-controls select{font:inherit;min-width:0;max-width:230px;min-height:32px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);padding:4px}
 #preview-mode{flex:1;max-width:220px}#preview-zoom{width:94px}#preview-rotate{padding:0;width:32px;min-height:32px}#preview-percent{min-width:36px;text-align:right;font-variant-numeric:tabular-nums}
-#preview-custom{display:flex;align-items:center;gap:5px;flex-wrap:wrap}#preview-custom input{width:74px;min-height:32px;border:1px solid var(--line);border-radius:5px;padding:3px}#preview-custom button{min-height:32px;padding:0 8px;border:1px solid var(--line)}#preview-error{color:#a33}
+#preview-custom{display:flex;align-items:center;gap:5px;flex-wrap:wrap}#preview-custom input{width:74px;min-height:32px;border:1px solid var(--line);border-radius:5px;padding:3px}#preview-custom button{min-height:32px;padding:0 8px;border:1px solid var(--line)}#preview-error{color:#a33}#preview-error:empty{display:none}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .preview-device .main{min-width:0;padding-bottom:16px}
 /* Full-width shell: rails touch browser edges; only the stage has a 12px inset. */
@@ -120,4 +122,41 @@ html:has(> body[data-review-v3])::-webkit-scrollbar,body[data-review-v3]::-webki
  #composer .local-note{margin-block:6px;font-size:11px}
  #composer .modal-actions{position:sticky;bottom:0;background:var(--paper);padding-top:8px}
  #composer .modal-actions button{min-height:44px}
+}
+
+/* Borderless review shell only. Never cross into imported source/iframe CSS. */
+body[data-review-v3] .main{padding:0 0 8px;min-width:0}
+body[data-review-v3] .nav,body[data-review-v3] .discussion{border:0;box-shadow:none;background:var(--canvas)}
+body[data-review-v3] .discussion-head{border:0;padding-bottom:8px;gap:4px}
+.discussion-head h2{margin-right:0}.discussion-head .count{margin-right:auto}
+.discussion-head [data-view]{min-height:32px;padding-inline:8px;font-size:12px}
+.discussion-head [data-view].selected{background:var(--accent-soft);color:var(--accent)}
+body[data-review-v3] .discussion>.filters{border:0;margin-block:0 12px;padding-block:0}
+body[data-review-v3] .thread{border:0;box-shadow:none;background:transparent;padding:14px 4px;margin-bottom:12px}
+body[data-review-v3] .thread.active{background:#eaf0e8}
+body[data-review-v3] .thread-footer{border:0}
+body[data-review-v3] #annotation-list{background:transparent;border:0;border-radius:0;padding:0;min-height:0;margin:0;max-width:none;overflow-y:auto;overscroll-behavior:contain;flex:1}
+body[data-review-v3] .list-filters{border:0;gap:6px;padding:0;margin:0 0 8px}
+body[data-review-v3] .list-filters .filters{display:flex;gap:0;flex-wrap:wrap;margin:0;width:100%;border:0}
+body[data-review-v3] .list-filters button{min-height:32px;font-size:11px;padding-inline:8px}
+#list-summary{font-size:11px;margin:6px 0}
+body[data-review-v3] .annotation-row{border:0;padding:14px 4px;margin-bottom:8px;border-radius:6px}
+.row-meta{gap:6px}.row-meta .status{font-size:10px}.row-quote{margin-block:8px;font-size:13px}.row-body{font-size:12px}
+body.preview-device #article{background:#e9eae4}
+body.preview-device #hs-doc-root{outline:0;box-shadow:none}
+body[data-review-v3] .draft-actions{bottom:calc(var(--preview-dock-h,44px) + 8px)}
+@media(min-width:601px){
+ .nav{height:calc(100dvh - var(--hs-bar-h) - var(--hs-nav-inset,0px) - var(--preview-dock-h,44px))}
+ .discussion{top:var(--hs-bar-h);height:calc(100dvh - var(--hs-bar-h) - var(--hs-nav-inset,0px) - var(--preview-dock-h,44px));padding-top:12px}
+}
+@media(max-width:1100px){body[data-review-v3] .discussion{background:#f4f5ef;bottom:calc(max(0px,100dvh - var(--hs-vv-bottom,100dvh)) + var(--preview-dock-h,44px));height:auto}}
+@media(max-width:600px){
+ .topbar .brand{font-size:17px}.topbar .share{padding-inline:9px}.topbar .person{min-width:28px}.topbar #preview-dock-toggle{padding-inline:6px;min-height:38px}
+ .preview-controls{bottom:calc(max(0px,100dvh - var(--hs-vv-bottom,100dvh)) + var(--hs-dock-h,70px));padding:5px 8px;gap:4px;flex-wrap:wrap}
+ #preview-mode{flex:1;max-width:none}#preview-percent{font-size:10px}#preview-rotate{width:28px}#preview-zoom{width:80px}
+ #preview-custom{flex-basis:100%;justify-content:center}#preview-custom input{width:64px}
+ body[data-review-v3] .dock{border:0;background:var(--canvas)}
+ body[data-review-v3] .discussion{border-radius:12px 12px 0 0;bottom:calc(max(0px,100dvh - var(--hs-vv-bottom,100dvh)) + var(--hs-dock-h,70px) + var(--preview-dock-h,44px));top:max(var(--hs-bar-h),min(155px,calc(var(--hs-vv-bottom,100dvh) - var(--hs-dock-h,70px) - var(--preview-dock-h,44px) - 240px)))}
+ body[data-review-v3] .draft-actions{bottom:calc(var(--hs-dock-h,70px) + var(--preview-dock-h,44px) + 8px)}
+ body.preview-device .main{padding-bottom:calc(var(--hs-dock-h,70px) + var(--preview-dock-h,44px) + 8px)}
 }

@@ -35,8 +35,8 @@ try{
    }
   }
  }
- await page.setViewportSize({width:1700,height:1000});await page.selectOption('#preview-mode','article');await settle();let a=await snap('1700-article');if(!baseline)assert(a.stage.width<=850,'article stays readable');
+ await page.setViewportSize({width:1700,height:1000});await page.selectOption('#preview-mode','auto');await settle();let a=await snap('1700-auto');if(!baseline)assert.equal(a.frame.width,a.stage.width-24,'Auto fills available width');
  for(const width of [390,360]){await page.setViewportSize({width,height:844});await page.selectOption('#preview-mode','desktop');await page.selectOption('#preview-zoom','fit');const m=await snap(`${width}-fit`);assert(m.scrollWidth<=width);await page.selectOption('#preview-zoom','actual');await settle();await page.evaluate(()=>document.querySelector('#article').scrollTo(9999,9999));assert(await page.evaluate(()=>document.querySelector('#article').scrollLeft>0));await snap(`${width}-pan`)}
  assert.equal(await page.evaluate(()=>window.loads),loads);assert.deepEqual(evidence.errors,[]);assert.deepEqual(evidence.writes,[]);await ctx.close();
- if(out)await writeFile(out+'/metrics.json',JSON.stringify(metrics,null,2));console.log(`PASS workspace ${baseline?'baseline':'candidate'}: ${metrics.length} captures; bounds, fixed viewport/state/load identity, article width, mobile Fit/pan; zero writes.`);
+ if(out)await writeFile(out+'/metrics.json',JSON.stringify(metrics,null,2));console.log(`PASS workspace ${baseline?'baseline':'candidate'}: ${metrics.length} captures; bounds, fixed viewport/state/load identity, Auto width, mobile Fit/pan; zero writes.`);
 }finally{await browser.close()}
