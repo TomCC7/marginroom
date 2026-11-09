@@ -18,7 +18,8 @@ async function start(){
  for(let i=0;i<150;i++){try{if((await fetch(base+'/api/whoami')).ok)return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Startup failed: '+output);
 }
 async function stop(){if(child){process.kill(-child.pid,'SIGTERM');await new Promise(r=>child.once('exit',r));child=null;}}
-async function ready(page){await page.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));}
+// This scenario intentionally exercises comfortable Article-mode DOM editing/export.
+async function ready(page){await page.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));}
 async function selectText(page,selector){await page.locator(selector).evaluate(el=>{const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));});}
 async function rewrite(page,selector,text){await page.locator('[data-mode="suggest"]').first().click();await page.locator(selector).click();await selectText(page,selector);await page.keyboard.insertText(text);await page.locator('#submit-draft').click();await page.waitForFunction(()=>document.querySelector('#draft-actions').hidden);}
 try{

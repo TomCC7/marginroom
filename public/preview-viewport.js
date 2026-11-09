@@ -4,7 +4,7 @@ export const MIN_SIZE=240, MAX_SIZE=4096;
 export function validSize(n){return Number.isInteger(n)&&n>=MIN_SIZE&&n<=MAX_SIZE}
 export function preferences(value){
  const v=value&&typeof value==='object'?value:{};
- return {mode:['article',...Object.keys(PRESETS),'custom'].includes(v.mode)?v.mode:'article',rotated:v.rotated===true,custom:{width:validSize(v.custom?.width)?v.custom.width:1280,height:validSize(v.custom?.height)?v.custom.height:800},zoom:v.zoom==='actual'?'actual':'fit'};
+ return {mode:['auto','article',...Object.keys(PRESETS),'custom'].includes(v.mode)?v.mode:'auto',rotated:v.rotated===true,custom:{width:validSize(v.custom?.width)?v.custom.width:1280,height:validSize(v.custom?.height)?v.custom.height:800},zoom:v.zoom==='100'?'actual':['actual','50','75','125','150','200'].includes(v.zoom)?v.zoom:'fit'};
 }
 export function dimensions(p){const [w,h]=PRESETS[p.mode]||[p.custom.width,p.custom.height];return p.rotated?[h,w]:[w,h]}
 export function initPreview({docId,bridge,staticPreview}){
@@ -13,26 +13,63 @@ export function initPreview({docId,bridge,staticPreview}){
  let p;try{p=preferences(JSON.parse(localStorage.getItem(key)))}catch{p=preferences()}
  let currentFrame=null,changing=false,again=false,raf=0;
  const controls=document.createElement('div');controls.className='preview-controls';controls.setAttribute('aria-label','预览视口');
- controls.innerHTML='<label class="sr-only" for="preview-mode">预览视口</label><select id="preview-mode"><option value="article">文章 · 原视图</option><option value="desktop">Desktop · 1440 × 900</option><option value="laptop">Laptop · 1366 × 768</option><option value="tablet">Tablet · 768 × 1024</option><option value="phone">Phone · 390 × 844</option><option value="custom">自定义尺寸</option></select><button id="preview-rotate" title="旋转视口" aria-label="旋转视口" type="button">↔</button><label class="sr-only" for="preview-zoom">预览缩放</label><select id="preview-zoom"><option value="fit">适应窗口</option><option value="actual">100%</option></select><output id="preview-percent" aria-live="polite"></output><form id="preview-custom" hidden><label>宽 <input id="preview-width" type="number" min="240" max="4096" step="1" required></label><span>×</span><label>高 <input id="preview-height" type="number" min="240" max="4096" step="1" required></label><button type="submit">应用</button><span id="preview-error" role="alert"></span></form>';
+ controls.innerHTML='<label class="sr-only" for="preview-mode">预览视口</label><select id="preview-mode"><option value="auto">Auto · 填满可用区</option><option value="article">文章 · 原视图</option><option value="desktop">Desktop · 1440 × 900</option><option value="laptop">Laptop · 1366 × 768</option><option value="tablet">Tablet · 768 × 1024</option><option value="phone">Phone · 390 × 844</option><option value="custom">自定义尺寸</option></select><button id="preview-rotate" title="旋转视口" aria-label="旋转视口" type="button">↔</button><label class="sr-only" for="preview-zoom">预览缩放</label><select id="preview-zoom"><option value="fit">适应窗口</option><option value="actual">100%</option></select><output id="preview-percent" aria-live="polite"></output><form id="preview-custom" hidden><label>宽 <input id="preview-width" type="number" min="240" max="4096" step="1" required></label><span>×</span><label>高 <input id="preview-height" type="number" min="240" max="4096" step="1" required></label><button type="submit">应用</button><span id="preview-error" role="alert"></span></form>';
  header.append(controls);
  const $=s=>controls.querySelector(s);
+ // Zoom changes paint only; the output always reports the real layout viewport.
+ $('#preview-zoom').title='显示缩放（不改变布局视口尺寸）';
+ for(const zoom of ['50','75'])$('#preview-zoom').add(new Option(zoom+'%',zoom),$('#preview-zoom').querySelector('[value="actual"]'));
+ for(const zoom of ['125','150','200'])$('#preview-zoom').add(new Option(zoom+'%',zoom));
+ const handle=document.createElement('button');handle.type='button';handle.id='preview-resize';handle.textContent='↘';handle.title='拖动调整视口尺寸；方向键微调，Enter 输入尺寸';handle.setAttribute('aria-label',handle.title);
+ let drag=null;
+ function finishDrag(){
+  if(!drag)return;const id=drag.id;drag=null;document.body.classList.remove('preview-resizing');
+  if(handle.hasPointerCapture(id))handle.releasePointerCapture(id);
+  save();paint();schedule();
+ }
+ function customSize(width,height){p.mode='custom';p.rotated=false;p.custom={width:Math.max(MIN_SIZE,Math.min(MAX_SIZE,Math.round(width))),height:Math.max(MIN_SIZE,Math.min(MAX_SIZE,Math.round(height)))};paint();measure()}
+ handle.addEventListener('pointerdown',e=>{
+  if(e.button!==0||!currentFrame)return;e.preventDefault();measure();
+  drag={id:e.pointerId,x:e.clientX,y:e.clientY,width:Number(root.dataset.previewWidth),height:Number(root.dataset.previewHeight),scale:Number(currentFrame.dataset.previewScale)};
+  handle.setPointerCapture(e.pointerId);document.body.classList.add('preview-resizing');
+ });
+ handle.addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id)return;e.preventDefault();
+  const box=article.getBoundingClientRect();
+  // Capture crosses the iframe; a bounded stage clips the handle, never the rails.
+  const x=Math.max(box.left+12,Math.min(box.right-12,e.clientX)),y=Math.max(box.top+12,Math.min(box.bottom-12,e.clientY));
+  const maxW=p.zoom==='fit'?Math.max(MIN_SIZE,(box.width-24)/drag.scale):MAX_SIZE,maxH=p.zoom==='fit'?Math.max(MIN_SIZE,(box.height-24)/drag.scale):MAX_SIZE;
+  customSize(Math.min(maxW,drag.width+(x-drag.x)/drag.scale),Math.min(maxH,drag.height+(y-drag.y)/drag.scale));
+ });
+ for(const event of ['pointerup','pointercancel','lostpointercapture'])handle.addEventListener(event,finishDrag);
+ window.addEventListener('blur',finishDrag);
+ handle.addEventListener('keydown',e=>{
+  if(e.key==='Enter'||e.key===' '){e.preventDefault();customSize(Number(root.dataset.previewWidth),Number(root.dataset.previewHeight));save();$('#preview-width').focus();return}
+  const delta={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];
+  if(delta){e.preventDefault();const step=e.shiftKey?50:10;customSize(Number(root.dataset.previewWidth)+delta[0]*step,Number(root.dataset.previewHeight)+delta[1]*step);save()}
+ });
  function paint(){
-  $('#preview-mode').value=p.mode;$('#preview-zoom').value=p.zoom;$('#preview-rotate').disabled=p.mode==='article';$('#preview-rotate').setAttribute('aria-pressed',String(p.rotated));$('#preview-zoom').disabled=p.mode==='article';$('#preview-custom').hidden=p.mode!=='custom';
+  $('#preview-mode').value=p.mode;$('#preview-zoom').value=p.zoom;$('#preview-rotate').disabled=['article','auto'].includes(p.mode);$('#preview-rotate').setAttribute('aria-pressed',String(p.rotated));$('#preview-zoom').disabled=p.mode==='article';$('#preview-custom').hidden=p.mode!=='custom';
   if(document.activeElement!==$('#preview-width'))$('#preview-width').value=p.custom.width;
   if(document.activeElement!==$('#preview-height'))$('#preview-height').value=p.custom.height;
  }
  function save(){try{localStorage.setItem(key,JSON.stringify(p))}catch{ /* private/quota storage: preview still works */ }}
  function measure(){
-  raf=0;if(p.mode==='article'||!currentFrame)return;
-  const [width,height]=dimensions(p),dock=document.querySelector('.dock'),dockHeight=getComputedStyle(dock).display==='none'?0:dock.getBoundingClientRect().height;
+  raf=0;if(p.mode==='article'||!currentFrame||!article.getClientRects().length)return;
+  const dock=document.querySelector('.dock'),dockHeight=getComputedStyle(dock).display==='none'?0:dock.getBoundingClientRect().height;
   const availableHeight=Math.max(80,innerHeight-article.getBoundingClientRect().top-dockHeight-16);
   article.style.height=availableHeight+'px';
-  const availableWidth=Math.max(1,article.clientWidth-16),spaceHeight=Math.max(1,availableHeight-16);
-  const scale=p.zoom==='actual'?1:Math.min(1,availableWidth/width,spaceHeight/height);
+  const style=getComputedStyle(article),px=v=>parseFloat(v)||0;
+  const availableWidth=Math.max(1,article.clientWidth-px(style.paddingLeft)-px(style.paddingRight)),spaceHeight=Math.max(1,article.clientHeight-px(style.paddingTop)-px(style.paddingBottom));
+  const [width,height]=p.mode==='auto'?[Math.max(1,Math.floor(availableWidth)),Math.max(1,Math.floor(spaceHeight))]:dimensions(p);
+  const scale=p.zoom==='fit'?Math.min(1,availableWidth/width,spaceHeight/height):p.zoom==='actual'?1:Number(p.zoom)/100;
   root.style.setProperty('--preview-width',width*scale+'px');root.style.setProperty('--preview-height',height*scale+'px');
   currentFrame.style.width=width+'px';currentFrame.style.height=height+'px';currentFrame.style.transform=`scale(${scale})`;
   currentFrame.dataset.previewScale=String(scale);root.dataset.previewWidth=String(width);root.dataset.previewHeight=String(height);
-  $('#preview-percent').value=Math.round(scale*100)+'%';$('#preview-percent').textContent=Math.round(scale*100)+'%';
+  if(!handle.isConnected)root.append(handle);
+  $('#preview-percent').value=`${width}×${height} · ${Math.round(scale*100)}%`;$('#preview-percent').textContent=$('#preview-percent').value;
+  $('#preview-percent').title=`布局视口 ${width} × ${height} CSS px；显示缩放 ${Math.round(scale*100)}%`;
+  $('#preview-percent').setAttribute('aria-label',$('#preview-percent').title);
   document.dispatchEvent(new Event('preview-geometry'));
  }
  function schedule(){if(!raf)raf=requestAnimationFrame(measure)}
@@ -71,5 +108,5 @@ export function initPreview({docId,bridge,staticPreview}){
   article.scrollLeft+=x-view.left-view.width/2;article.scrollTop+=y-view.top-view.height/2;
  });
  update();
- return {get state(){return {...p,dimensions:dimensions(p)}},measure};
+ return {get state(){return {...p,dimensions:p.mode==='auto'?[Number(root.dataset.previewWidth),Number(root.dataset.previewHeight)]:dimensions(p)}},measure};
 }

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {launchBrowser,isolate,syntheticFixture,openFixture} from './helpers/browser.mjs';
 import {preferences,dimensions} from '../public/preview-viewport.js';
-assert.equal(preferences({mode:'bogus',custom:{width:-2,height:Infinity}}).mode,'article');
+assert.equal(preferences({mode:'bogus',custom:{width:-2,height:Infinity}}).mode,'auto');
 assert.deepEqual(dimensions(preferences({mode:'phone',rotated:true})),[844,390]);
-for(const invalid of [null,[],{custom:{width:'1200',height:0}},{mode:'constructor',zoom:'NaN',custom:{width:1.5,height:1e9}}]){const p=preferences(invalid);assert.equal(p.mode,'article');assert.deepEqual(p.custom,{width:1280,height:800})}
+for(const invalid of [null,[],{custom:{width:'1200',height:0}},{mode:'constructor',zoom:'NaN',custom:{width:1.5,height:1e9}}]){const p=preferences(invalid);assert.equal(p.mode,'auto');assert.deepEqual(p.custom,{width:1280,height:800})}
 const css=`*{box-sizing:border-box}body{margin:0;background:#111827;color:#e5e7eb;font:16px system-ui}header{position:sticky;top:0;background:#1f2937;padding:20px;z-index:2}main{padding:28px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{background:#243247;border:1px solid #52647e;padding:24px;border-radius:10px}input,button{font:inherit;padding:8px}input{max-width:100%}#vh{height:100vh;width:100vw;position:fixed;pointer-events:none;visibility:hidden}#breakpoint:after{content:'DESKTOP'}@media(max-width:600px){.grid{grid-template-columns:1fr}#breakpoint:after{content:'PHONE'}main{padding:14px}}footer{position:fixed;bottom:0;left:0;width:100vw;padding:16px;background:#374151;z-index:3}#nested{height:90px;overflow:auto;background:#172033;padding:8px}dialog{color:#111827;padding:30px}p{line-height:1.8}`;
 export const dashboard=`<!doctype html><html><head><style>${css}</style></head><body><header><strong>Policy rollout · responsive dashboard</strong> <span id="breakpoint"></span></header><main><h1>Review the actual layout</h1><div class="grid"><section class="card"><h2>Session</h2><input id="input" value="initial"><button id="count">Count <span id="counter">0</span></button></section><section class="card"><h2>Nested scroll</h2><div id="nested">${'<p>Nested row</p>'.repeat(12)}</div></section><section class="card"><h2>Modal</h2><button id="modal">Open dialog</button><dialog><p>Viewport dialog</p><button id="close">Close</button></dialog></section></div><p id="repeat">same same 😀 same same.</p><div style="height:1100px"></div><p id="last">Last passage</p></main><div id="vh"></div><footer>Fixed footer · viewport owned</footer><script>let n=0;document.querySelector('#count').onclick=()=>document.querySelector('#counter').textContent=++n;document.querySelector('#modal').onclick=()=>document.querySelector('dialog').showModal();document.querySelector('#close').onclick=()=>document.querySelector('dialog').close();window.fixtureBoots=(window.fixtureBoots||0)+1</script></body></html>`;
 const browser=await launchBrowser(),out=process.env.PREVIEW_ARTIFACTS;
@@ -18,7 +18,8 @@ try{
   if(interactive)await ctx.route('**/api/raw/synthetic',r=>r.fulfill({json:{rawHtml:dashboard}}));
   await ctx.addInitScript(()=>{if(window===top){window.__previewLoads=0;document.addEventListener('load',e=>{if(e.target.tagName==='IFRAME')window.__previewLoads++},true)}});
   const page=await ctx.newPage();page.setDefaultTimeout(10000);await openFixture(page);
-  assert.equal(await page.locator('#preview-mode').inputValue(),'article');
+  assert.equal(await page.locator('#preview-mode').inputValue(),'auto');
+  await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));
   if(out){const file=`${interactive?'interactive':'static'}-article.png`;await page.screenshot({path:out+'/'+file});screenshots.push({file,mode:'article',host:await page.viewportSize()})}
   await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
   let frame=page.frames().find(f=>f!==page.mainFrame());assert(frame);

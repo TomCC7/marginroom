@@ -3,6 +3,8 @@ import { launchBrowser, isolate, syntheticFixture, openFixture } from './helpers
 const browser = await launchBrowser();
 const fixture = syntheticFixture();
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+// This suite exercises the intentionally retained longform Article mode.
+await context.addInitScript(()=>{try{if(window===top)localStorage.setItem('marginroom.preview.v1:synthetic',JSON.stringify({mode:'article'}))}catch{}});
 const evidence = await isolate(context, fixture);
 let cases = 0;
 try {

@@ -20,6 +20,8 @@ try{
  if(!assets)return route.fallback();
  return route.fulfill({body:await readFile(path.join(assets,u.pathname)),contentType:u.pathname.endsWith('.js')?'text/javascript':u.pathname.endsWith('.css')?'text/css':'text/html'});
  });
+ // Native shell selection is an Article-mode contract; Auto iframe has separate coverage.
+ await ctx.addInitScript(()=>{try{if(window===top)localStorage.setItem('marginroom.preview.v1:synthetic',JSON.stringify({mode:'article'}))}catch{}});
  const page=await ctx.newPage();await openFixture(page);
  const mobile=width<600, action=page.locator(mobile?'#mobile-add-comment':'#selection-action');
  assert.equal(await page.locator('#mobile-selection').isVisible(),false);

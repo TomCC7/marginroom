@@ -74,6 +74,7 @@
     "test/mobile-selection.browser.mjs",
     "test/mode-policy.test.mjs",
     "test/owner-promotion.test.mjs",
+    "test/preview-resize.browser.mjs",
     "test/preview-viewport-storage.mjs",
     "test/preview-viewport.browser.mjs",
     "test/release-acceptance.mjs",
@@ -88,6 +89,7 @@
     "test/suggestions.test.mjs",
     "test/upload.test.mjs",
     "test/v3-api.test.mjs",
-    "test/viewer-ui.test.mjs"
+    "test/viewer-ui.test.mjs",
+    "test/workspace.browser.mjs"
   ]
 }

@@ -26,6 +26,7 @@ try{
  const page=await ctx.newPage();await page.goto(base+'/?key='+key);await page.waitForFunction(()=>!location.search.includes('key='));
  await page.locator('input[type=file]').first().setInputFiles({name:'mobile-synthetic.html',mimeType:'text/html',buffer:Buffer.from('<h1>Synthetic selection</h1><p id="repeat">same same 😀 same same.</p>')});
  await page.waitForURL('**/viewer.html?doc=mobile-synthetic');await page.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));
+ await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));
  await page.locator('#repeat').evaluate(el=>{const r=document.createRange();r.setStart(el.firstChild,18);r.setEnd(el.firstChild,22);getSelection().removeAllRanges();getSelection().addRange(r)});
  const action=page.locator('#mobile-add-comment');await action.waitFor({state:'visible'});
  await action.dispatchEvent('pointerdown',{pointerType:'touch'});await page.evaluate(()=>getSelection().removeAllRanges());await page.waitForTimeout(180);await action.dispatchEvent('click');

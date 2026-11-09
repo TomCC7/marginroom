@@ -20,6 +20,7 @@ try{
  const page=await ctx.newPage();await page.goto(base+'/?key='+key);await page.waitForFunction(()=>!location.search.includes('key='));
  await page.locator('input[type=file]').first().setInputFiles({name:'viewport-synthetic.html',mimeType:'text/html',buffer:Buffer.from('<style>body{margin:0}p{width:800px;padding:20px}#nested{height:180px;overflow:auto}</style><h1>Viewport storage</h1><input id="form" value="initial"><div style="height:1000px"></div><div id="nested"><div style="height:400px"></div><p id="repeat">same same 😀 same same.</p><div style="height:500px"></div></div><div style="height:1000px"></div>')});
  await page.waitForURL('**/viewer.html?doc=viewport-synthetic');await page.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));
+ await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));
  const anchor=await page.locator('#repeat').getAttribute('data-hs-anchor');
  await page.locator('#form').fill('article input');await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
  const frame=page.frames()[1];await frame.waitForFunction(()=>innerWidth===1440);
@@ -34,9 +35,15 @@ try{
   const result=await ctx.request.get(base+'/api/suggestions/viewport-synthetic?status=all').then(r=>r.json()),record=result.suggestions.find(s=>s.body==='Precise '+zoom);
   assert(record);assert.equal(record.anchor,anchor);assert.equal(record.quote,'same');assert.equal(record.range_start,18);assert.equal(record.range_end,22);
   // Deliberately move both scroll owners away before locating the stored thread.
+  const outer=await page.evaluate(()=>scrollY);
   await frame.evaluate(()=>{scrollTo(0,0);document.querySelector('#nested').scrollTop=0});await page.locator(`[data-locate="${record.id}"]`).click();
   await frame.waitForFunction(()=>document.querySelector('#nested').scrollTop>0&&scrollY>0);
   await frame.waitForFunction(()=>!!document.querySelector('.record-focus'));
+  assert.equal(await page.evaluate(()=>scrollY),outer,'inline thread navigation must not scroll shell');
+  await page.locator('[data-view="list"]').click();await frame.evaluate(()=>{scrollTo(0,0);document.querySelector('#nested').scrollTop=0});await page.locator(`[data-record="${record.id}"]`).click();
+  await frame.waitForFunction(()=>document.querySelector('#nested').scrollTop>0&&scrollY>0);
+  await page.waitForFunction(()=>!document.body.classList.contains('list-view'));
+  assert.equal(await page.evaluate(()=>scrollY),0,'list-to-passage must retain top-level scroll');
  }
  assert.equal(submits,2);
  await page.selectOption('#preview-mode','article');await page.waitForFunction(()=>!document.body.classList.contains('preview-device'));assert.equal(await page.locator('#form').inputValue(),'device input');assert.equal(await page.locator('#repeat').getAttribute('data-hs-anchor'),anchor);

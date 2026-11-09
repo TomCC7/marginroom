@@ -72,3 +72,24 @@ staged frontend assets without any production server or document requests.
 Scaled cross-origin iframe clicks use real mouse coordinates transformed from
 frame-local rectangles because locator clicks in the tested Chromium/Playwright
 combination do not compensate for the iframe CSS transform reliably.
+
+Fresh document preferences now default to **Auto · fill available space**. It
+sizes the real iframe viewport to the stage, so responsive breakpoints naturally
+change as rails open/close. Saved explicit Article/device/custom choices remain
+valid. The zoom menu is paint-only (Fit, 50/75/100/125/150/200%); the output shows
+layout CSS-pixel dimensions separately from the painted percentage. Use Auto to
+reset a custom/device layout. Article-mode suites explicitly select Article.
+
+`workspace.browser.mjs` asserts full-width rail edges (240px left, 320px right;
+zero external gutter), full column release, neutral device stage, exact scaled
+frame bounds, article max-width and phone panning. Its optional
+`WORKSPACE_ARTIFACTS=/absolute/output` captures 1700/1440/1024 expanded/collapsed
+desktop/tablet plus article and 390/360 Fit/100% states.
+
+`preview-resize.browser.mjs` tests fresh Auto, rail-driven layout resizing vs fixed
+preset invariance, percentage zoom, actual mouse and CDP touch resizing, capture
+release/cancel/loss, selection/form/JS retention and exact single iframe load,
+keyboard arrows/Shift/Enter and custom size input. The visible 28px corner handle
+changes real viewport dimensions, not imported content or application/browser
+zoom. Optional `RESIZE_ARTIFACTS=/absolute/output` saves Auto and custom states.
+Physical Safari touch/selection/keyboard behavior still needs a device trial.
