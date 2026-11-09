@@ -9,6 +9,7 @@ npm run test:unit
 npm run test:api
 npm run browser:install     # download the Chromium version matching playwright-core
 npm run test:browser        # route-isolated frontend regressions, no server needed
+npm run test:preview        # static bridge + true viewport/state matrix + disposable DB
 npm run test:security       # real isolated negative/security probes (Chromium required)
 npm run test:acceptance     # real npm start + browser/API upload/review/export/restart
 npm run test:all            # unit, API, frontend browser, security, release acceptance
@@ -51,3 +52,23 @@ harnesses are also explicit commands, not part of `test:all`. Optional
 normal runs do not modify tracked assets. Neither harness reproduces iOS native
 selection menus: a physical iPhone/Safari selection-menu and keyboard trial is
 still required.
+
+The preview suite uses synthetic static and interactive dashboards with media
+queries, viewport units, a sticky header, fixed footer, modal, nested scroll,
+form and JS counter. It checks all four device presets at host widths
+1440/1024/390/360, rotation/custom limits, Fit/100%, sidebar resize, exact iframe
+load counts and identity, input/application/draft preservation, sandbox and
+wrong-source rejection. The disposable storage test imports through the UI and
+reads real records to verify repeated-quote UTF-16 offsets after scaled scrolling
+and panning, plus frame/nested scroll navigation and guest edit restrictions.
+The static bridge test mocks only API submissions and the viewport UI adapter;
+the matrix and storage tests use the actual selector/controller.
+
+`PREVIEW_ARTIFACTS=/absolute/output node test/preview-viewport.browser.mjs`
+optionally saves viewport screenshots and `viewport-metadata.json`, recording
+the actual iframe CSS dimensions separately from the host screenshot dimensions.
+`FRONTEND_PUBLIC=/absolute/candidate/public` lets the route-isolated suites verify
+staged frontend assets without any production server or document requests.
+Scaled cross-origin iframe clicks use real mouse coordinates transformed from
+frame-local rectangles because locator clicks in the tested Chromium/Playwright
+combination do not compensate for the iframe CSS transform reliably.

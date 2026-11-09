@@ -78,6 +78,21 @@ html:has(> body[data-review-v3])::-webkit-scrollbar,body[data-review-v3]::-webki
 @media(max-width:1100px){.nav,.discussion,#nav-shade{top:var(--hs-bar-h)}}
 @media(max-width:600px){.discussion{top:max(var(--hs-bar-h),min(155px,calc(var(--hs-vv-bottom,100dvh) - var(--hs-dock-h,70px) - 240px)))}}
 
+/* A compact secondary header row; never scale shell controls or discussion. */
+.topbar{height:auto;min-height:70px;flex-wrap:wrap;padding-block:8px;row-gap:4px}
+.preview-controls{flex:0 0 100%;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px}
+.preview-controls select{font:inherit;min-width:0;max-width:230px;min-height:32px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);padding:4px}
+#preview-mode{flex:1;max-width:220px}#preview-zoom{width:94px}#preview-rotate{padding:0;width:32px;min-height:32px}#preview-percent{min-width:36px;text-align:right;font-variant-numeric:tabular-nums}
+#preview-custom{display:flex;align-items:center;gap:5px;flex-wrap:wrap}#preview-custom input{width:74px;min-height:32px;border:1px solid var(--line);border-radius:5px;padding:3px}#preview-custom button{min-height:32px;padding:0 8px;border:1px solid var(--line)}#preview-error{color:#a33}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.preview-device .main{min-width:0;padding-bottom:16px}
+.preview-device #article{max-width:none;min-height:0;padding:8px;border-radius:4px;overflow:auto;overscroll-behavior:contain;position:relative}
+.preview-device #hs-doc-root{width:var(--preview-width)!important;height:var(--preview-height);min-width:var(--preview-width);margin:0 auto!important;position:relative;overflow:hidden}
+.preview-device #hs-doc-root>:not(iframe){display:none!important}
+#hs-doc-root>iframe.preview-content{position:absolute;top:0;left:0;display:block;max-width:none;min-width:0;border:0;background:white;transform-origin:top left}
+@media(max-width:900px){.preview-controls{flex-wrap:wrap}#preview-custom{flex-basis:100%;justify-content:center}}
+@media(max-width:600px){.topbar{min-height:61px;padding-block:5px}.preview-controls{gap:3px}.preview-controls select{font-size:11px}#preview-mode{max-width:none}#preview-zoom{width:82px}.preview-device .main{padding-bottom:calc(var(--hs-dock-h,70px) + 8px)}}
+
 /* Mobile selection actions stay in the existing dock, clear of native callouts. */
 #mobile-selection{display:none}
 #close-composer{position:absolute;right:12px;top:10px;font-size:24px}

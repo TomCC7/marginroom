@@ -38,7 +38,7 @@ export async function isolate(context, fixture) {
     const rel = url.pathname.slice(1);
     if (!/^[\w.-]+$/.test(rel)) return route.fulfill({ status: 404, body: '' });
     try {
-      const body = await readFile(new URL('../../public/' + rel, import.meta.url));
+      const body = await readFile(process.env.FRONTEND_PUBLIC ? path.join(process.env.FRONTEND_PUBLIC, rel) : new URL('../../public/' + rel, import.meta.url));
       return route.fulfill({ body, contentType: rel.endsWith('.js') ? 'text/javascript' : rel.endsWith('.css') ? 'text/css' : rel.endsWith('.svg') ? 'image/svg+xml' : 'text/html' });
     } catch { return route.fulfill({ status: 404, body: '' }); }
   });

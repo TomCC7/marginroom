@@ -41,6 +41,14 @@ For configuration, administrator access, native Node setup, and backup instructi
 
 To review from another device, you need to make your instance reachable. Read the access notes below before exposing it outside your machine.
 
+### Preview a frontend viewport
+
+The persistent header's preview selector defaults to **Article** (the existing page view). Choose **Desktop 1440 × 900**, **Laptop 1366 × 768**, **Tablet 768 × 1024**, **Phone 390 × 844**, or **Custom** (integer width and height, 240–4096 CSS pixels). Rotate swaps the selected dimensions without changing the saved custom dimensions. **Fit** scales only the reviewed page into the available workspace; **100%** keeps CSS pixels unscaled and lets you scroll/pan the preview stage. The adjacent percentage reports the actual scale.
+
+Device previews use a real isolated iframe viewport: media queries, `vw`/`vh`, fixed elements, dialogs, and page scrolling use the selected dimensions, not the browser window. Resizing, rotating, changing sidebars, and returning through Article do not refresh the document or discard local input and review drafts. Preferences are stored per document in this browser only; blocked or invalid browser storage falls back safely.
+
+Static HTML keeps its existing storage anchors and review workflow; its scripts remain stripped, so a static preview does not make inactive controls interactive. Already-interactive imports keep their existing sandbox and application state. This is viewport sizing, not full device emulation (no simulated touch, browser engine, OS, pixel density, or fake device frame). External resources and the existing comment-only restrictions below are unchanged.
+
 ## Who can access a document?
 
 **Anyone who can reach your instance and knows a document's URL can read it.** There are no user accounts, invitation-only documents, or per-person access lists.

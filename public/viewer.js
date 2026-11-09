@@ -12,7 +12,7 @@ import { assignAnchors, assignCommentAnchors, normalizeText, GROUP_ATTR, groupSh
 import { diffWords, renderDiffHtml } from './diff.js';
 import { resolveAssets, forceRevealContent, summarizeMissing, healImageAssets } from './assets.js';
 import { icon } from './icons.js';
-import { parseSuggestTarget } from './frame-messages.js';
+import { parseSuggestTarget, validRect } from './frame-messages.js';
 import { resolveSpanSelection } from './span-select.js';
 import { reviewerName, setReviewerName } from './identity.js';
 import { scopeCssText } from './scope-css.js';
@@ -768,9 +768,11 @@ function openFrameCommentPopup({ anchor, isText, snippet, rect }) {
 // iframe's own viewport — exactly what adding the iframe box origin needs.
 function frameToParentRect(rect) {
   const box = frame && frame.getBoundingClientRect ? frame.getBoundingClientRect() : { left: 0, top: 0 };
-  const left = box.left + rect.left;
-  const top = box.top + rect.top;
-  return { left, top, bottom: top + (rect.height || 0), right: left + (rect.width || 0) };
+  const sx = frame?.offsetWidth ? box.width / frame.offsetWidth : 1;
+  const sy = frame?.offsetHeight ? box.height / frame.offsetHeight : 1;
+  const left = box.left + (rect.left + (frame?.clientLeft || 0)) * sx;
+  const top = box.top + (rect.top + (frame?.clientTop || 0)) * sy;
+  return { left, top, bottom: top + (rect.height || 0) * sy, right: left + (rect.width || 0) * sx };
 }
 
 // Place an already-appended popup near a target rect `r` (in VIEWPORT coords).
@@ -1141,6 +1143,10 @@ function onFrameMessage(e) {
   if (!frame || e.source !== frame.contentWindow) return;
   const m = e.data;
   if (!m || typeof m !== 'object') return;
+  if (m.type === 'commentLocated' && validRect(m.rect)) {
+    document.dispatchEvent(new CustomEvent('preview-reveal', { detail: { frame, rect: m.rect } }));
+    return;
+  }
   if (m.type === 'ready') {
     frameAnchors = new Set(Array.isArray(m.anchors) ? m.anchors : []);
     // Remember each anchor's ORIGINAL rendered text so the download can source-patch

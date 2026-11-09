@@ -18,7 +18,7 @@ try {
       return { y: h.y, bottom: h.bottom, overflow: document.documentElement.scrollWidth - innerWidth, children: [...document.querySelector('.topbar').children].map(e => e.getBoundingClientRect().toJSON()).filter(r => r.width && r.height), width: innerWidth };
     });
     assert.equal(m.y, 0); assert.equal(m.overflow, 0);
-    m.children.forEach((r, i) => { assert(r.x >= -1 && r.right <= m.width + 1); assert(r.y >= 0 && r.bottom <= m.bottom + 1); if (i) assert(m.children[i - 1].right <= r.x + 1, 'header controls must not overlap'); });
+    m.children.forEach((r, i) => { assert(r.x >= -1 && r.right <= m.width + 1); assert(r.y >= 0 && r.bottom <= m.bottom + 1); for (const prev of m.children.slice(0,i)) assert(prev.right <= r.x + 1 || r.right <= prev.x + 1 || prev.bottom <= r.y + 1 || r.bottom <= prev.y + 1, 'header controls must not overlap in either header row'); });
     return m;
   }
   async function toc(index, mobile) {

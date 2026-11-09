@@ -1,6 +1,8 @@
 import {reviewBridge as bridge} from './viewer.js';
 import {reviewerName,setReviewerName} from './identity.js';
 import {textOf,rangeAt,difference,locateRecord} from './review-ranges.js';
+import {createStaticPreview} from './static-preview.js';
+import {initPreview} from './preview-viewport.js';
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const root=$('#hs-doc-root'), docId=new URLSearchParams(location.search).get('doc')||decodeURIComponent(location.pathname.match(/^\/d\/([^/]+)/)?.[1]||'');
 const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -8,6 +10,27 @@ const decode=t=>{const e=document.createElement('textarea');e.innerHTML=String(t
 let mode='read', records=[], filter='open', listStatus='all', listType='all', active=null, selected=null, replyTo=null, composing=false, draft=null, busy=false, refreshBusy=false, myName=reviewerName(false), overlaySignature='';
 let clean=new Map(), locations=new Map(), reloading=false;
 const editBuffers=new Map();
+let staticPreview=null, frameSelection=null;
+function staticMessage(m){
+ if(state().interactive)return;
+ if(m.type==='located'&&m.rect&&['left','top','width','height'].every(k=>Number.isFinite(m.rect[k])&&Math.abs(m.rect[k])<100000)){document.dispatchEvent(new CustomEvent('preview-reveal',{detail:{frame:staticPreview.frame,rect:m.rect}}));return}
+ if(m.type==='selection'){
+  if(!m.selection){frameSelection=null;if(!selectionPress&&$('#composer').hidden){selected=null;selectionUI(null)}return}
+  const s=m.selection,c=clean.get(m.anchor),r=s.rect,grouped=getBlock(m.anchor)?.hasAttribute('data-hs-group');
+  if(!c||typeof s.quote!=='string'||s.quote.length>100000||!Number.isInteger(s.rangeStart)||!Number.isInteger(s.rangeEnd)||s.rangeStart<0||s.rangeEnd<s.rangeStart||!grouped&&c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote||!r||!['left','top','width','height'].every(k=>Number.isFinite(r[k])&&Math.abs(r[k])<100000))return;
+  const frame=staticPreview.frame,box=frame.getBoundingClientRect(),sx=box.width/frame.offsetWidth,sy=box.height/frame.offsetHeight;
+  frameSelection={anchor:m.anchor,baseText:c.text,quote:s.quote,rangeStart:s.rangeStart,rangeEnd:s.rangeEnd,rect:{left:box.left+(r.left+frame.clientLeft)*sx,top:box.top+(r.top+frame.clientTop)*sy}};
+  if(grouped){delete frameSelection.rangeStart;delete frameSelection.rangeEnd}
+  if(state().canSuggest&&!draft&&!composing){selected=frameSelection;selectionUI(selected)}
+ }else if(m.type==='input'){
+  const el=getBlock(m.anchor);if(!el||typeof m.text!=='string'||m.text.length>200000||el.contentEditable!=='true'||mode==='read'||reloading||busy)return;
+  let blocked=false;beginInput({target:el,inputType:'insertText',preventDefault(){blocked=true}});if(blocked){staticPreview.sync();return}
+  const d=difference(textOf(el),m.text),r=rangeAt(el,d.start,d.end,'[data-review-del],[data-review-point]');
+  if(!r){staticPreview.sync();return}r.deleteContents();r.insertNode(document.createTextNode(d.next));handleInput({target:el});staticPreview.sync();
+ }else if(m.type==='thread'&&typeof m.id==='string'&&m.id.length<256&&records.some(s=>s.id===m.id))openDiscussion(m.id);
+ else if(m.type==='comment'&&state().canSuggest){const el=getBlock(m.anchor);selected={anchor:m.anchor,quote:el?.getAttribute('alt')||'非文本元素',baseText:''};showComposer()}
+ else if(m.type==='key'&&draft){if(m.key==='Escape')cancelDraft();else if(['Enter','insertParagraph','insertLineBreak'].includes(m.key))submitDraft();else if(['z','Z','historyUndo','historyRedo'].includes(m.key))undoDraft(m.shift||m.key==='historyRedo');staticPreview.sync()}
+}
 function localEditing(){return !$('#composer').hidden||!!draft||composing||editTimers.size>0||editInflight>0||[...editBuffers.values()].some(b=>b.seq>b.saved)||mode==='edit'&&root.contains(document.activeElement)}
 function status(text,kind='saved'){const e=$('#hs-status');e.className='saved '+kind;e.querySelector('.txt').textContent=text}
 function toast(t){$('#toast').textContent=t;$('#toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').hidden=true,4000)}
@@ -42,6 +65,7 @@ function locate(id,open=true){
  const s=records.find(x=>x.id===id);if(!s)return;if(open)openDiscussion(id);else if(innerWidth<=1100)closeDiscussion();
  $$('.record-focus').forEach(n=>n.classList.remove('record-focus'));
  if(state().interactive){state().frame?.contentWindow?.postMessage({type:'flashComment',anchor:s.anchor},'*');return}
+ if(staticPreview?.active){staticPreview.send({type:'locate',id,anchor:s.anchor});return}
  const loc=locations.get(id);if(loc?.stale){toast(loc.reason);return}
  const el=root.querySelector(`[data-thread="${CSS.escape(id)}"]`)||getBlock(s.anchor?.startsWith('m:')?s.anchor.slice(2).split(',')[0]:s.anchor);
  if(el){el.classList.add('record-focus');el.scrollIntoView({block:'center'});if(loc?.fallback)toast(loc.reason)}else toast('原段落已删除或无法定位；未改挂到其他位置');
@@ -97,7 +121,7 @@ function decorate(){
 async function refresh(reload=false){
  if(refreshBusy||localEditing())return;refreshBusy=true;
  try{
-  if(reload){reloading=true;root.inert=true;await bridge.reload();captureClean();editBuffers.clear();buildToc()}
+  if(reload){reloading=true;root.inert=true;await bridge.reload();await staticPreview?.reconnect();captureClean();editBuffers.clear();buildToc()}
   const r=await fetch(`/api/suggestions/${encodeURIComponent(docId)}?status=all`);
   if(r.status===403){records=[];$('#threads').innerHTML='<div class="empty">当前链接仅允许阅读，不展示批注记录。</div>';return}
   if(!r.ok)throw Error('批注加载失败');records=(await r.json()).suggestions||[];if(!localEditing()){decorate();render()}
@@ -107,13 +131,15 @@ function applyMode(){
  const caps=state();bridge.setMode(caps.interactive?(mode==='read'?'use':mode):'view');
  $$('[data-mode]').forEach(b=>{const m=b.dataset.mode;b.disabled=(m==='edit'&&!caps.canEdit)||(m==='suggest'&&!caps.canSuggest);b.classList.toggle('selected',m===mode);b.setAttribute('aria-pressed',String(m===mode));if(b.disabled)b.title=m==='edit'?'此链接没有直接编辑权限':'此链接不允许建议'});
  if(!caps.interactive)for(const [a,el] of caps.anchorMap){const locked=records.some(s=>s.anchor===a&&s.status==='open'&&s.kind==='rewrite');const grouped=el.hasAttribute('data-hs-group');el.contentEditable=String((mode==='edit'&&caps.canEdit)||(mode==='suggest'&&caps.canSuggest&&!locked&&!grouped));if(grouped&&mode==='suggest')el.title='分组富文本仅支持批注；请在普通单段正文中提出原位修改'}
+ staticPreview?.sync();
 }
 function changeMode(next){if(editTimers.size||editInflight||[...editBuffers.values()].some(b=>b.seq>b.saved))return toast('正文仍在保存，请稍后切换模式');if(draft)return toast('请先提交或取消当前草稿');if(next==='edit'&&!state().canEdit||next==='suggest'&&!state().canSuggest)return;mode=next;decorate();applyMode();clearSelection()}
 function buildToc(){
  const title=root.querySelector('h1')?.textContent?.trim()||docId;$('#hs-docname').textContent=title;document.title=title+' · Marginroom';
- $('#toc').innerHTML='';root.querySelectorAll('h1,h2,h3').forEach((h,i)=>{const b=document.createElement('button');b.className='sub';b.textContent=h.textContent.trim();b.onclick=()=>{setView('article');closeNav();h.scrollIntoView({block:'start'})};$('#toc').append(b)});
+ $('#toc').innerHTML='';root.querySelectorAll('h1,h2,h3').forEach((h,i)=>{const b=document.createElement('button');b.className='sub';b.textContent=h.textContent.trim();b.onclick=()=>{setView('article');closeNav();if(staticPreview?.active&&h.dataset.hsAnchor)staticPreview.send({type:'locate',anchor:h.dataset.hsAnchor,id:''});else h.scrollIntoView({block:'start'})};$('#toc').append(b)});
 }
 function selectionInfo(){
+ if(staticPreview?.active)return frameSelection;
  const sel=getSelection();if(!sel?.rangeCount||sel.isCollapsed)return null;
  const r=sel.getRangeAt(0),node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement,el=node.closest('[data-hs-anchor]');
  if(!el||!root.contains(el)||!el.contains(r.endContainer))return null;
@@ -133,7 +159,7 @@ function selectionUI(s){
  $('#selection-action').hidden=!(available&&!phone.matches);
  if(available&&!phone.matches){$('#selection-action').style.left=Math.min(innerWidth-145,Math.max(10,s.rect.left))+'px';$('#selection-action').style.top=Math.min(innerHeight-120,Math.max(70,s.rect.top-49))+'px'}
 }
-function clearSelection(remove=false){clearTimeout(selectionPressTimer);selectionPress=null;selected=null;selectionUI(null);if(remove)getSelection()?.removeAllRanges()}
+function clearSelection(remove=false){clearTimeout(selectionPressTimer);selectionPress=null;selected=null;frameSelection=null;selectionUI(null);if(remove){getSelection()?.removeAllRanges();staticPreview?.send({type:'clear-selection'})}}
 function captureSelection(){
  if(selectionPress||!$('#composer').hidden)return;
  if(composing||draft||reloading||!state().canSuggest||state().interactive){clearSelection();return}
@@ -167,6 +193,7 @@ function paintDraft(caret){
  if(!draft)return;const d=difference(draft.base,draft.next),el=draft.el;el.innerHTML=draft.html;
  const r=rangeAt(el,d.start,d.end);if(r){const f=document.createDocumentFragment();if(d.old){const del=document.createElement('del');del.dataset.reviewDel='';del.contentEditable='false';del.append(r.extractContents());f.append(del)}else r.deleteContents();if(d.next){const ins=document.createElement('ins');ins.dataset.reviewIns='';ins.textContent=d.next;f.append(ins)}r.insertNode(f)}
  if(caret!=null)placeCaret(el,caret);$('#draft-actions').hidden=false;status('建议草稿 · 尚未提交','dirty');
+ staticPreview?.sync();
 }
 function cancelDraft(){if(!draft||busy)return;draft.el.innerHTML=draft.html;draft=null;$('#draft-actions').hidden=true;decorate();status('已取消草稿')}
 async function submitDraft(){
@@ -247,7 +274,7 @@ async function main(){
  const syncDock=()=>document.documentElement.style.setProperty('--hs-dock-h',dock.getBoundingClientRect().height+'px');
  new ResizeObserver(syncDock).observe(dock);syncDock();
  if(!docId){root.textContent='请选择一份文稿。';return}
- try{if(!await bridge.init(docId))return;captureClean();buildToc();paintName();applyMode();await refresh();status('已连接 · 数据已同步')}
+ try{if(!await bridge.init(docId))return;captureClean();buildToc();paintName();applyMode();await refresh();staticPreview=state().interactive?null:createStaticPreview({docId,bridge,root,onMessage:staticMessage,getMode:()=>mode});initPreview({docId,bridge,staticPreview});status('已连接 · 数据已同步')}
  catch(e){status('加载失败：'+e.message,'error');return}
  $('#nav-toggle').onclick=()=>toggleNav();$('#nav-close').onclick=()=>{toggleNav(false);closeNav()};$('#nav-shade').onclick=closeNav;$('#nav-article').onclick=()=>{setView('article');closeNav();closeDiscussion()};$('#nav-comments').onclick=()=>{closeNav();setView('list')};
  $$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$$('[data-mode]').forEach(b=>b.onclick=()=>changeMode(b.dataset.mode));$$('.show-discussion,.comment-toggle').forEach(b=>b.onclick=()=>openDiscussion());$('.close-drawer').onclick=closeDiscussion;
@@ -264,6 +291,7 @@ async function main(){
  document.addEventListener('review-frame-comment',e=>{if(!state().canSuggest)return;selected={anchor:e.detail.anchor,quote:e.detail.snippet||'交互文稿元素',baseText:''};showComposer()});
  document.addEventListener('review-frame-missing',e=>{for(const s of records)if(s.anchor===e.detail.anchor)locations.set(s.id,{stale:true,reason:'交互元素已变化或不存在，无法安全定位'});render()});
  document.addEventListener('selectionchange',()=>{clearTimeout(captureSelection.timer);captureSelection.timer=setTimeout(captureSelection,120)});
+ document.addEventListener('preview-geometry',()=>{if(staticPreview?.active)staticPreview.send({type:'measure-selection'})});
  for(const button of [$('#selection-action'),$('#mobile-add-comment')]){button.onpointerdown=armSelection;button.onpointercancel=()=>{selectionPress=null;captureSelection()};button.onclick=()=>showComposer()}
  $('#cancel-selection').onclick=()=>clearSelection(true);$('#close-composer').onclick=closeComposer;phone.addEventListener('change',captureSelection);$('#cancel-comment').onclick=closeComposer;$('#shade').onclick=closeComposer;$('#send-comment').onclick=sendComment;
  root.addEventListener('beforeinput',beginInput);root.addEventListener('input',handleInput);root.addEventListener('compositionstart',e=>{beginInput(e);composing=true});root.addEventListener('compositionend',e=>{composing=false;handleInput(e)});

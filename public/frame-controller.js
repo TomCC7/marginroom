@@ -409,7 +409,16 @@
             ? document.querySelector('[data-hs-comment-anchor="' + cssEscape(anchor) + '"]')
             : document.querySelector('[data-hs-anchor="' + cssEscape(anchor) + '"]'));
     if (!el || !document.body.contains(el)) { post({ type: 'commentMissing', anchor: anchor }); return; }
-    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) { el.scrollIntoView(); }
+    // Do not propagate scrollIntoView into the embedding review shell.
+    for (var p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+      var r = el.getBoundingClientRect(), b = p.getBoundingClientRect(), css = getComputedStyle(p);
+      if (/auto|scroll/.test(css.overflowY) && p.scrollHeight > p.clientHeight) p.scrollTop += r.top - b.top - (p.clientHeight - r.height) / 2;
+      if (/auto|scroll/.test(css.overflowX) && p.scrollWidth > p.clientWidth) p.scrollLeft += r.left - b.left - (p.clientWidth - r.width) / 2;
+    }
+    var r = el.getBoundingClientRect();
+    scrollBy(r.left - (innerWidth - r.width) / 2, r.top - (innerHeight - r.height) / 2);
+    r = el.getBoundingClientRect();
+    post({ type: 'commentLocated', rect: { left: r.left, top: r.top, width: r.width, height: r.height } });
     el.classList.add('hs-frame-flash');
     setTimeout(function () { el.classList.remove('hs-frame-flash'); }, 1200);
   }

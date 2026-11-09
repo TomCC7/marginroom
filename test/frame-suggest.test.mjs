@@ -49,6 +49,7 @@ Object.defineProperty(win, 'crypto', { value: {}, configurable: true });
 // the frame reports a real rect (the parent shape-validates finiteness).
 win.Element.prototype.getBoundingClientRect = function () { return { left: 12, top: 34, width: 56, height: 20, right: 68, bottom: 54 }; };
 win.Element.prototype.scrollIntoView = function () {};
+win.scrollBy = function () {}; // jsdom has no layout/scrolling; browser suite checks owners.
 win.__MMW_RAW__ = raw;
 win.__MMW_DOC__ = 'zz-suggest';
 

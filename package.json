@@ -11,7 +11,8 @@
     "test:unit": "node test/run.mjs unit",
     "test:api": "node test/run.mjs api",
     "test:browser": "node test/frontend.browser.mjs",
-    "test:all": "npm test && npm run test:browser && npm run test:security && npm run test:acceptance",
+    "test:all": "npm test && npm run test:browser && npm run test:preview && npm run test:security && npm run test:acceptance",
+    "test:preview": "node test/static-preview.browser.mjs && node test/preview-viewport.browser.mjs && node test/preview-viewport-storage.mjs",
     "browser:install": "playwright-core install chromium",
     "test:acceptance": "node test/release-acceptance.mjs",
     "test:security": "node test/security-release.test.mjs"
