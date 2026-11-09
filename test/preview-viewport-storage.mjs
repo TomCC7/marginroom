@@ -25,7 +25,7 @@ try{
  await frame.locator('#form').fill('auto input');await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
  await frame.waitForFunction(()=>innerWidth===1440);
  assert.equal(await frame.locator('#form').inputValue(),'auto input');await frame.locator('#form').fill('device input');
- for(const zoom of ['fit','actual']){
+ await page.locator('.topbar [data-mode="suggest"]').click();for(const zoom of ['fit','actual']){
   await page.selectOption('#preview-zoom',zoom);
   await frame.evaluate(()=>{const el=document.querySelector('#repeat');document.querySelector('#nested').scrollTop=400;scrollTo(0,800);const r=document.createRange(),walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n,offset=0,start=false;while(n=walker.nextNode()){if(n.parentElement.closest('[data-review-point],[data-review-ins]'))continue;if(!start&&offset+n.length>=18){r.setStart(n,18-offset);start=true}if(offset+n.length>=22){r.setEnd(n,22-offset);break}offset+=n.length}getSelection().removeAllRanges();getSelection().addRange(r)});
   if(zoom==='actual')await page.evaluate(()=>document.querySelector('#article').scrollTo(200,150));
@@ -47,12 +47,11 @@ try{
  }
  assert.equal(submits,2);
  await page.selectOption('#preview-mode','auto');await page.waitForFunction(()=>document.querySelector('iframe')?.dataset.previewScale);assert.equal(await frame.locator('#form').inputValue(),'device input');assert.equal(await frame.locator('#repeat').getAttribute('data-hs-anchor'),anchor);
- const guest=await browser.newContext({viewport:{width:390,height:844}}),g=await guest.newPage();await g.goto(base+'/viewer.html?doc=viewport-synthetic');await g.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));assert.equal(await g.locator('.dock [data-mode="edit"]').isDisabled(),true);
+ const guest=await browser.newContext({viewport:{width:390,height:844}}),g=await guest.newPage();await g.goto(base+'/viewer.html?doc=viewport-synthetic');await g.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));await g.locator('#more-btn').click();assert.equal(await g.locator('#direct-edit-menu').count(),0);await g.keyboard.press('Escape');
  await page.selectOption('#preview-mode','desktop');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));await page.locator('.topbar [data-mode="suggest"]').click();
- await frame.locator('#repeat').focus();await page.keyboard.press('End');await page.keyboard.insertText(' accepted');await page.locator('#draft-actions').waitFor({state:'visible'});
- await page.locator('#preview-dock-toggle').click();assert(await page.locator('#draft-actions').isVisible());await page.locator('#preview-dock-toggle').click();assert(await page.locator('#draft-actions').isVisible());
- for(const preset of ['phone','auto','desktop']){await page.selectOption('#preview-mode',preset);await page.waitForFunction(()=>document.body.classList.contains('preview-device'));assert.equal(await page.locator('#draft-actions').isVisible(),true)}
- assert.match(await frame.locator('#repeat').textContent(),/accepted/);await page.locator('#submit-draft').click();await page.waitForFunction(()=>document.querySelector('#draft-actions').hidden);
+ await frame.locator('#repeat').evaluate(el=>{const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'))});await page.locator('#selection-suggest').click();await page.locator('#comment-body').fill('same same 😀 same same. accepted');
+ for(const preset of ['phone','auto','desktop']){await page.locator('#preview-mode').evaluate((n,value)=>{n.value=value;n.dispatchEvent(new Event('change'))},preset);assert.equal(await page.locator('#comment-body').inputValue(),'same same 😀 same same. accepted')}
+ await page.locator('#send-comment').click();await page.waitForFunction(()=>document.querySelector('#composer').hidden);
  const changes=await ctx.request.get(base+'/api/suggestions/viewport-synthetic?status=all').then(r=>r.json()),rewrite=changes.suggestions.find(s=>s.kind==='rewrite');assert(rewrite);await page.locator(`[data-accept="${rewrite.id}"]`).click();
  await page.waitForFunction(()=>document.querySelector('#hs-status').textContent.includes('已接受修改'));const acceptedFrame=page.frames().find(f=>f!==page.mainFrame());assert(acceptedFrame);await acceptedFrame.waitForFunction(()=>document.querySelector('#repeat').textContent.includes('accepted'));assert.equal(await acceptedFrame.locator('#repeat').getAttribute('data-hs-anchor'),anchor);
  await g.selectOption('#preview-mode','phone');await g.waitForFunction(()=>document.body.classList.contains('preview-device'));assert.equal(await g.frames()[1].locator('#repeat').getAttribute('contenteditable'),'false'); // Read mode is locked inside the static sandbox too.

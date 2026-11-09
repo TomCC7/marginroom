@@ -21,7 +21,8 @@ async function stop(){if(child){process.kill(-child.pid,'SIGTERM');await new Pro
 // Exercise normal static paragraphs through the unified Auto iframe and export.
 async function ready(page){await page.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));await page.waitForFunction(()=>document.querySelector('iframe')?.dataset.previewScale);}
 async function selectText(page,selector){await page.frames()[1].locator(selector).evaluate(el=>{const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));});}
-async function rewrite(page,selector,text){await page.locator('[data-mode="suggest"]').first().click();await page.frames()[1].locator(selector).click();await selectText(page,selector);await page.keyboard.insertText(text);await page.locator('#submit-draft').click();await page.waitForFunction(()=>document.querySelector('#draft-actions').hidden);}
+async function rewrite(page,selector,text){await page.locator('[data-mode="suggest"]').first().click();await selectText(page,selector);await page.locator('#selection-suggest').click();await page.locator('#comment-body').fill(text);await page.locator('#send-comment').click();await page.waitForFunction(()=>document.querySelector('#composer').hidden);}
+
 try{
  await mkdir(path.join(dir,'docs'));
  await writeFile(path.join(dir,'identity.json'),JSON.stringify({SESSION_SECRET:secret,OWNER_KEY:key}),{mode:0o600});
@@ -42,7 +43,7 @@ try{
  await op.locator('#share-btn').click();await op.locator('#access-level').selectOption('suggest');await op.waitForTimeout(250);await op.locator('#share-btn').click();
  await gp.goto(base+'/viewer.html?doc=synthetic-notes');await ready(gp);
  assert.equal((await guest.request.get(base+'/api/whoami').then(r=>r.json())).isOwner,false);
- assert.equal(await gp.locator('[data-mode="edit"]').first().isDisabled(),true);
+ await gp.locator('#more-btn').click();assert.equal(await gp.locator('#direct-edit-menu').count(),0);await gp.keyboard.press('Escape');await gp.locator('[data-mode="suggest"]').first().click();
  await selectText(gp,'#third');await gp.locator('#selection-action').click();await gp.locator('#comment-body').fill('A synthetic guest comment.');await gp.locator('#send-comment').click();await gp.waitForFunction(()=>document.querySelector('#composer').hidden);
  await rewrite(gp,'#first','The first paragraph now contains accepted text.');
  assert.equal(await gp.frames()[1].locator('#first').getAttribute('contenteditable'),'false','pending rewrite locks paragraph');

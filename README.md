@@ -97,3 +97,30 @@ See the [test guide](test/README.md) for individual suites. The [operations veri
 Marginroom is based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith, with a revised review interface, inline suggestions, and self-hosting tools.
 
 [MIT license](LICENSE). Original copyright and license notices are preserved.
+
+
+### Browse and annotate
+Fresh documents start in **浏览 (Browse)**: original page controls remain usable.
+**批注 (Annotate)** intercepts page activation: click a rendered element, or drag/
+native-select text. Element context offers **写批注** and bounded parent/first-child
+navigation. Text context offers **写批注 / 建议修改**; replacement is enabled only
+for supported plain, single-block source text (including plain list items).
+Selecting text never enables direct editing. Rich/grouped, cross-block and runtime-
+generated text cannot be rewritten through this context; elements can still be
+commented on. **批注栏** only toggles the existing discussion rail. Direct original
+editing is an authorized overflow action; Browse or the overflow exit returns to
+normal browsing. Pending composers must be submitted or explicitly cancelled.
+
+Element comments use existing suggestion records, with `c2:` SHA-256 identity
+anchors: unique id/data-testid/data-key/data-id first, otherwise a bounded text/
+attribute fingerprint within the closest identified ancestor. No client selector
+is evaluated. Ambiguous duplicates, missing targets and replaced nodes in the same
+loaded document fail closed instead of rebinding to a sibling. Legacy text and
+`c:` anchors remain supported. No database migration or server restart is needed.
+This is not arbitrary access inside cross-origin nested frames, canvas drawings,
+closed shadow DOM or non-rendered nodes: only their rendered host can be selected.
+Sandbox/origin/script permissions are unchanged. Review overlays and new target
+bookkeeping do not modify stored source or original-source exports.
+
+Physical iPhone native callouts/keyboard remain a device check; Chromium touch
+and visualViewport simulations do not establish Safari device compatibility.

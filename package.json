@@ -13,7 +13,7 @@
     "test:browser": "node test/frontend.browser.mjs",
     "test:all": "npm test && npm run test:browser && npm run test:toggle && npm run test:chrome && npm run test:selection && npm run test:preview && npm run test:security && npm run test:acceptance",
     "test:chrome": "node test/review-chrome.browser.mjs",
-    "test:selection": "node test/list-suggest.browser.mjs && node test/triple-selection.browser.mjs && node test/list-selection-storage.mjs",
+    "test:selection": "node test/triple-selection.browser.mjs && node test/mobile-selection.browser.mjs && node test/mobile-selection-storage.mjs && node test/element-review.browser.mjs && node test/element-review-storage.mjs && node test/list-suggest.browser.mjs && node test/list-selection-storage.mjs",
     "test:toggle": "node test/discussion-toggle.browser.mjs",
     "test:preview": "node test/static-preview.browser.mjs && node test/preview-viewport.browser.mjs && node test/preview-viewport-storage.mjs && node test/workspace.browser.mjs && node test/preview-resize.browser.mjs",
     "browser:install": "playwright-core install chromium",

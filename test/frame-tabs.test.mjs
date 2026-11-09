@@ -1,3 +1,5 @@
+import {elementReview} from '../public/element-review.js';
+import {singleBlockRange} from '../public/review-ranges.js';
 // Tab-heavy / dynamic-DOM editability for the interactive-doc frame.
 //
 // Real "standalone" docs (the AI Hub model overview) render most text via JS and
@@ -105,7 +107,7 @@ win.parent = { postMessage: (msg) => posted.push(msg) };
 const latestReady = () => [...posted].reverse().find((m) => m && m.type === 'ready');
 
 // Run the controller and let it boot (load + 300ms + async scan).
-win.eval(controller);
+win.eval('const elementReview='+elementReview.toString()+';const singleBlockRange='+singleBlockRange.toString()+';'+controller);
 win.dispatchEvent(new win.Event('load'));
 await new Promise((r) => setTimeout(r, 700));
 
@@ -193,8 +195,10 @@ const sendToFrame = async (data) => {
   await new Promise((r) => setTimeout(r, 50));
 };
 
+ok(ceCount() === 0, 'boot defaults to Browse: text is not editable');
+await sendToFrame({type:'setMode',mode:'edit'});
 const editableBefore = ceCount();
-ok(editableBefore > 0, 'boot defaults to edit mode: editable units are contentEditable');
+ok(editableBefore > 0, 'explicit direct edit enables eligible units');
 
 await sendToFrame({ type: 'setMode', mode: 'use' });
 ok(ceCount() === 0, "setMode('use') removes contenteditable from every unit (doc fully interactive)");

@@ -34,11 +34,11 @@ try {
   }
   for (const width of [1440, 1251, 1101, 1024, 768, 601]) {
     await page.setViewportSize({ width, height: 900 }); await openFixture(page); await header();
-    assert.equal(await page.locator('.topbar [data-mode]:visible').count(), 3);
+    assert.equal(await page.locator('.topbar [data-mode]:visible').count(), 2);
     assert.equal(await page.locator('.dock [data-mode]:visible').count(), 0);
     assert.equal(await page.locator('.topbar .total').textContent(), '4');
     await page.evaluate(() => scrollTo(0, document.body.scrollHeight)); await header();
-    for (const mode of ['edit', 'suggest', 'read']) { await page.locator(`.topbar [data-mode=${mode}]`).click(); assert.equal(await page.locator(`.topbar [data-mode=${mode}]`).getAttribute('aria-pressed'), 'true'); }
+    for (const mode of ['suggest', 'read']) { await page.locator(`.topbar [data-mode=${mode}]`).click(); assert.equal(await page.locator(`.topbar [data-mode=${mode}]`).getAttribute('aria-pressed'), 'true'); }
     for (const id of ['name-btn', 'share-btn', 'more-btn']) { await page.locator('#' + id).click(); assert(await page.locator('#popover').isVisible()); await page.keyboard.press('Escape'); assert(await page.locator('#popover').isHidden()); }
     await page.locator('#share-btn').click(); assert.equal(await page.locator('#access-level option').count(), 3); await page.keyboard.press('Escape');
     if(await page.locator('#discussion').isHidden())await page.locator('.show-discussion').click();await page.locator('[data-view=list]').click(); assert.equal(await page.locator('.annotation-row').count(), 5);
@@ -69,14 +69,14 @@ try {
   await toc(0, false); assert.equal((await page.locator('.nav').boundingBox()).y, 96); cases++;
   for (const access of ['suggest', 'view']) {
     Object.assign(fixture.doc, { access, isDocOwner: false, canEdit: false, canSuggest: access === 'suggest' });
-    await openFixture(page); assert(await page.locator('.topbar [data-mode=edit]').isDisabled());
+    await openFixture(page); await page.locator('#more-btn').click();assert.equal(await page.locator('#direct-edit-menu').count(),0);await page.keyboard.press('Escape');
     assert.equal(await page.locator('.topbar [data-mode=suggest]').isDisabled(), access === 'view');
     await page.locator('#share-btn').click(); assert.equal(await page.locator('#access-level').count(), 0); cases++;
   }
   Object.assign(fixture.doc, { access: 'edit', isDocOwner: true, canEdit: true, canSuggest: true });
   for (const [width, height] of [[390, 844], [360, 780], [440, 956], [390, 500]]) {
     await page.setViewportSize({ width, height }); await openFixture(page); await header();
-    assert.equal(await page.locator('.topbar [data-mode]:visible').count(), 0); assert.equal(await page.locator('.dock [data-mode]:visible').count(), 3);
+    assert.equal(await page.locator('.topbar [data-mode]:visible').count(), 0); assert.equal(await page.locator('.dock [data-mode]:visible').count(), 2);
     for (const index of [0, 9, 18]) await toc(index, true);
     await page.locator('#nav-toggle').click(); assert(await page.locator('#nav-shade').isVisible()); await page.locator('#nav-close').click(); assert(await page.locator('#nav-shade').isHidden());
     await page.locator('.comment-toggle').click(); await page.locator('[data-filter=all]').click();
@@ -105,12 +105,10 @@ try {
   await page.locator('.topbar [data-mode=suggest]').click();
   const editable = content.locator('p[data-hs-anchor]').nth(6);
   const original = await editable.textContent();
-  await editable.click(); await page.keyboard.press('Home'); await page.keyboard.type('Synthetic draft ');
-  assert(await page.locator('#draft-actions').isVisible());
-  await page.locator('.topbar [data-mode=read]').click();
-  assert.equal(await page.locator('.topbar [data-mode=suggest]').getAttribute('aria-pressed'), 'true', 'draft blocks mode switch');
-  await page.locator('#cancel-draft').click(); assert.equal(await editable.textContent(), original);
-  assert(await page.locator('#draft-actions').isHidden()); cases++;
+  await editable.evaluate(el=>{const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'))});await page.locator('#selection-action').click();await page.locator('#comment-body').fill('Synthetic draft');
+  await page.locator('.topbar [data-mode=read]').dispatchEvent('click');
+  assert.equal(await page.locator('.topbar [data-mode=suggest]').getAttribute('aria-pressed'),'true','composer protects mode');assert.equal(await page.locator('#comment-body').inputValue(),'Synthetic draft');
+  await page.locator('#cancel-comment').click();assert.equal(await editable.textContent(),original);cases++;
   // Exact second repeated quote gets decorated; drift never reattaches to a name match.
   const a = anchors[0], start = a.text.lastIndexOf('same');
   fixture.records = [{ id: 'exact', anchor: a.anchor, base_text: a.text, quote: 'same', range_start: start, range_end: start + 4, body: 'replacement', kind: 'rewrite', status: 'open', author: 'Fixture', replies: [] }];

@@ -1,3 +1,5 @@
+import {elementReview} from '../public/element-review.js';
+import {singleBlockRange} from '../public/review-ranges.js';
 // Suggesting/commenting on ANY element inside the interactive (sandboxed) frame.
 //
 // For interactive docs the reviewer can't click a DOM node we own — the doc runs
@@ -56,7 +58,7 @@ win.__MMW_DOC__ = 'zz-suggest';
 const posted = [];
 win.parent = { postMessage: (msg) => posted.push(msg) };
 
-win.eval(controller);
+win.eval('const elementReview='+elementReview.toString()+';const singleBlockRange='+singleBlockRange.toString()+';'+controller);
 win.dispatchEvent(new win.Event('load'));
 await new Promise((r) => setTimeout(r, 700));
 
@@ -79,14 +81,16 @@ ok((iconBtn.getAttribute('data-hs-comment-anchor') || '').startsWith('c:'), 'com
 // --- Suggest-mode click on a NON-TEXT CONTROL: doc control must NOT fire ------
 const firedBefore = win.__FIRED__ || 0;
 // Click the <svg> inside the icon button — target resolves up to the button.
+const sequence=el=>{for(const type of ['pointerdown','pointerup'])el.dispatchEvent(new win.MouseEvent(type,{bubbles:true,cancelable:true,clientX:20,clientY:20}))};
+sequence(iconBtn);
 const clickEvt = new win.MouseEvent('click', { bubbles: true, cancelable: true });
 iconBtn.dispatchEvent(clickEvt);
-await new Promise((r) => setTimeout(r, 30));
+await new Promise((r) => setTimeout(r, 400));
 ok(clickEvt.defaultPrevented, "suggest-mode click on the icon button is prevented (its control does not fire)");
 ok((win.__FIRED__ || 0) === firedBefore, "the doc's own button handler did not run");
 const st = lastOfType('suggestTarget');
 ok(st, 'a suggestTarget was posted for the control click');
-ok(typeof st.anchor === 'string' && st.anchor.startsWith('c:'), 'suggestTarget carries the c: comment anchor');
+ok(typeof st.anchor === 'string' && st.anchor.startsWith('c2:'), 'suggestTarget carries the c: comment anchor');
 ok(st.isText === false, 'clicking a non-text control reports isText:false (comment-only, no rewrite)');
 ok(typeof st.snippet === 'string' && st.snippet.length > 0, 'suggestTarget carries a human snippet label');
 ok(st.rect && ['left', 'top', 'width', 'height'].every((k) => Number.isFinite(st.rect[k])), 'suggestTarget rect numbers are all finite');
@@ -96,12 +100,12 @@ ok(st.rect && ['left', 'top', 'width', 'height'].every((k) => Number.isFinite(st
 // text anchor (so a comment can sit beside a rewrite of the same words).
 ok(h1.getAttribute('data-hs-anchor'), 'heading has a text anchor (editable leaf)');
 const beforeText = posted.length;
-h1.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
-await new Promise((r) => setTimeout(r, 30));
+sequence(h1);h1.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+await new Promise((r) => setTimeout(r, 400));
 const stText = lastOfType('suggestTarget');
 ok(posted.length > beforeText && stText, 'clicking a text leaf posts a suggestTarget');
-ok(stText.isText === true, 'text leaf reports isText:true (rewrite available)');
-ok(stText.anchor === h1.getAttribute('data-hs-anchor'), 'text leaf reports its existing text anchor (not a new c: one)');
+ok(stText.isText === false, 'single click selects element, never auto rewrites');
+ok(stText.anchor.startsWith('c2:'), 'element click reports c2: anchor; text drag has separate context');
 
 // --- Comment anchor STABILITY across a re-anchor -----------------------------
 const cardAnchorBefore = card.getAttribute('data-hs-comment-anchor');

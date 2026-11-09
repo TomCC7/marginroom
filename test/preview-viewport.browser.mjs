@@ -68,7 +68,7 @@ try{
   if(interactive){
    await page.selectOption('#preview-mode','phone');await frame.waitForFunction(()=>innerWidth===390);await page.selectOption('#preview-zoom','fit');
    await clickInside('#modal');if(out)await page.screenshot({path:out+'/modal-click.png'});await frame.waitForFunction(()=>document.querySelector('dialog').open);const modal=await frame.locator('dialog').boundingBox();assert(modal);await clickInside('#close');
-   await page.locator('.dock [data-mode="suggest"]').click();await clickInside('#repeat');await page.locator('#composer').waitFor({state:'visible'});await page.locator('#comment-body').fill('unsent retained composer');
+   await page.locator('.dock [data-mode="suggest"]').click();await clickInside('#repeat');await page.locator('#mobile-add-comment').click();await page.locator('#composer').waitFor({state:'visible'});await page.locator('#comment-body').fill('unsent retained composer');
    await page.selectOption('#preview-mode','desktop');await page.locator('#preview-rotate').evaluate(b=>b.click());assert.equal(await page.locator('#comment-body').inputValue(),'unsent retained composer');await page.locator('#cancel-comment').click();
   }
   const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('marginroom.preview.v1:synthetic')));await page.reload();await page.waitForFunction(()=>document.body.classList.contains('preview-device'));

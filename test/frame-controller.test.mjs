@@ -1,3 +1,5 @@
+import {elementReview} from '../public/element-review.js';
+import {singleBlockRange} from '../public/review-ranges.js';
 // Regression guard for the "cannot edit any of the text" bug (two parts).
 //
 // The interactive-doc frame is sandbox="allow-scripts" (opaque origin), where
@@ -48,7 +50,7 @@ const posted = [];
 win.parent = { postMessage: (msg) => posted.push(msg) };
 
 // Run the controller IIFE inside the window.
-win.eval(controller);
+win.eval('const elementReview='+elementReview.toString()+';const singleBlockRange='+singleBlockRange.toString()+';'+controller);
 
 // boot() is scheduled via load event + setTimeout(300). Fire load, then wait.
 win.dispatchEvent(new win.Event('load'));
@@ -60,6 +62,8 @@ ok(poisonedCalled === 0, 'controller IGNORES a hostile crypto.subtle.digest (use
 
 // --- (B) INLINE text is editable, not just block leaves ---
 const editable = [...win.document.querySelectorAll('[data-hs-editable]')];
+ok(editable.every(el=>!el.hasAttribute('contenteditable')), 'fresh controller defaults to Browse, never auto edits');
+win.dispatchEvent(new win.MessageEvent('message',{data:{type:'setMode',mode:'edit'},source:win.parent}));
 ok(editable.every((el) => el.getAttribute('contenteditable') === 'true'),
    'every editable element is contenteditable');
 const textOf = (t) => editable.find((el) => el.textContent.replace(/\s+/g, ' ').trim() === t);

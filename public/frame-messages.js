@@ -36,7 +36,9 @@ export function parseSuggestTarget(m) {
   return {
     anchor: m.anchor,
     isText: !!m.isText,
+    parent: m.parent===true, child: m.child===true,
     snippet,
+    quote: m.isText && typeof m.quote==='string' ? m.quote.slice(0,100000) : snippet,
     rect: { left: m.rect.left, top: m.rect.top, width: m.rect.width, height: m.rect.height },
   };
 }

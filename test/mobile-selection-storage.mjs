@@ -26,7 +26,7 @@ try{
  const page=await ctx.newPage();await page.goto(base+'/?key='+key);await page.waitForFunction(()=>!location.search.includes('key='));
  await page.locator('input[type=file]').first().setInputFiles({name:'mobile-synthetic.html',mimeType:'text/html',buffer:Buffer.from('<h1>Synthetic selection</h1><p id="repeat">same same 😀 same same.</p>')});
  await page.waitForURL('**/viewer.html?doc=mobile-synthetic');await page.waitForFunction(()=>document.querySelector('#hs-status')?.textContent.includes('已同步'));
- await page.waitForFunction(()=>document.querySelector('iframe')?.dataset.previewScale);const frame=page.frames()[1];
+ await page.waitForFunction(()=>document.querySelector('iframe')?.dataset.previewScale);const frame=page.frames()[1];await page.locator('.dock [data-mode="suggest"]').tap();
  await frame.locator('#repeat').evaluate(el=>{const r=document.createRange();r.setStart(el.firstChild,18);r.setEnd(el.firstChild,22);getSelection().removeAllRanges();getSelection().addRange(r)});
  const action=page.locator('#mobile-add-comment');await action.waitFor({state:'visible'});
  await action.dispatchEvent('pointerdown',{pointerType:'touch'});await frame.evaluate(()=>getSelection().removeAllRanges());await page.waitForTimeout(180);await action.dispatchEvent('click');
@@ -37,10 +37,7 @@ try{
  assert.equal(result.suggestions.length,1);const record=result.suggestions[0];assert.equal(record.quote,'same');assert.equal(record.range_start,18);assert.equal(record.range_end,22);assert.equal(record.body,'Disposable precise quote');assert.equal(submits,1);
  await page.locator('.close-drawer').tap();await frame.locator('.marker').tap();await page.locator('.discussion').waitFor({state:'visible'});assert.equal(await page.locator('.discussion').isVisible(),true);
  await page.locator('.close-drawer').tap();
- // Existing paragraph suggestion remains protected; selecting it cannot open a comment.
- await page.locator('.dock [data-mode="suggest"]').tap();await frame.waitForFunction(()=>document.querySelector('#repeat').contentEditable==='true');await frame.locator('#repeat').focus();await page.keyboard.press('End');await page.keyboard.insertText(' draft');await page.locator('#draft-actions').waitFor({state:'visible'});
- await frame.locator('#repeat').evaluate(el=>{const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r)});await page.waitForTimeout(180);
- assert.equal(await action.isVisible(),false);assert.equal(await page.locator('#draft-actions').isVisible(),true);
- await page.locator('#cancel-draft').click();
+ // Explicit suggestion composer, not source contenteditable, owns the draft.
+ await frame.locator('#repeat').evaluate(el=>{const r=document.createRange();r.setStart(el.firstChild,0);r.setEnd(el.firstChild,4);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'))});await page.locator('#mobile-suggest').tap();await page.locator('#comment-body').fill('draft');await page.waitForTimeout(150);assert.equal(await action.isVisible(),false);assert.equal(await page.locator('#comment-body').inputValue(),'draft');await page.locator('#cancel-comment').click();
  console.log('PASS disposable DB: exact repeated quote + UTF-16 offsets 18..22 after touch/collapse; one POST for double click; existing marker tap; paragraph draft protected.');
 }catch(e){console.error(output);throw e}finally{await browser?.close();if(child){child.kill('SIGTERM');await new Promise(r=>child.once('exit',r))}await rm(dir,{recursive:true,force:true})}

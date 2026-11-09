@@ -6,14 +6,14 @@ import { icon, ICON_NAMES } from '../public/icons.js';
 const doc = new JSDOM(readFileSync(new URL('../public/viewer.html', import.meta.url), 'utf8')).window.document;
 for (const scope of ['.topbar', '.dock']) {
   const buttons = [...doc.querySelectorAll(`${scope} [data-mode]`)];
-  assert.deepEqual(buttons.map(b => b.dataset.mode), ['read', 'edit', 'suggest']);
+  assert.deepEqual(buttons.map(b => b.dataset.mode), ['read', 'suggest']);
   assert.ok(buttons.every(b => b.textContent.trim()), 'every mode has a label');
   assert.ok(buttons.every(b => b.tagName === 'BUTTON'));
 }
 for (const id of ['nav-toggle', 'nav-close', 'nav-shade', 'toc', 'nav-article', 'nav-comments', 'name-btn', 'share-btn', 'more-btn', 'hs-docname', 'hs-status', 'hs-doc-root', 'discussion', 'threads', 'annotation-list', 'toast', 'composer', 'comment-body', 'send-comment', 'cancel-comment']) {
   assert.equal(doc.querySelectorAll(`#${id}`).length, 1, `${id} is uniquely addressable`);
 }
-for (const id of ['popover', 'shade', 'composer', 'selection-action', 'draft-actions', 'annotation-list']) assert.equal(doc.getElementById(id).hidden, true, `${id} starts hidden`);
+for (const id of ['popover', 'shade', 'composer', 'selection-context', 'draft-actions', 'annotation-list']) assert.equal(doc.getElementById(id).hidden, true, `${id} starts hidden`);
 assert.equal(doc.getElementById('composer').getAttribute('role'), 'dialog');
 assert.equal(doc.getElementById('composer').getAttribute('aria-modal'), 'true');
 assert.ok(doc.querySelector('.discussion-head .close-drawer'));

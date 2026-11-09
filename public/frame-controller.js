@@ -21,6 +21,25 @@
   'use strict';
 
   var PARENT = window.parent;
+  // Installed synchronously before source scripts; page document capture cannot
+  // run an action before the annotation gate. Native down defaults are retained.
+  var picker = elementReview({root:document.documentElement,hash:sha256hex,
+    enabled:function(){return currentMode==='suggest';},
+    onPick:function(t){frameHadText=false;post(Object.assign({type:'suggestTarget'},t));},
+    onCancel:function(){post({type:'targetCleared'});},
+    onText:publishText
+  });
+  var frameHadText=false;
+  async function publishText(){
+    if(currentMode!=='suggest')return;
+    var s=getSelection();if(!s||s.isCollapsed){if(frameHadText){frameHadText=false;post({type:'targetCleared'});}return;}
+    var raw=s.getRangeAt(0),snapshot=s.toString(),block=singleBlockRange(raw),r=block?block.range:raw,el=block?block.el:(raw.startContainer.nodeType===1?raw.startContainer:raw.startContainer.parentElement);
+    if(!el||el===document.body)return;var b=r.getBoundingClientRect(),quote=r.toString(),anchor=await picker.anchor(el);
+    if(currentMode!=='suggest'||getSelection().toString()!==snapshot)return;
+    frameHadText=true;post({type:'suggestTarget',anchor:anchor,isText:true,snippet:quote,quote:quote,rect:{left:b.left,top:b.top,width:b.width,height:b.height}});
+  }
+  document.addEventListener('selectionchange',publishText);
+
 
   // ---- anchoring (mirror of public/anchoring.js; keep in sync) ----------------
   var BLOCK_TAGS = new Set([
@@ -371,10 +390,14 @@
   // remove OUR bookkeeping so it doesn't leak into the file the user keeps.
   function serialize() {
     var clone = document.documentElement.cloneNode(true);
-    var marked = clone.querySelectorAll('[data-hs-anchor],[data-hs-editable],[data-hs-generated],[data-hs-edited],[contenteditable],[spellcheck]');
+    clone.querySelectorAll('[data-review-overlay],#hs-frame-style').forEach(function(n){n.remove();});
+    clone.querySelectorAll('[data-hs-straytext]').forEach(function(n){n.replaceWith.apply(n,Array.from(n.childNodes));});
+    clone.querySelectorAll('.hs-frame-suggesting,.hs-frame-flash').forEach(function(n){n.classList.remove('hs-frame-suggesting','hs-frame-flash');});
+    var marked = clone.querySelectorAll('[data-hs-comment-anchor],[data-hs-anchor],[data-hs-editable],[data-hs-generated],[data-hs-edited],[contenteditable],[spellcheck]');
     for (var i = 0; i < marked.length; i++) {
       var el = marked[i];
       el.removeAttribute('data-hs-anchor');
+      el.removeAttribute('data-hs-comment-anchor');
       el.removeAttribute('data-hs-editable');
       el.removeAttribute('data-hs-generated');
       el.removeAttribute('data-hs-edited');
@@ -397,14 +420,16 @@
     else if (m.type === 'setMode') { setMode(m.mode); }
     else if (m.type === 'serialize') { post({ type: 'snapshot', html: serialize() }); }
     else if (m.type === 'flashComment') { flashComment(m.anchor); }
+    else if (m.type === 'targetNavigate' && currentMode==='suggest') { picker.navigate(m.direction); }
+    else if (m.type === 'clearTarget') { picker.clear(); }
   });
 
   // Parent asked to reveal a commented element (panel "goto"). Resolve the anchor to
   // a live element, scroll it into view, and flash it. If we can't find it (the doc
   // re-rendered and the element is gone), tell the parent so it can label the card.
-  function flashComment(anchor) {
+  async function flashComment(anchor) {
     if (typeof anchor !== 'string') return;
-    var el = commentMap.get(anchor)
+    var el = anchor.startsWith('c2:') ? await picker.reveal(anchor) : commentMap.get(anchor)
       || (anchor.charAt(0) === 'c'
             ? document.querySelector('[data-hs-comment-anchor="' + cssEscape(anchor) + '"]')
             : document.querySelector('[data-hs-anchor="' + cssEscape(anchor) + '"]'));
@@ -455,11 +480,13 @@
   //   'use'/'view'/other -> NOT editable AND no suggest capture, so the doc's own
   //                links/tabs/buttons work normally ("make it interactive").
   function setMode(mode) {
+    var previous = currentMode;
     currentMode = mode === 'edit' ? 'edit' : (mode === 'suggest' ? 'suggest' : 'view');
     applyModeToAll(currentMode === 'edit');
     if (document.body) {
       document.body.classList.toggle('hs-frame-suggesting', currentMode === 'suggest');
     }
+    if (previous !== currentMode && currentMode !== 'suggest') picker.clear();
     if (currentMode === 'suggest') {
       // Assign comment anchors so a click can name its target immediately.
       assignCommentAnchorsFrame();
@@ -513,19 +540,14 @@
     if (document.getElementById('hs-frame-style')) return;
     var s = document.createElement('style');
     s.id = 'hs-frame-style';
-    s.textContent =
-      'body.hs-frame-suggesting * { cursor: crosshair !important; }'
-      + 'body.hs-frame-suggesting *:hover { outline: 2px solid rgba(122,79,156,.55) !important;'
-      + ' outline-offset: 1px; }'
-      + '.hs-frame-flash { animation: hsFrameFlash 1.1s ease; }'
-      + '@keyframes hsFrameFlash { 0%,100%{ box-shadow:none; } 30%{ box-shadow:0 0 0 3px rgba(217,166,46,.6); } }';
+    s.textContent = '.hs-frame-flash { outline: 3px solid #d9a62e; }';
     (document.head || document.documentElement).appendChild(s);
   }
 
   // ---- boot / rescan ----------------------------------------------------------
   var origSet = new Set();     // anchors present in the ORIGINAL markup bytes
   var origText = {};           // anchor -> original rendered text (for source-patch)
-  var currentMode = 'edit';    // last mode the parent asked for
+  var currentMode = 'view';    // last mode the parent asked for
   var scanning = false;        // re-entrancy guard while (re)anchoring
   var rescanPending = false;   // a mutation arrived mid-scan; scan again after
 
@@ -585,7 +607,7 @@
     origText = {};
     injectSuggestStyles();
     wireEditing();
-    wireSuggesting();
+    // Shared picker owns annotation capture (legacy helpers retained for c: anchors).
     await scan(true);
     observeMutations();
   }

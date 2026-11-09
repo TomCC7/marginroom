@@ -22,7 +22,7 @@ try{
  });
  // Legacy saved Article must migrate to Auto; selection uses the unified iframe.
  await ctx.addInitScript(()=>{try{if(window===top)localStorage.setItem('marginroom.preview.v1:synthetic',JSON.stringify({mode:'article'}))}catch{}});
- const page=await ctx.newPage();await openFixture(page);
+ const page=await ctx.newPage();await openFixture(page);await page.locator(width<600?'.dock [data-mode="suggest"]':'.topbar [data-mode="suggest"]').click();
  const mobile=width<600, action=page.locator(mobile?'#mobile-add-comment':'#selection-action');
  assert.equal(await page.locator('#mobile-selection').isVisible(),false);
  assert.equal(await page.locator('#selection-action').isVisible(),false);

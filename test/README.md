@@ -118,3 +118,14 @@ source borders, rail list/filter/jump, iframe identity/input/state and unsent dr
 at 1440/1024/1700/360/390. It also tests legacy/corrupt/denied storage and simulated
 keyboard geometry. `CHROME_ARTIFACTS=/absolute/output` saves native viewport
 captures and measured metrics; no real device/OS keyboard fidelity is implied.
+
+
+Browse/Annotate contract: `npm run test:selection` now runs native triple-click,
+mobile press-snapshot, real mobile SQLite, element/static dashboard and real
+element SQLite suites. `element-review.test.mjs` covers the ordinary authority
+picker, identity/fingerprint ambiguity and no detached-node retargeting.
+The list-suggest/list-selection-storage scripts are migrated to explicit context
+submission too: UTF16 offsets, native double/triple quotes, pending locks, rich
+source/cross-block refusal, sibling/inline-shell integrity and actual export
+assertions remain exercised. IME belongs to the replacement composer; Annotate
+never grants contenteditable or treats typing/paste as source mutation.
