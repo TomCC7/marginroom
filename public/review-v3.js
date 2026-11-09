@@ -45,7 +45,7 @@ function setView(next){
  if(draft){toast('请先提交或取消当前段落草稿');return}
  document.body.classList.toggle('list-view',next==='list');$('#annotation-list').hidden=next!=='list';
  $$('[data-view]').forEach(b=>{b.classList.toggle('selected',b.dataset.view===next);b.setAttribute('aria-pressed',String(b.dataset.view===next))});
- $('#nav-article').classList.toggle('active',next==='article');$('#nav-comments').classList.toggle('active',next==='list');if(next==='list'){closeDiscussion();renderList();window.scrollTo(0,0)}
+ $('#nav-article').classList.toggle('active',next==='article');$('#nav-comments').classList.toggle('active',next==='list');if(next==='list'){closeDiscussion();renderList();window.scrollTo(0,0)}syncDiscussion()
 }
 function closeNav(){document.body.classList.remove('nav-open');$('#nav-shade').hidden=true;if(innerWidth<=1100)$('#nav-toggle').setAttribute('aria-expanded','false')}
 function toggleNav(force){
@@ -53,14 +53,17 @@ function toggleNav(force){
  else{const open=force??!document.body.classList.contains('nav-open');document.body.classList.toggle('nav-open',open);$('#nav-shade').hidden=!open;$('#nav-toggle').setAttribute('aria-expanded',String(open))}
  $('#nav-toggle').setAttribute('aria-label',$('#nav-toggle').getAttribute('aria-expanded')==='true'?'收起文稿导航':'展开文稿导航');
 }
-function closeDiscussion(){document.body.classList.remove('drawer-open');document.body.classList.add('drawer-closed')}
+function discussionOpen(){return getComputedStyle($('#discussion')).display!=='none'}
+function syncDiscussion(){const open=discussionOpen();$$('.show-discussion,.comment-toggle').forEach(b=>{b.setAttribute('aria-expanded',String(open));b.setAttribute('aria-controls','discussion');b.setAttribute('aria-label',open?'收起批注':'打开批注');b.classList.toggle('selected',open)})}
+function toggleDiscussion(){if(draft)return toast('请先提交或取消草稿');if(discussionOpen())closeDiscussion();else openDiscussion()}
+function closeDiscussion(){document.body.classList.remove('drawer-open');document.body.classList.add('drawer-closed');syncDiscussion()}
 // Scroll only the discussion viewport, never its article/window ancestors.
 function scrollThread(id){
  const card=$('#thread-'+CSS.escape(id)), viewport=$('#threads');if(!card)return;
  const box=card.getBoundingClientRect(), view=viewport.getBoundingClientRect();
  if(box.top<view.top||box.bottom>view.bottom)viewport.scrollTop+=box.top-view.top;
 }
-function openDiscussion(id){clearSelection();if(draft)return toast('请先提交或取消草稿');setView('article');if(id){active=id;filter='all';$$('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===filter))}document.body.classList.remove('drawer-closed');document.body.classList.add('drawer-open');renderThreads();if(id)requestAnimationFrame(()=>scrollThread(id))}
+function openDiscussion(id){clearSelection();if(draft)return toast('请先提交或取消草稿');setView('article');if(id){active=id;filter='all';$$('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===filter))}document.body.classList.remove('drawer-closed');document.body.classList.add('drawer-open');syncDiscussion();renderThreads();if(id)requestAnimationFrame(()=>scrollThread(id))}
 function locate(id,open=true){
  const s=records.find(x=>x.id===id);if(!s)return;if(open)openDiscussion(id);else if(innerWidth<=1100)closeDiscussion();
  $$('.record-focus').forEach(n=>n.classList.remove('record-focus'));
@@ -277,7 +280,7 @@ async function main(){
  try{if(!await bridge.init(docId))return;captureClean();buildToc();paintName();applyMode();await refresh();staticPreview=state().interactive?null:createStaticPreview({docId,bridge,root,onMessage:staticMessage,getMode:()=>mode});initPreview({docId,bridge,staticPreview});status('已连接 · 数据已同步')}
  catch(e){status('加载失败：'+e.message,'error');return}
  $('#nav-toggle').onclick=()=>toggleNav();$('#nav-close').onclick=()=>{toggleNav(false);closeNav()};$('#nav-shade').onclick=closeNav;$('#nav-article').onclick=()=>{setView('article');closeNav();closeDiscussion()};$('#nav-comments').onclick=()=>{closeNav();setView('list')};
- $$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$$('[data-mode]').forEach(b=>b.onclick=()=>changeMode(b.dataset.mode));$$('.show-discussion,.comment-toggle').forEach(b=>b.onclick=()=>openDiscussion());$('.close-drawer').onclick=closeDiscussion;
+ $$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$$('[data-mode]').forEach(b=>b.onclick=()=>changeMode(b.dataset.mode));$$('.show-discussion,.comment-toggle').forEach(b=>b.onclick=toggleDiscussion);$('.close-drawer').onclick=closeDiscussion;
  $$('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;$$('[data-filter]').forEach(x=>x.classList.toggle('selected',x===b));renderThreads()});
  $$('[data-status]').forEach(b=>b.onclick=()=>{listStatus=b.dataset.status;$$('[data-status]').forEach(x=>x.classList.toggle('selected',x===b));renderList()});
  $$('[data-type]').forEach(b=>b.onclick=()=>{listType=b.dataset.type;$$('[data-type]').forEach(x=>x.classList.toggle('selected',x===b));renderList()});
@@ -304,6 +307,7 @@ async function main(){
  document.addEventListener('pointerdown',e=>{if(!e.target.closest('#popover,#name-btn,#share-btn,#more-btn'))$('#popover').hidden=true});
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(draft)cancelDraft();else{closeComposer();closeDiscussion();closeNav();$('#popover').hidden=true;$('#hs-versions').classList.remove('open')}}if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&draft){e.preventDefault();submitDraft()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&draft){e.preventDefault();undoDraft(e.shiftKey)}});
  window.addEventListener('beforeunload',e=>{if(draft||editTimers.size||editInflight||[...editBuffers.values()].some(b=>b.seq>b.saved)){e.preventDefault();e.returnValue='尚有未提交修改'}});
+ syncDiscussion();matchMedia('(max-width:1100px)').addEventListener('change',syncDiscussion);
  if(innerWidth<=1100)$('#nav-toggle').setAttribute('aria-expanded','false');setInterval(poll,5000);
 }
 main();

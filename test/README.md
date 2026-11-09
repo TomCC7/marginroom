@@ -9,6 +9,7 @@ npm run test:unit
 npm run test:api
 npm run browser:install     # download the Chromium version matching playwright-core
 npm run test:browser        # route-isolated frontend regressions, no server needed
+npm run test:toggle         # bounded 1440/390 discussion toggle + force-open/draft/state safety
 npm run test:preview        # static bridge + true viewport/state matrix + disposable DB
 npm run test:security       # real isolated negative/security probes (Chromium required)
 npm run test:acceptance     # real npm start + browser/API upload/review/export/restart

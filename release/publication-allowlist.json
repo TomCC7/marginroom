@@ -57,6 +57,7 @@
     "test/anchoring.test.mjs",
     "test/api.test.mjs",
     "test/container-smoke.mjs",
+    "test/discussion-toggle.browser.mjs",
     "test/feedback.test.mjs",
     "test/fixtures/synthetic-motion.gif",
     "test/formats.test.mjs",

@@ -23,6 +23,8 @@
 @media(max-width:1100px){.discussion,.nav{top:70px}#nav-shade{top:70px}}
 @media(max-width:600px){:root{--hs-bar-h:61px}.workspace{min-height:calc(100dvh - 61px)}.nav,#nav-shade{top:61px}.discussion{top:155px}.draft-actions{bottom:80px}.paper{padding:29px 25px 35px}#hs-doc-root{font-size:17px}}
 
+/* Mirror the actual panel state on both native discussion buttons. */
+.show-discussion.selected,.comment-toggle.selected{background:var(--accent-soft);color:var(--accent)}
 /* Keep discussion chrome outside its independent scrolling content. */
 .discussion{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .discussion-head,.discussion>.filters{flex-shrink:0}
