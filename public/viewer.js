@@ -86,7 +86,7 @@ function warn(msg) {
 }
 
 // Transient toast (bottom-center) for one-off notices that must NOT clobber the
-// persistent sandbox banner — e.g. clicking a nav link to a companion file that
+// real document warnings — e.g. clicking a nav link to a companion file that
 // wasn't uploaded. Auto-dismisses; a repeat message just resets the timer.
 let flashTimer = null;
 function flashNote(msg) {
@@ -1272,10 +1272,8 @@ async function bootInteractive(data) {
   frame = f;
 
   window.addEventListener('message', onFrameMessage);
-  // Honest banner: interactive docs edit markup text only.
-  warn('This document runs its own JavaScript inside a sandboxed frame. '
-    + 'You can edit text that’s part of the page; text the page generates with JavaScript is shown but not editable here. '
-    + 'Download retains the original active content with your text edits. Only open exported HTML from authors you trust.');
+  // Standing capability/security guidance lives in README, not document chrome.
+  warn('');
   setStatus('', 'Rendering…');
   if (ready) {
     const ok = await ready;

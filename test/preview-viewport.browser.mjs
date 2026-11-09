@@ -18,6 +18,7 @@ try{
   if(interactive)await ctx.route('**/api/raw/synthetic',r=>r.fulfill({json:{rawHtml:dashboard}}));
   await ctx.addInitScript(()=>{if(window===top){window.__previewLoads=0;document.addEventListener('load',e=>{if(e.target.tagName==='IFRAME')window.__previewLoads++},true)}});
   const page=await ctx.newPage();page.setDefaultTimeout(10000);await openFixture(page);
+  if(interactive){assert.equal(await page.locator('#hs-warn').textContent(),'');assert.equal(await page.locator('#hs-warn').evaluate(n=>n.getBoundingClientRect().height),0,'no standing sandbox explanation or reserved space');const readme=await (await import('node:fs/promises')).readFile(new URL('../README.md',import.meta.url),'utf8');assert.match(readme,/Runtime-generated text cannot be reliably written back/);assert.match(readme,/Only open exported HTML from authors you trust/)}
   assert.equal(await page.locator('#preview-mode').inputValue(),'auto');
   await page.selectOption('#preview-mode','auto');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
   if(out){const file=`${interactive?'interactive':'static'}-auto.png`;await page.screenshot({path:out+'/'+file});screenshots.push({file,mode:'auto',host:await page.viewportSize()})}

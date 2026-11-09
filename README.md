@@ -70,7 +70,8 @@ For confidential documents, put the instance behind a login gate or private netw
 - Text suggestions work within one ordinary paragraph. Resolve a pending suggestion before proposing another in the same paragraph. Grouped content, cross-paragraph selections, and interactive pages support comments only in the current review interface.
 - Paragraph edits use plain text and can remove inline formatting such as links or bold text in that paragraph.
 - Static exports bundle uploaded `<img src>` images. Remote images, CSS backgrounds, `<picture>` sources, and dependencies of interactive pages are not bundled. Uploaded image filenames must be unique across the instance.
-- Downloaded interactive HTML can run its own scripts. Exports do not have the viewer's sandbox protection. Review untrusted HTML with care.
+- Interactive imports can run their own scripts inside an isolated sandbox; this does not grant them access to the review application's origin. Runtime-generated text cannot be reliably written back to the original source, so it remains comment-only where unsupported.
+- Downloads retain the original active content and do not inherit the viewer's sandbox protection. Only open exported HTML from authors you trust.
 - Browser tests use Chromium. Real iPhone and Safari behavior still needs testing.
 
 ## Development
