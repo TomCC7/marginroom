@@ -7,9 +7,14 @@ assert(source&&destination,'usage: node scripts/stage-continuous-candidate.mjs C
 const current=path.resolve(source),out=path.resolve(destination);
 assert(out!==current&&!out.startsWith(current+path.sep)&&out.startsWith(repo+'/review-artifacts/'),'independent review-artifacts candidate required');
 assert(!await lstat(out).then(()=>true).catch(e=>{if(e.code==='ENOENT')return false;throw e}),'new candidate required');
-const baseline='a881608b4775b9e15865f7e798fe559e67af4cd5',git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
+const staleOnly=process.env.STALE_ONLY==='1';
+const baseline=staleOnly?'534d1451a31cb82bceb9a721f78b98bd7da5a3fc':'a881608b4775b9e15865f7e798fe559e67af4cd5',git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 assert.equal(git('status','--porcelain'),'','clean exact source commit required');
-const overlay=['db.js','server.js','revision-service.js','public/annotation-affordances.js','public/inline-draft.js','public/review-v3.js','public/revision-diff.js','public/static-frame-controller.js','public/static-preview.js'].sort();
+const overlay=(staleOnly?['db.js','server.js','revision-service.js','public/annotation-affordances.js','public/review-v3.js','public/static-frame-controller.js']:['db.js','server.js','revision-service.js','public/inline-draft.js','public/review-v3.js','public/revision-diff.js','public/static-frame-controller.js','public/static-preview.js']).sort();
+if(staleOnly){
+ const approved=path.resolve('review-artifacts/continuous/candidate-fresh-run91');
+ for(const f of ['db.js','server.js','revision-service.js','public/annotation-affordances.js','public/inline-draft.js','public/review-v3.js','public/revision-diff.js','public/static-frame-controller.js','public/static-preview.js'])assert((await readFile(path.join(current,f))).equals(await readFile(path.join(approved,f))),'CURRENT is not the approved continuous runtime: '+f);
+}
 assert.deepEqual(git('diff','--name-only',baseline,'HEAD','--','public','db.js','server.js','revision-service.js').split('\n').filter(Boolean).sort(),overlay);
 const roots=['db.js','server.js','source-patch.js','revision-service.js','guardrails.js','feedback-api.js','package.json','package-lock.json'];
 const sha=b=>createHash('sha256').update(b).digest('hex');
