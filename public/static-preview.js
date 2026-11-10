@@ -1,7 +1,7 @@
 // Static previews retain the Article DOM as the sole storage/anchor authority.
 import {elementReview} from './element-review.js';
 import {sha256hex} from './anchoring.js';
-import {singleBlockRange} from './review-ranges.js';
+import {singleBlockRange,difference} from './review-ranges.js';
 import {inlineDraftController,inlineDraftCSS} from './inline-draft.js';
 import {annotationAffordances} from './annotation-affordances.js';
 export function sanitizeStatic(doc) {
@@ -42,7 +42,7 @@ export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'r
   const config=parsed.createElement('script');config.textContent=`window.__staticPreviewToken=${JSON.stringify(token)}`;parsed.body.append(config);
   const hashSource=await fetch(new URL('./anchoring.js',import.meta.url)).then(r=>r.text());
   const controller=await fetch(new URL('./static-frame-controller.js',import.meta.url)).then(r=>{if(!r.ok)throw Error('Static preview controller unavailable');return r.text()});
-  const script=parsed.createElement('script');script.textContent=`{${hashSource.replace(/export /g,'')}\nconst annotationAffordances=${annotationAffordances.toString()};const inlineDraftController=${inlineDraftController.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};\n${controller}\n}`;parsed.body.append(script);
+  const script=parsed.createElement('script');script.textContent=`{${hashSource.replace(/export /g,'')}\nconst annotationAffordances=${annotationAffordances.toString()};const difference=${difference.toString()};const inlineDraftController=${inlineDraftController.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};\n${controller}\n}`;parsed.body.append(script);
   const style=parsed.createElement('style');style.textContent=inlineDraftCSS+'[data-review-mark]{background:#e0f0e5;cursor:pointer}[data-review-del]{background:#ffe3df;color:#92584e}[data-review-ins]{background:#def1e5;color:#285d48}.record-focus{outline:1px solid #76a68b}';parsed.head.append(style);
   frame=document.createElement('iframe');frame.className='hs-static-preview';frame.title='文稿设备预览';frame.setAttribute('sandbox','allow-scripts');frame.hidden=true;
   frame.srcdoc='<!doctype html>'+parsed.documentElement.outerHTML;root.append(frame);
