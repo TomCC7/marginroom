@@ -18,6 +18,7 @@
  function reveal(el){for(let p=el.parentElement;p&&p!==document.body&&p!==document.documentElement;p=p.parentElement){const r=el.getBoundingClientRect(),b=p.getBoundingClientRect(),css=getComputedStyle(p);if(/auto|scroll/.test(css.overflowY)&&p.scrollHeight>p.clientHeight)p.scrollTop+=r.top-b.top-(p.clientHeight-r.height)/2;if(/auto|scroll/.test(css.overflowX)&&p.scrollWidth>p.clientWidth)p.scrollLeft+=r.left-b.left-(p.clientWidth-r.width)/2}const r=el.getBoundingClientRect();scrollBy(r.left-(innerWidth-r.width)/2,r.top-(innerHeight-r.height)/2);const b=el.getBoundingClientRect();send({type:'located',rect:{left:b.left,top:b.top,width:b.width,height:b.height}})}
  window.addEventListener('message',e=>{
   const m=e.data;if(e.source!==parent||!m||m.channel!=='static-preview'||m.token!==token)return;
+  if(m.type==='reading-restore'){const p=sanitizeReading(m.position);if(p){readingPosition('restore',p);send({type:'reading-position',position:readingPosition('capture')})}return}
   if(m.type==='sync'){const previous=mode;mode=m.mode;if(previous!==mode&&mode!=='suggest')picker.clear()}
   if(m.type==='targetNavigate'&&mode==='suggest'&&!inline.active)picker.navigate(m.direction);
   if(m.type==='clearTarget')picker.clear();
@@ -55,5 +56,6 @@
  document.addEventListener('paste',e=>{const el=e.target.closest('[data-hs-anchor][contenteditable="true"]');if(!el)return;e.preventDefault();const t=e.clipboardData.getData('text/plain');if(!/[\r\n]/.test(t)&&editRange(el))document.execCommand('insertText',false,t)});
  document.addEventListener('click',e=>{const t=e.target.closest('[data-thread],[data-review-block-thread]');if(t&&(t.dataset.thread||t.dataset.reviewBlockThread)){send({type:'thread',id:t.dataset.thread||t.dataset.reviewBlockThread});return}const image=e.target.closest('[data-hs-comment-anchor]');if(image)send({type:'comment',anchor:image.dataset.hsCommentAnchor})});
  document.addEventListener('keydown',e=>{if(inline.active)return;if(e.key==='Escape'||(e.ctrlKey||e.metaKey)&&['Enter','z','Z'].includes(e.key)){e.preventDefault();send({type:'key',key:e.key,shift:!!e.shiftKey})}});
+ let readingTimer;document.addEventListener('scroll',()=>{clearTimeout(readingTimer);readingTimer=setTimeout(()=>send({type:'reading-position',position:readingPosition('capture')}),100)},true);
  send({type:'ready'});
 })();

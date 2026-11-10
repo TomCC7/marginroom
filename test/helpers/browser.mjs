@@ -30,6 +30,7 @@ export async function isolate(context, fixture) {
     }
     if (url.pathname.startsWith('/api/')) {
       if (url.pathname === '/api/assets') return route.fulfill({ json: { assets: [] } });
+      if (url.pathname.startsWith('/api/doc-meta/')) return route.fulfill({ json: { id: fixture.doc.id, title: fixture.doc.id, canDelete: !!fixture.doc.isDocOwner, isOwned: !!fixture.doc.isDocOwner, isAdmin: false, pendingCount: fixture.doc.canSuggest ? fixture.records.filter(record => record.status === 'open').length : null, activityAt: null } });
       if (url.pathname.startsWith('/api/doc/')) return route.fulfill({ json: fixture.doc });
       if (url.pathname.startsWith('/api/suggestions/')) return route.fulfill({ json: { suggestions: fixture.records } });
       errors.push(`Unexpected API ${url.pathname}`);

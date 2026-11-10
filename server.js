@@ -5,6 +5,7 @@
 // SQLite. Identity is owner-vs-guest (HMAC-signed cookie, OWNER_KEY promotes):
 // anyone may suggest, but editing/restoring/accepting is gated to the doc owner.
 import express from 'express';
+import { parse } from 'parse5';
 import { readFile, writeFile, readdir, access, mkdir } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
@@ -149,6 +150,23 @@ async function listDocs() {
     .sort();
 }
 
+// Parse metadata only: no DOM execution, resource fetching, or imported markup.
+// HTML5 raw-text contexts/entities must agree with the browser's document.title.
+function docTitle(html, id) {
+  const tree = parse(html);
+  let found = null;
+  const stack = [tree];
+  while (stack.length) {
+    const node = stack.pop();
+    if (node.tagName === 'title' && node.namespaceURI === 'http://www.w3.org/1999/xhtml') { found = node; break; }
+    const children = node.childNodes || [];
+    for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
+  }
+  const title = (found?.childNodes || []).filter(node => node.nodeName === '#text').map(node => node.value).join('')
+    .replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 300).replace(/[\uD800-\uDBFF]$/, '');
+  return title || id;
+}
+
 // Assets that a deliverable references (banner images, etc.) are stored flat in
 // docs/assets/ and served read-only from /docs/assets. An asset filename is a
 // bare basename — no directory parts, no traversal, and an image extension only.
@@ -273,11 +291,68 @@ export function createApp(db, opts = {}) {
     noStore(res);
     const all = await listDocs();
     const { token, isOwner } = req.caller;
+    if (req.query.scope === 'mine') {
+      // Unlike the legacy discovery list, seeds and admin-accessible documents
+      // are not implicitly owned. Select only this token's persisted owner rows.
+      const owned = new Set(db.prepare('SELECT doc_id FROM doc_owners WHERE owner_token = ?').all(token).map(row => row.doc_id));
+      const metadata = [];
+      for (const id of all.filter(id => owned.has(id))) {
+        const html = await readDocHtml(id);
+        if (html != null) {
+          const titleHtml = await readRawHtml(id) ?? html;
+          metadata.push(docMetadata(req, id, titleHtml));
+        }
+      }
+      return res.json({ docs: metadata.map(entry => entry.id), metadata });
+    }
     if (isOwner) return res.json({ docs: all });
     const owners = ownerMap(db);
     const visible = all.filter((id) => !(id in owners) || owners[id] === token);
     res.json({ docs: visible });
   });
+
+  // Exact-link lookup has the same public reading policy and ID bounds as
+  // /api/doc. It does not add the document to another caller's mine listing.
+  app.get('/api/doc-meta/:id', readLimiter, async (req, res) => {
+    noStore(res);
+    const { id } = req.params;
+    if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
+    const html = await readDocHtml(id);
+    if (html == null) return res.status(404).json({ error: 'doc_not_found' });
+    const titleHtml = await readRawHtml(id) ?? html;
+    res.json(docMetadata(req, id, titleHtml));
+  });
+
+  // Summaries use existing persisted timestamps, never file modification times.
+  // Do not expose even discussion activity to callers denied the suggestions API.
+  const activityQuery = db.prepare(`
+    SELECT ts FROM (
+      SELECT created_at AS ts FROM doc_owners WHERE doc_id = @id
+      UNION ALL SELECT updated_at FROM documents WHERE doc_id = @id
+      UNION ALL SELECT ts FROM document_versions WHERE doc_id = @id
+      UNION ALL SELECT created_at FROM suggestions WHERE doc_id = @id AND @seeSuggestions
+      UNION ALL SELECT r.created_at FROM suggestion_replies r
+        JOIN suggestions s ON s.id = r.parent_id WHERE s.doc_id = @id AND @seeSuggestions
+    ) WHERE julianday(ts) IS NOT NULL ORDER BY julianday(ts) DESC LIMIT 1
+  `);
+  const pendingQuery = db.prepare("SELECT count(*) AS count FROM suggestions WHERE doc_id = ? AND status = 'open'");
+  // Only the title label reads source HTML: prefer the retained upload original,
+  // since legacy scrubbing can corrupt literal handler-looking title text.
+  // docTitle extracts inert bounded text; no source execution or live form reads.
+  function docMetadata(req, id, titleHtml) {
+    const maySeeSuggestions = canSuggestDoc(req, id);
+    const activity = activityQuery.get({ id, seeSuggestions: Number(maySeeSuggestions) });
+    const time = activity ? Date.parse(activity.ts) : NaN;
+    return {
+      id, title: docTitle(titleHtml, id),
+      canDelete: ownsDoc(req, id),
+      // Admins can manage every document, but own only their actual owner rows.
+      isOwned: getDocOwner(db, id) === req.caller.token,
+      isAdmin: !!req.caller.isOwner,
+      pendingCount: maySeeSuggestions ? pendingQuery.get(id).count : null,
+      activityAt: Number.isFinite(time) ? new Date(time).toISOString() : null,
+    };
+  }
 
   // POST /api/upload { id, html, overwrite? } -> { ok, id }
   // Writes a new document to docs/<id>.html. HTML is trusted styling but we

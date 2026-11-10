@@ -1,349 +1,406 @@
-// Landing / add page. Lists existing files (GET /api/docs) and lets you add one
-// by dropping or choosing an .html file — the file's name becomes the id, so
-// there's no name field. (A paste-HTML box hides behind a link for markup you
-// don't have as a file.) On a name clash we offer Keep both / Replace / Cancel,
-// like saving a file with an existing name on the desktop. No build step.
-import { icon } from './icons.js';
 import { referencedImages } from './assets.js';
+import { readHistory, removeRecent, clearRecent, loadHomeState, saveHomeState, HISTORY_KEY } from './entry-history.js';
 
-const $ = (s) => document.querySelector(s);
-
-// The owner presents ?key=… once. The server sets a signed owner cookie on that
-// first request, so the tab stays "owner" from the cookie alone. We keep the key
-// in MEMORY only (for API calls, as a belt-and-suspenders alongside the cookie)
-// and immediately strip it from the visible URL so it can't linger in browser
-// history, bookmarks, or the Referer header. Page navigations do NOT re-append it.
-const KEY = new URLSearchParams(location.search).get('key');
-if (KEY) {
-  const u = new URL(location.href);
-  u.searchParams.delete('key');
-  history.replaceState(null, '', u.pathname + u.search + u.hash);
+const $ = selector => document.querySelector(selector);
+const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Bootstrap owner key stays in memory only; never include it in a viewer/share URL.
+const key = new URLSearchParams(location.search).get('key');
+if (new URLSearchParams(location.search).has('key')) {
+  const url = new URL(location.href);
+  url.searchParams.delete('key');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
-const withKey = (url) => (KEY ? url + (url.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(KEY) : url);
-const viewerUrl = (id) => `/viewer.html?doc=${encodeURIComponent(id)}`;
-
-// ---- static icons ----
-$('#drop-ic').innerHTML = icon('upload', { size: 22 });
-$('#paste-ic').innerHTML = icon('upload', { size: 15 });
-
+const withKey = url => key ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(key)}` : url;
+const viewerUrl = id => `/viewer.html?doc=${encodeURIComponent(id)}`;
+const validId = id => typeof id === 'string' && id.length > 0 && id.length <= 128 && /^[A-Za-z0-9._-]+$/.test(id) && id !== '.' && id !== '..' && !/\.raw$/i.test(id);
+const MAX_HTML_BYTES = 2_000_000;
+const state = loadHomeState();
+let view = state.view, query = state.query, docs = [], loading = false, loadError = false, generation = 0;
 let whoami = { isOwner: false, docLimit: 1 };
-let docSet = new Set(); // current ids, for clash detection / auto-suffix
+let opener = null, closeAction = null, busy = false, importDraft = null;
+const knownIds = new Set();
+const modal = $('#modal');
 
-// ---- list existing docs ----
-async function loadDocs() {
-  const list = $('#docs');
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function button(text, run, cls = '') {
+  const node = el('button', cls, text);
+  node.type = 'button';
+  node.onclick = run;
+  return node;
+}
+function toast(text) {
+  $('#toast').textContent = text;
+  $('#toast').hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { $('#toast').hidden = true; }, 4000);
+}
+function save() { saveHomeState({ view, query, scrollY: window.scrollY }); }
+async function request(url, options) {
+  const response = await fetch(withKey(url), { cache: 'no-store', ...options });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(data.error || `HTTP ${response.status}`), { status: response.status, data });
+  return data;
+}
+async function identity() {
+  try { whoami = await request('/api/whoami'); } catch { /* Not proof of admin access. */ }
+}
+function metadata(value, fallback) {
+  if (!value || value.id !== fallback.id) return { ...fallback, unavailable: true };
+  return {
+    ...fallback, id: value.id, title: typeof value.title === 'string' && value.title.trim() ? value.title : fallback.title,
+    canDelete: value.canDelete === true, isOwned: value.isOwned === true, isAdmin: value.isAdmin === true,
+    pendingCount: Number.isInteger(value.pendingCount) && value.pendingCount >= 0 ? value.pendingCount : null,
+    activityAt: typeof value.activityAt === 'string' && Number.isFinite(Date.parse(value.activityAt)) ? value.activityAt : null,
+  };
+}
+async function loadDocs({ restore = false } = {}) {
+  const token = ++generation, requestedView = view;
+  loading = true; loadError = false; docs = []; render();
+  let result = [], failed = false;
   try {
-    whoami = await fetch('/api/whoami').then((r) => r.json());
-  } catch { /* non-fatal; treat as guest */ }
-
-  let docs = [];
-  try {
-    docs = (await fetch('/api/docs').then((r) => r.json())).docs || [];
-  } catch {
-    list.innerHTML = '<li class="empty">Could not load files.</li>';
-    return;
-  }
-  docSet = new Set(docs);
-  if (!docs.length) {
-    list.innerHTML = '<li class="empty">No files yet — add one below.</li>';
-    return;
-  }
-  list.innerHTML = '';
-  for (const id of docs) {
-    const li = document.createElement('li');
-
-    const a = document.createElement('a');
-    a.className = 'doc-open';
-    a.href = viewerUrl(id);
-    const ic = document.createElement('span');
-    ic.className = 'ic';
-    ic.innerHTML = icon('document', { size: 19 });
-    const name = document.createElement('span');
-    name.textContent = id; // textContent — never trust the id into innerHTML
-    a.append(ic, name);
-    li.appendChild(a);
-
-    // Delete affordance: the server authorizes (owner, or the guest who created
-    // it), so we always show it and let a 403 explain if it isn't allowed.
-    const del = document.createElement('button');
-    del.className = 'doc-del';
-    del.title = 'Delete this file';
-    del.setAttribute('aria-label', `Delete ${id}`);
-    del.textContent = '×';
-    del.addEventListener('click', (e) => { e.preventDefault(); deleteDoc(id); });
-    li.appendChild(del);
-
-    list.appendChild(li);
-  }
-}
-
-async function deleteDoc(id) {
-  if (!confirm(`Delete “${id}”? This removes the file and all its review history.`)) return;
-  try {
-    const r = await fetch(withKey(`/api/doc/${encodeURIComponent(id)}`), { method: 'DELETE' });
-    const data = await r.json().catch(() => ({}));
-    if (r.ok) { loadDocs(); return; }
-    const errs = {
-      not_your_doc: 'That file belongs to someone else — you can’t delete it.',
-      doc_not_found: 'That file no longer exists.',
-      rate_limited: 'You’re doing that too fast — try again in a moment.',
-    };
-    showMsg('err', errs[data.error] || `Could not delete (${data.error || r.status}).`);
-  } catch {
-    showMsg('err', 'Network error — is the server running?');
-  }
-}
-
-// ---- messages ----
-const msg = $('#msg');
-function showMsg(kind, html) { msg.className = `msg show ${kind}`; msg.innerHTML = html; }
-function clearMsg() { msg.className = 'msg'; msg.innerHTML = ''; }
-
-// Turn a filename (or typed name) into a valid id: strip .html, keep only the
-// allowed charset, trim stray dashes.
-function toId(raw) {
-  return String(raw || '')
-    .replace(/\.html?$/i, '')
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-// Given a desired id that already exists, find the next free "-2", "-3", … .
-function nextFreeId(base) {
-  let n = 2;
-  while (docSet.has(`${base}-${n}`)) n++;
-  return `${base}-${n}`;
-}
-
-// Core add. Resolves a name clash the desktop way: Keep both / Replace / Cancel.
-async function addDoc(id, html) {
-  clearMsg();
-  if (!/^[A-Za-z0-9._-]+$/.test(id)) {
-    showMsg('err', 'That file needs a name using letters, numbers, dot, dash, or underscore.');
-    return;
-  }
-  if (!html.trim()) { showMsg('err', 'That file looks empty.'); return; }
-
-  let overwrite = false;
-  if (docSet.has(id)) {
-    const choice = await nameClash(id);
-    if (choice === 'cancel') { clearMsg(); return; }
-    if (choice === 'keep') { id = nextFreeId(id); }
-    if (choice === 'replace') { overwrite = true; }
-  }
-  await upload(id, html, overwrite);
-}
-
-// A tiny modal: "“x” already exists." → Keep both / Replace / Cancel.
-function nameClash(id) {
-  return new Promise((resolve) => {
-    const back = document.createElement('div');
-    back.style.cssText = 'position:fixed;inset:0;z-index:50;background:rgba(28,27,25,.28);display:flex;align-items:center;justify-content:center;padding:20px';
-    const box = document.createElement('div');
-    box.style.cssText = 'background:#fffdf8;border:1px solid #e9e5db;border-radius:14px;box-shadow:0 16px 48px rgba(28,27,25,.18);max-width:400px;width:100%;padding:22px 22px 18px;font-family:-apple-system,Segoe UI,sans-serif';
-    box.innerHTML = `
-      <div style="font-family:'Iowan Old Style',Georgia,serif;font-size:18px;font-weight:600;margin-bottom:6px">“${id}” already exists</div>
-      <div style="color:#57534e;font-size:14px;line-height:1.5;margin-bottom:18px">Keep both saves it as “<b>${nextFreeId(id)}</b>”. Replace overwrites the existing file and its review history.</div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-        <button data-c="cancel" style="border:1px solid #e9e5db;background:none;border-radius:8px;padding:8px 14px;font-size:13.5px;cursor:pointer;color:#57534e">Cancel</button>
-        <button data-c="keep" style="border:1px solid #1c1b19;background:none;border-radius:8px;padding:8px 14px;font-size:13.5px;font-weight:600;cursor:pointer;color:#1c1b19">Keep both</button>
-        <button data-c="replace" style="border:1px solid #c0392b;background:#c0392b;color:#fff;border-radius:8px;padding:8px 14px;font-size:13.5px;font-weight:600;cursor:pointer">Replace</button>
-      </div>`;
-    back.appendChild(box);
-    document.body.appendChild(back);
-    const done = (c) => { back.remove(); resolve(c); };
-    box.querySelectorAll('button').forEach((b) => (b.onclick = () => done(b.dataset.c)));
-    back.addEventListener('click', (e) => { if (e.target === back) done('cancel'); });
-    document.addEventListener('keydown', function esc(e) {
-      if (e.key === 'Escape') { document.removeEventListener('keydown', esc); done('cancel'); }
-    });
-    box.querySelector('[data-c="keep"]').focus();
-  });
-}
-
-async function upload(id, html, overwrite) {
-  showMsg('ok', `Adding “${id}”…`);
-  try {
-    const r = await fetch(withKey('/api/upload'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, html, overwrite }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (r.ok) {
-      // The doc saved. If it references local images we don't have yet, offer to
-      // bring them along before opening the viewer (a browser can't read the
-      // file's folder for us, so we ask the user to point us at the images).
-      await offerMissingImages(html);
-      window.location.href = viewerUrl(id);
-      return;
+    if (requestedView === 'mine') {
+      await identity();
+      const data = await request('/api/docs?scope=mine');
+      if (!Array.isArray(data.docs) || !Array.isArray(data.metadata)) throw new Error('Invalid document list');
+      const byId = new Map(data.metadata.map(item => [item.id, item]));
+      result = [...new Set(data.docs)].filter(validId).map(id => metadata(byId.get(id), { id, title: id }));
+    } else {
+      const recent = readHistory();
+      // Only exact locally remembered IDs; never discover documents globally.
+      let cursor = 0;
+      result = new Array(recent.length);
+      await Promise.all(Array.from({ length: Math.min(6, recent.length) }, async () => {
+        while (cursor < recent.length) {
+          const index = cursor++, item = recent[index];
+          try { result[index] = metadata(await request(`/api/doc-meta/${encodeURIComponent(item.id)}`), item); }
+          catch (error) { result[index] = { ...item, unavailable: true, networkError: !error.status || error.status >= 500 }; }
+        }
+      }));
+      if (recent.length && result.every(item => item.networkError)) failed = true;
     }
-    const mb = data.maxBytes ? (data.maxBytes / 1_000_000).toFixed(1).replace(/\.0$/, '') : '2';
-    const errs = {
-      invalid_doc_id: 'That name has characters that aren’t allowed.',
-      empty_html: 'The HTML is empty.',
-      not_html: 'That doesn’t look like HTML.',
-      too_large: `That file is too large (${mb} MB max).`,
-      doc_exists: 'A file with that name already exists.',
-      write_failed: 'Could not save the file on the server.',
-      guest_doc_limit: `You can have ${whoami.docLimit || 1} file open at a time — delete your existing one first to add another.`,
-      not_your_doc: 'A file with that name belongs to someone else.',
-      capacity_full: 'The demo is at capacity right now — please try again later.',
-      rate_limited: 'You’re doing that too fast — try again in a moment.',
-    };
-    showMsg('err', errs[data.error] || `Add failed (${data.error || r.status}).`);
-  } catch {
-    showMsg('err', 'Network error — is the server running?');
-  }
+  } catch { failed = true; }
+  if (token !== generation || view !== requestedView) return;
+  docs = result; loadError = failed;
+  docs.forEach(doc => knownIds.add(doc.id));
+  loading = false; render();
+  if (restore) requestAnimationFrame(() => window.scrollTo(0, loadHomeState().scrollY));
 }
-
-// After a doc is saved, find the local images it references that the server
-// doesn't already have, and (if any) ask the user to point us at them. A browser
-// can't read the file's sibling folder on its own, so we surface the exact names
-// needed and open a multi-file / folder picker, matching what they choose by
-// basename. Best-effort: anything skipped just shows a placeholder in the viewer.
-async function offerMissingImages(html) {
-  let refs = [];
-  try { refs = referencedImages(html); } catch { refs = []; }
-  if (!refs.length) return;
-
-  // Drop the ones already on the box so we only ask for what's genuinely missing.
-  let have = new Set();
-  try {
-    const a = await fetch('/api/assets').then((r) => r.json());
-    have = new Set((a.assets || []));
-  } catch { /* if the check fails, just ask for all of them */ }
-  const needed = refs.filter((r) => !have.has(r.name));
-  if (!needed.length) return;
-
-  const files = await pickImages(needed);
-  if (!files) return; // user skipped
-
-  // Match picked files to needed names by basename (case-insensitive).
-  const byName = new Map();
-  for (const f of files) byName.set(f.name.toLowerCase(), f);
-  const matched = needed.map((n) => ({ name: n.name, file: byName.get(n.name.toLowerCase()) }))
-    .filter((m) => m.file);
-
-  if (!matched.length) {
-    showMsg('err', 'None of the chosen files matched the images this page needs. You can add them later.');
+function empty(title, text, label, run) {
+  const li = el('li', 'empty');
+  li.append(el('h2', '', title), el('p', '', text));
+  if (label) li.append(button(label, run, 'primary'));
+  $('#rows').append(li);
+}
+function render() {
+  closeMenu();
+  for (const name of ['recent', 'mine']) {
+    $('#' + name).classList.toggle('selected', view === name);
+    $('#' + name).setAttribute('aria-pressed', String(view === name));
+  }
+  if ($('#search').value !== query) $('#search').value = query;
+  $('#clear').hidden = view !== 'recent';
+  $('#mine').textContent = '我的文稿';
+  $('#context').textContent = view === 'recent' ? '此浏览器打开过的文稿' : whoami.isOwner ? '管理员身份创建的文稿；不包含仅可管理的其他文稿' : '由当前签名浏览器身份创建的文稿';
+  $('#rows').replaceChildren();
+  $('#rows').setAttribute('aria-busy', String(loading));
+  if (loading) { empty('正在加载文稿…', ''); return; }
+  if (loadError) {
+    empty('暂时无法加载文稿', '请检查网络连接后重试。此浏览器的阅读记录不会被清空。', '重试', () => loadDocs());
     return;
   }
-
-  let ok = 0;
-  for (const m of matched) {
-    showMsg('ok', `Adding image “${m.name}”…`);
-    try {
-      const dataBase64 = await fileToBase64(m.file);
-      const r = await fetch(withKey('/api/upload-asset'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: m.name, dataBase64 }),
-      });
-      if (r.ok) ok++;
-    } catch { /* skip this one */ }
+  const list = docs.filter(doc => doc.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  if (!list.length) {
+    empty(query ? '没有匹配的文稿' : view === 'recent' ? '还没有打开记录' : '这里还没有你的文稿',
+      query ? '换一个标题关键词试试。' : view === 'recent' ? '通过文稿链接打开的页面会出现在这里。打开记录不代表拥有管理权限。' : '这里只显示当前身份创建的文稿，不是账号，也不会跨设备同步。',
+      query ? '清除搜索' : '导入 HTML', () => { if (query) { query = ''; save(); render(); } else showImport(); });
+    return;
   }
-  const still = needed.length - ok;
-  showMsg('ok', `Added ${ok} image${ok === 1 ? '' : 's'}${still ? ` · ${still} still missing` : ''}. Opening…`);
+  for (const doc of list) {
+    const li = el('li', 'row');
+    const link = el('a', 'doc'); link.href = viewerUrl(doc.id);
+    const icon = el('span', 'fileicon'); icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = '<svg viewBox="0 0 24 30"><path d="M4 1h10l6 6v21H4zM14 1v7h6M8 14h8M8 19h8"/></svg>';
+    const body = el('span'), meta = el('span', 'meta');
+    body.append(el('span', 'title', doc.title));
+    if (doc.unavailable) meta.append(el('span', '', '文稿不可用或暂时无法读取'));
+    else {
+      if (doc.pendingCount > 0) meta.append(el('span', 'pending', `${doc.pendingCount} 条未处理批注`));
+      const when = view === 'recent' ? doc.openedAt : doc.activityAt;
+      if (when) meta.append(el('span', '', `${view === 'recent' ? '打开于' : '最近活动'} ${new Date(when).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`));
+      if (whoami.isOwner) meta.append(el('span', '', doc.isOwned ? '管理员身份创建' : '管理员可管理'));
+    }
+    body.append(meta); link.append(icon, body);
+    link.addEventListener('click', save);
+    const more = button('···', () => menu(more, doc), 'more');
+    more.setAttribute('aria-label', `${doc.title}的更多操作`);
+    more.setAttribute('aria-expanded', 'false'); more.setAttribute('aria-haspopup', 'true');
+    li.append(link, more); $('#rows').append(li);
+  }
+}
+function closeMenu(returnFocus = false) {
+  const menu = $('.menu');
+  if (!menu) return;
+  const trigger = menu.previousElementSibling;
+  if (returnFocus) trigger?.focus();
+  trigger?.setAttribute('aria-expanded', 'false'); menu.remove();
+}
+function menu(trigger, doc) {
+  if ($('.menu')?.previousElementSibling === trigger) { closeMenu(true); return; }
+  closeMenu();
+  const panel = el('div', 'menu');
+  const action = (label, run, cls = '') => panel.append(button(label, () => { closeMenu(true); run(); }, cls));
+  action('分享文稿链接', () => share(doc));
+  if (view === 'recent') action('移出最近打开', () => confirmBox('移出最近打开？', '仅移除此浏览器的打开记录，不删除服务器文稿，也不改变链接访问权限。', '移出记录', async () => { removeRecent(doc.id); dismiss(); await loadDocs(); toast('已移出本地记录'); }));
+  if (doc.canDelete && !doc.unavailable) action('删除文稿…', () => confirmBox('删除这篇文稿？', `“${doc.title}”及其全部评审历史将被删除，分享链接也将失效。此操作无法撤销。`, '删除文稿', () => deleteDoc(doc), true), 'danger');
+  trigger.after(panel); trigger.setAttribute('aria-expanded', 'true'); panel.querySelector('button').focus();
+}
+function showDialog(title, body, actions, onClose = null) {
+  if (!modal.open) opener = document.activeElement;
+  closeAction = onClose;
+  $('#modalbody').innerHTML = `<div class="modalhead"><h2 id="modalTitle">${esc(title)}</h2><button class="close" id="modalClose" aria-label="关闭对话框">×</button></div>${body}`;
+  $('#modalfoot').replaceChildren();
+  for (const action of actions) {
+    const node = button(action.text, action.run, action.cls || '');
+    if (action.id) node.id = action.id;
+    $('#modalfoot').append(node);
+  }
+  $('#modalClose').onclick = dismiss;
+  if (!modal.open) modal.showModal();
+  $('#modalbody').scrollTop = 0; $('#modalClose').focus();
+}
+function dismiss() {
+  if (busy) return;
+  const callback = closeAction; closeAction = null;
+  modal.close(); if (opener?.isConnected) opener.focus();
+  if (callback) callback();
+}
+function setBusy(value) {
+  busy = value;
+  modal.querySelectorAll('button,input,textarea').forEach(node => { node.disabled = value; });
+}
+function confirmBox(title, text, label, run, danger = false) {
+  showDialog(title, `<p>${esc(text)}</p><p id="actionError" class="error" role="alert"></p>`, [
+    { text: '取消', run: dismiss }, { text: label, cls: danger ? 'danger' : 'primary', run },
+  ]);
+}
+async function deleteDoc(doc) {
+  setBusy(true);
+  try {
+    // Fresh permission check as well as the DELETE endpoint's server authorization.
+    const latest = await request(`/api/doc-meta/${encodeURIComponent(doc.id)}`);
+    if (latest.canDelete !== true) throw Object.assign(new Error('not_your_doc'), { data: { error: 'not_your_doc' } });
+    await request(`/api/doc/${encodeURIComponent(doc.id)}`, { method: 'DELETE' });
+    // Read back the exact target; do not claim deletion if it still exists.
+    try { await request(`/api/doc-meta/${encodeURIComponent(doc.id)}`); throw new Error('文稿仍存在，请重试。'); }
+    catch (error) { if (error.status !== 404) throw error; }
+    removeRecent(doc.id); setBusy(false); dismiss(); await loadDocs(); toast('文稿已删除');
+  } catch (error) {
+    $('#actionError').textContent = errorMessage(error); setBusy(false);
+    // Do not leave stale deletion authority on the page after a failed check.
+    doc.canDelete = false; render();
+  }
+}
+function share(doc) {
+  const url = new URL(viewerUrl(doc.id), location.origin).href;
+  showDialog('分享文稿链接', '<p class="small">链接直接打开评审页面，不经过首页。这里不改变文稿的访问设置。</p><input class="sharelink" aria-label="文稿链接" readonly>', [
+    { text: '关闭', run: dismiss }, { text: '复制链接', cls: 'primary', run: async () => {
+      try { await navigator.clipboard.writeText(url); toast('链接已复制'); }
+      catch { $('.sharelink').select(); toast('请选择并复制链接'); }
+    } },
+  ]);
+  $('.sharelink').value = url;
+}
+function errorMessage(error) {
+  if (error.userMessage) return error.userMessage;
+  const code = error.data?.error;
+  const errors = {
+    invalid_doc_id: '文稿名称限 128 字符，只能使用英文字母、数字、点、短横线或下划线；不能为单点、双点或以 .raw 结尾。',
+    empty_html: 'HTML 内容为空。', not_html: '没有识别到 HTML 内容，请包含 HTML 标签。',
+    too_large: `文件过大（上限 ${error.data?.maxBytes ? Math.round(error.data.maxBytes / 1024 / 1024) : 2} MB）。`,
+    doc_exists: '同名文稿已存在，请选择保留两份或替换。', write_failed: '服务器无法保存文件，请重试。',
+    guest_doc_limit: `当前浏览器最多可创建 ${whoami.docLimit || 1} 份文稿。请先在「我的文稿」中管理已有文稿。`,
+    not_your_doc: '这份文稿不属于当前浏览器身份，无法执行此操作。', doc_not_found: '文稿已不存在。',
+    capacity_full: '服务存储容量已满，请稍后再试。', rate_limited: '操作过于频繁，请稍后再试。',
+    invalid_asset_name: '图片文件名不符合要求。', empty_asset: '图片内容为空。',
+    invalid_asset_type: '不支持此图片类型。',
+  };
+  return errors[code] || (!error.status && error.message === 'Failed to fetch' ? '网络错误，请检查连接后重试。输入和所选文件已保留。' : !error.status ? '操作失败，请检查网络后重试。输入和所选文件已保留。' : `操作失败（${code || error.status}），请重试。`);
 }
 
-// Read a File as bare base64 (no data: prefix) for the JSON asset upload.
+function showImport() {
+  importDraft = null;
+  showDialog('导入 HTML', `<div id="importForm"><label class="upload">选择一份 HTML 文稿<input id="htmlFile" type="file" accept=".html,.htm,text/html"></label><p class="small" id="fileLabel">支持 .html / .htm，最大 2 MB。标题优先取自 HTML 的 &lt;title&gt;。</p><label class="field">本地图片（可选）<input id="images" type="file" accept="image/*" multiple></label><p class="small" id="imageLabel">可同时选择 HTML 中引用的图片；按文件名匹配并上传。</p><details class="paste"><summary>或粘贴 HTML 源码</summary><textarea id="source" aria-label="HTML 源码" placeholder="<!doctype html>\n<html><head><title>文稿标题</title></head>…"></textarea><label class="field" for="paste-id">文稿名称（用于链接）<input id="paste-id" type="text" autocomplete="off" spellcheck="false" placeholder="letters-numbers_dots"></label></details></div><div id="duplicate" hidden><p id="duplicateText"></p><p class="warn">替换会覆盖原文稿源码，但会保留评审历史；原有批注可能不再匹配新内容。建议选择「保留两份」，以保留原文稿及其评审记录。</p></div><p class="error" id="importError" role="alert"></p>`, [
+    { text: '取消', run: dismiss }, { text: '导入并打开', cls: 'primary', id: 'doImport', run: prepareImport },
+  ]);
+  $('#htmlFile').onchange = () => { $('#fileLabel').textContent = $('#htmlFile').files[0]?.name || '支持 .html / .htm，最大 2 MB。'; };
+  $('#images').onchange = () => { $('#imageLabel').textContent = `已选择 ${$('#images').files.length} 张图片；按引用文件名匹配并上传。`; };
+}
+async function prepareImport() {
+  $('#importError').textContent = '';
+  const file = $('#htmlFile').files[0];
+  setBusy(true);
+  try {
+    if (file && !/\.html?$/i.test(file.name)) throw new Error('请选择 .html 或 .htm 文件，图片请放在「本地图片」中。');
+    if (file && file.size > MAX_HTML_BYTES) throw new Error('HTML 超过 2 MB，请缩小文件后重新选择。');
+    const html = file ? await file.text() : $('#source').value;
+    if (!html.trim()) throw new Error('请选择 HTML 文件，或展开下方入口粘贴源码。');
+    if (new TextEncoder().encode(html).length > MAX_HTML_BYTES) throw new Error('HTML 超过 2 MB，请缩小内容后重试。');
+    if (!/<[a-z!][\s\S]*>/i.test(html)) throw new Error('没有识别到 HTML 内容，请包含 HTML 标签。');
+    // Retain legacy filename slug behavior; explicit paste IDs are validated as typed.
+    const id = file ? file.name.replace(/\.html?$/i, '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') : $('#paste-id').value.trim();
+    if (!validId(id)) throw new Error('文稿名称限 128 字符，只能使用英文字母、数字、点、短横线或下划线；不能为单点、双点或以 .raw 结尾。');
+    // Only parse inert metadata; never attach imported nodes or execute a preview.
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    importDraft = { id, base: id, html, title: parsed.title.trim() || file?.name.replace(/\.html?$/i, '') || id, images: [...$('#images').files], overwrite: false };
+    setBusy(false);
+    if (knownIds.has(id)) showDuplicate();
+    else await uploadDocument();
+  } catch (error) { $('#importError').textContent = error.message; setBusy(false); }
+}
+function importButtons() {
+  $('#modalfoot').replaceChildren(button('取消', dismiss), button('导入并打开', prepareImport, 'primary'));
+}
+function cancelDuplicate() {
+  if (busy) return;
+  $('#duplicate').hidden = true; $('#importForm').hidden = false;
+  $('#modalTitle').textContent = '导入 HTML'; $('#importError').textContent = '';
+  $('#modalClose').onclick = dismiss; closeAction = null; importButtons(); $('#htmlFile').focus();
+}
+function showDuplicate() {
+  setBusy(false);
+  $('#importForm').hidden = true; $('#duplicate').hidden = false;
+  $('#modalTitle').textContent = '文稿已存在';
+  $('#duplicateText').textContent = `“${importDraft.id}”已存在。`;
+  $('#importError').textContent = '';
+  $('#modalfoot').replaceChildren(
+    button('取消', cancelDuplicate),
+    button('替换', () => { importDraft.overwrite = true; uploadDocument(); }, 'danger'),
+    button('保留两份', () => {
+      let n = 2;
+      const candidate = value => `${importDraft.base.slice(0, 128 - String(value).length - 1)}-${value}`;
+      while (knownIds.has(candidate(n))) n++;
+      importDraft.id = candidate(n); importDraft.overwrite = false; uploadDocument();
+    }, 'primary'),
+  );
+  $('#modalClose').onclick = cancelDuplicate;
+  closeAction = null; $('#modalfoot button').focus();
+}
+async function uploadDocument() {
+  if (busy) return;
+  setBusy(true); $('#importError').textContent = '';
+  const draft = importDraft;
+  try {
+    // Check selected assets (including upload races) before saving HTML.
+    const needed = await prepareImages(draft);
+    await request('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: draft.id, html: draft.html, overwrite: draft.overwrite }) });
+    knownIds.add(draft.id); draft.saved = true;
+
+    setBusy(false);
+    await offerImages(draft, needed);
+  } catch (error) {
+    setBusy(false);
+    if (error.status === 409 && error.data?.error === 'doc_exists') { knownIds.add(draft.id); showDuplicate(); }
+    else $('#importError').textContent = errorMessage(error);
+  }
+}
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => {
-      const res = String(fr.result || '');
-      resolve(res.slice(res.indexOf(',') + 1)); // strip "data:...;base64,"
-    };
-    fr.onerror = () => reject(fr.error);
-    fr.readAsDataURL(file);
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
   });
 }
-
-// Modal: "This page needs N images" + list + [Add these images] / [Skip].
-// Resolves to a FileList (user chose files) or null (skipped).
-function pickImages(needed) {
-  return new Promise((resolve) => {
-    const back = document.createElement('div');
-    back.style.cssText = 'position:fixed;inset:0;z-index:50;background:rgba(28,27,25,.28);display:flex;align-items:center;justify-content:center;padding:20px';
-    const box = document.createElement('div');
-    box.style.cssText = 'background:#fffdf8;border:1px solid #e9e5db;border-radius:14px;box-shadow:0 16px 48px rgba(28,27,25,.18);max-width:420px;width:100%;padding:22px 22px 18px;font-family:-apple-system,Segoe UI,sans-serif';
-    const names = needed.map((n) =>
-      `<li style="margin:2px 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:#1c1b19">${escapeHtml(n.name)}</li>`
-    ).join('');
-    const n = needed.length;
-    box.innerHTML = `
-      <div style="font-family:'Iowan Old Style',Georgia,serif;font-size:18px;font-weight:600;margin-bottom:6px">This page needs ${n} image${n === 1 ? '' : 's'}</div>
-      <div style="color:#57534e;font-size:14px;line-height:1.5;margin-bottom:10px">Your file points at ${n === 1 ? 'an image that isn’t' : 'images that aren’t'} here yet. Pick ${n === 1 ? 'it' : 'them'} (or the folder they live in) and they’ll travel with the page.</div>
-      <ul style="margin:0 0 16px;padding-left:18px">${names}</ul>
-      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-        <button data-c="skip" style="border:1px solid #e9e5db;background:none;border-radius:8px;padding:8px 14px;font-size:13.5px;cursor:pointer;color:#57534e">Skip</button>
-        <button data-c="add" style="border:1px solid #1c1b19;background:#1c1b19;color:#fff;border-radius:8px;padding:8px 14px;font-size:13.5px;font-weight:600;cursor:pointer">Add these images</button>
-      </div>`;
-    back.appendChild(box);
-    document.body.appendChild(back);
-
-    // Hidden multi-file image input (accept multiple; users can also select a
-    // whole folder in the OS dialog on most browsers).
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.multiple = true;
-    input.style.display = 'none';
-    box.appendChild(input);
-
-    const done = (v) => { back.remove(); resolve(v); };
-    box.querySelector('[data-c="skip"]').onclick = () => done(null);
-    box.querySelector('[data-c="add"]').onclick = () => input.click();
-    input.addEventListener('change', () => done(input.files && input.files.length ? input.files : null));
-    back.addEventListener('click', (e) => { if (e.target === back) done(null); });
-    box.querySelector('[data-c="add"]').focus();
+function openImported(draft) { save(); location.assign(viewerUrl(draft.id)); }
+async function verifyImage(name, file) {
+  const response = await fetch(withKey(`/docs/assets/${encodeURIComponent(name)}`), { cache: 'no-store' });
+  if (!response.ok) throw Object.assign(new Error('asset_verification_failed'), {
+    userMessage: `无法核实图片“${name}”的内容，请检查网络后重试。输入和所选文件已保留。`,
   });
+  const stored = new Uint8Array(await response.arrayBuffer());
+  const selected = new Uint8Array(await file.arrayBuffer());
+  if (stored.length !== selected.length || !stored.every((byte, index) => byte === selected[index])) {
+    throw Object.assign(new Error('asset_collision'), {
+      userMessage: `图片“${name}”与服务器已有的全局同名图片内容不同，不能替换或借用。请在本地重命名图片并修改 HTML 中的引用后，重新选择文件再导入。输入和所选文件已保留，未继续保存文稿或打开页面。`,
+    });
+  }
+}
+async function prepareImages(draft) {
+  const refs = referencedImages(draft.html);
+  if (!refs.length) return [];
+  // Stored names are case-sensitive, just like the server's filesystem.
+  const have = new Set((await request('/api/assets')).assets);
+  const byName = new Map(draft.images.map(file => [file.name.toLowerCase(), file]));
+  // Check every existing selected image before making any asset writes.
+  for (const ref of refs) {
+    const file = byName.get(ref.name.toLowerCase());
+    if (file && have.has(ref.name)) await verifyImage(ref.name, file);
+  }
+  const needed = [];
+  for (const ref of refs) {
+    if (have.has(ref.name)) continue;
+    const file = byName.get(ref.name.toLowerCase());
+    if (!file) { needed.push(ref); continue; }
+    await request('/api/upload-asset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: ref.name, dataBase64: await fileToBase64(file) }) });
+    // existed:true may mean another import won the race; verify actual bytes.
+    await verifyImage(ref.name, file);
+  }
+  return needed;
+}
+async function offerImages(draft, needed) {
+  if (!needed.length) { openImported(draft); return; }
+  // The document is already saved. Asset retries must never upload it again.
+  showDialog('补充本地图片', `<p class="small">文稿已保存。以下图片尚未上传；请选择对应文件，或跳过并直接打开。</p><ul class="image-list">${needed.map(ref => `<li>${esc(ref.name)}</li>`).join('')}</ul><label class="field">本地图片<input id="missingImages" type="file" accept="image/*" multiple></label><p class="small" id="selectedImages"></p><p class="error" id="assetError" role="alert"></p>`, [
+    { text: '跳过并打开', run: () => openImported(draft) },
+    { text: '上传图片并打开', cls: 'primary', run: () => uploadImages(draft, needed) },
+  ]);
+  $('#selectedImages').textContent = draft.images.length ? `已保留 ${draft.images.length} 张所选图片，可直接上传。` : '按文件名匹配，不会自动读取本地文件夹。';
+  $('#missingImages').onchange = () => {
+    const byName = new Map(draft.images.map(file => [file.name.toLowerCase(), file]));
+    for (const file of $('#missingImages').files) byName.set(file.name.toLowerCase(), file);
+    draft.images = [...byName.values()];
+    $('#selectedImages').textContent = `已选择 ${draft.images.length} 张图片。`;
+  };
+}
+async function uploadImages(draft, needed) {
+  setBusy(true); $('#assetError').textContent = '';
+  try {
+    const remaining = await prepareImages(draft);
+    needed.splice(0, needed.length, ...remaining);
+    setBusy(false);
+    if (!needed.length) { openImported(draft); return; }
+    $('#assetError').textContent = `仍需选择匹配文件：${needed.map(ref => ref.name).join('、')}`;
+  } catch (error) {
+    setBusy(false);
+    $('#assetError').textContent = errorMessage(error);
+  }
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-async function addFromFile(file) {
-  if (!file) return;
-  const id = toId(file.name);
-  const html = await file.text();
-  await addDoc(id, html);
-}
-
-// ---- drop zone: click, keyboard, and drag/drop ----
-const drop = $('#drop');
-const fileInput = $('#file');
-drop.addEventListener('click', () => fileInput.click());
-drop.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+modal.addEventListener('cancel', event => {
+  event.preventDefault();
+  if (busy) return;
+  if ($('#duplicate') && !$('#duplicate').hidden) cancelDuplicate(); else dismiss();
 });
-fileInput.addEventListener('change', () => addFromFile(fileInput.files && fileInput.files[0]));
-
-['dragenter', 'dragover'].forEach((ev) =>
-  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('drag'); }));
-['dragleave', 'drop'].forEach((ev) =>
-  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('drag'); }));
-drop.addEventListener('drop', (e) => {
-  const f = e.dataTransfer?.files && e.dataTransfer.files[0];
-  if (f) addFromFile(f);
+modal.addEventListener('keydown', event => {
+  if (event.key !== 'Tab') return;
+  const items = [...modal.querySelectorAll('button,input,textarea,summary,a[href]')].filter(node => !node.disabled && node.getClientRects().length);
+  const first = items[0], last = items.at(-1);
+  if (!first) { event.preventDefault(); return; }
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 });
-
-// ---- paste HTML (behind the link) ----
-$('#paste-toggle').addEventListener('click', () => {
-  const p = $('#paste');
-  const open = p.classList.toggle('show');
-  $('#paste-toggle').textContent = open ? 'hide paste box' : 'or paste HTML instead';
-  if (open) $('#paste-html').focus();
-});
-$('#paste-btn').addEventListener('click', async () => {
-  const html = $('#paste-html').value;
-  const id = toId($('#paste-id').value.trim());
-  if (!id) { showMsg('err', 'Give the pasted HTML a name.'); $('#paste-id').focus(); return; }
-  $('#paste-btn').disabled = true;
-  try { await addDoc(id, html); } finally { $('#paste-btn').disabled = false; }
-});
-
-loadDocs();
+document.addEventListener('click', event => { if (!event.target.closest('.menu,.more')) closeMenu(); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.open) closeMenu(true); });
+$('#import').onclick = showImport;
+for (const name of ['recent', 'mine']) $('#' + name).onclick = () => { if (view !== name) { view = name; save(); loadDocs(); } };
+$('#search').oninput = event => { query = event.target.value; save(); render(); };
+$('#clear').onclick = () => confirmBox('清空最近打开？', '仅清除此浏览器的打开记录，不删除服务器文稿。你仍可通过原来的链接打开文稿。', '清空记录', () => { clearRecent(); dismiss(); loadDocs(); });
+window.addEventListener('pagehide', save);
+window.addEventListener('pageshow', event => { if (event.persisted) loadDocs({ restore: true }); });
+window.addEventListener('storage', event => { if (event.key === HISTORY_KEY && view === 'recent') loadDocs(); });
+await identity();
+loadDocs({ restore: true });

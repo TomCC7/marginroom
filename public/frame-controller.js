@@ -411,12 +411,39 @@
   function post(msg) {
     try { PARENT.postMessage(msg, '*'); } catch (_) { /* parent gone */ }
   }
+  // Reading is deliberately only root-document x/y: no anchors, generated text,
+  // selectors, form values or source application state cross this protocol.
+  var readingReady = false, readingRestored = false, readingQueued = false;
+  function readingPoint(p) {
+    return p && Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x)<=1e7 && Math.abs(p.y)<=1e7
+      ? {x:Math.max(0,p.x),y:Math.max(0,p.y)} : null;
+  }
+  function postReading() {
+    readingQueued = false;
+    if (!readingReady) return;
+    var p = readingPoint({x:window.scrollX,y:window.scrollY});
+    if (p) post({type:'entry-reading-position',position:p});
+  }
+  window.addEventListener('scroll',function () {
+    if (!readingReady || readingQueued) return;
+    readingQueued = true; requestAnimationFrame(postReading);
+  },{passive:true});
 
   // Parent -> frame. We only accept messages from our embedder.
   var reviewMarks=annotationAffordances({doc:document,onOpen:function(ids){post({type:'reviewThread',ids:ids})},resolveTarget:function(a){return a.startsWith('c2:')?picker.resolve(a):null}});
   window.addEventListener('message', function (e) {
     if (e.source !== PARENT) return;
     var m = e.data || {};
+    if (m.type === 'entry-reading-capture') { postReading(); return; }
+    if (m.type === 'entry-reading-restore') {
+      var p = readingPoint(m.position), el = document.scrollingElement;
+      if (!readingReady || readingRestored || !p || !el) return;
+      readingRestored = true;
+      // Clamp against the actual rendered document after parent viewport sizing.
+      el.scrollLeft = Math.min(p.x,Math.max(0,el.scrollWidth-el.clientWidth));
+      el.scrollTop = Math.min(p.y,Math.max(0,el.scrollHeight-el.clientHeight));
+      postReading(); return;
+    }
     if (m.type === 'comment-state') { reviewMarks.comments(m.comments||[]);reviewMarks.sync(m.groups||[],m.mobile===true); }
     else if (m.type === 'applyOverlay') { applyOverlay(m.overlay || {}); }
     else if (m.type === 'setMode') { setMode(m.mode); }
@@ -585,6 +612,7 @@
       // While suggesting, freshly-injected elements need comment anchors too so a
       // click on newly-revealed content can still name its target.
       if (currentMode === 'suggest') await assignCommentAnchorsFrame();
+      if (isBoot) readingReady = true;
       post({
         type: 'ready',
         anchors: Array.from(anchorMap.keys()),

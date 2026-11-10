@@ -1,5 +1,6 @@
 // Static previews retain the Article DOM as the sole storage/anchor authority.
 import {elementReview} from './element-review.js';
+import {readingPosition,sanitizeReading} from './entry-reading.js';
 import {sha256hex} from './anchoring.js';
 import {singleBlockRange,difference} from './review-ranges.js';
 import {inlineDraftController,inlineDraftCSS} from './inline-draft.js';
@@ -29,6 +30,7 @@ export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'r
   if(m.type==='suspended'){applyForms(m.forms);suspended?.();suspended=null;return}
   if(!active)return;
   if(m.anchor!==undefined&&(typeof m.anchor!=='string'||m.anchor.length>256||!bridge.state.anchorMap.has(m.anchor)&&!bridge.state.commentMap.has(m.anchor)&&!/^c2:[a-f0-9]{64}$/.test(m.anchor)))return;
+  if(m.type==='reading-position'){const position=sanitizeReading(m.position);if(position)onMessage({type:m.type,position});return}
   if(['inline-change','inline-key','input','selection','comment','thread','key','located','elementTarget','targetCleared','targetMissing'].includes(m.type))onMessage(m);
   if(m.type==='selection'&&captures.has(m.requestId)){captures.get(m.requestId)(m);captures.delete(m.requestId)}
  });
@@ -40,9 +42,13 @@ export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'r
   // The source's unscoped head CSS and body attributes run at the real viewport.
   const base=parsed.createElement('base');base.href=location.href;parsed.head.prepend(base);
   const config=parsed.createElement('script');config.textContent=`window.__staticPreviewToken=${JSON.stringify(token)}`;parsed.body.append(config);
+  if(docId==='metal-arm-payload-plan-v2'){
+   const {enhanceMetalPlanPreview}=await import('./metal-arm-plan.js');
+   await enhanceMetalPlanPreview(parsed,token,send);
+  }
   const hashSource=await fetch(new URL('./anchoring.js',import.meta.url)).then(r=>r.text());
   const controller=await fetch(new URL('./static-frame-controller.js',import.meta.url)).then(r=>{if(!r.ok)throw Error('Static preview controller unavailable');return r.text()});
-  const script=parsed.createElement('script');script.textContent=`{${hashSource.replace(/export /g,'')}\nconst annotationAffordances=${annotationAffordances.toString()};const difference=${difference.toString()};const inlineDraftController=${inlineDraftController.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};\n${controller}\n}`;parsed.body.append(script);
+  const script=parsed.createElement('script');script.textContent=`{${hashSource.replace(/export /g,'')}\nconst readingPosition=${readingPosition.toString()};const sanitizeReading=${sanitizeReading.toString()};const annotationAffordances=${annotationAffordances.toString()};const difference=${difference.toString()};const inlineDraftController=${inlineDraftController.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};\n${controller}\n}`;parsed.body.append(script);
   const style=parsed.createElement('style');style.textContent=inlineDraftCSS+'[data-review-mark]{background:#e0f0e5;cursor:pointer}[data-review-del]{background:#ffe3df;color:#92584e}[data-review-ins]{background:#def1e5;color:#285d48}.record-focus{outline:1px solid #76a68b}';parsed.head.append(style);
   frame=document.createElement('iframe');frame.className='hs-static-preview';frame.title='文稿设备预览';frame.setAttribute('sandbox','allow-scripts');frame.hidden=true;
   frame.srcdoc='<!doctype html>'+parsed.documentElement.outerHTML;root.append(frame);

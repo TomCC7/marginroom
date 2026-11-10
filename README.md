@@ -1,126 +1,66 @@
 # Marginroom
 
-Review HTML pages without moving them into a document editor.
-
-Upload a newsletter, report, or other HTML page. Reviewers can comment on the page and suggest text changes. Accept the changes you want, then download the edited HTML.
+Review HTML pages without moving them into a document editor. Import a page, comment on its elements, suggest bounded text changes, and export the accepted result.
 
 ![Marginroom with an example document open for review](docs/screenshots/alpha-synthetic.png)
 
-## What you can do
-
-- Keep the page's layout while reviewing its text.
-- Leave comments on text, images, and other elements, then reply or resolve them.
-- Suggest changes directly in a paragraph. The document owner accepts or rejects them.
-- Find discussions in a separate list and jump back to the relevant passage.
-- Download the accepted text without the review controls. Uploaded images, including animated GIFs, are included in static exports.
-
-Marginroom is an early, self-hosted app. The review interface is currently mostly Chinese; a language switcher is not available yet.
-
 ## Run locally
 
-You need Docker with Compose v2. Clone this repository, open its directory, and run:
+You need Docker with Compose v2:
 
 ```sh
 cp .env.example .env
 docker compose up --build -d
 ```
 
-Open **http://localhost:3939**. Upload an HTML file or paste its source to start reviewing.
+Open **http://localhost:3939**. The default setup listens only on your machine. Documents, review history and identity keys live in a persistent Docker volume. `docker compose down -v` deletes that data.
 
-The default setup listens only on your own machine. Documents, review history, and identity keys are stored in a Docker volume and survive restarts. Do not use `docker compose down -v` unless you intend to delete that data.
+For configuration, administrator recovery, native Node setup and backups, see [Running Marginroom](docs/operations.md).
 
-For configuration, administrator access, native Node setup, and backup instructions, see [Running Marginroom](docs/operations.md).
+## Import, resume and review
 
-## Review a page
+1. From the homepage, choose **导入 HTML**, select an HTML file and its local images (or paste source), then explicitly import and open. Duplicate names offer keep-both, replace or cancel. Replacement changes the source while retaining existing review history, which may no longer match; keep both to preserve the original independently.
+2. **最近打开** resumes links successfully opened in this browser. Search by title; remove or clear these local records without deleting server documents. **我的文稿** lists documents created by the current signed browser identity, not public examples or every document an administrator can manage. Deletion is a separate, permission-checked destructive action.
+3. Documents start in **浏览 (Browse)**. Original page controls remain usable. **批注 (Annotate)** selects rendered elements; use the element context to comment, move to a parent/child, or suggest text changes where supported. Drag-selected text supports comments, not arbitrary direct editing.
+4. Click a supported single text block to edit a local inline suggestion. Submit it for review; the original stays unchanged until its owner accepts it. Reply, resolve/reopen comments, or accept/reject revisions through **批注栏** and its filtered list. A pending revision still blocks another revision of the affected block; this is not continuous multi-hunk editing.
+5. The viewer's **Marginroom** link returns home. Reading coordinates and viewport preferences are browser-local; returning to a static preview restores its reading position without reloading its frame. Unsaved review drafts require explicit handling before leaving. Interactive application state is not saved or replayed.
+6. Set link access, copy the direct viewer URL, and export accepted HTML when ready. Authorized direct original editing and version history are available in the overflow menu.
 
-1. Upload your HTML and any local images it uses.
-2. Choose the link's access level and share the viewer URL with your reviewers.
-3. Reviewers select text to comment or switch to Suggesting to propose a change.
-4. As the owner, reply to comments and accept or reject suggestions.
-5. Download the result when you're ready.
+Device previews use real isolated iframe viewports, with Desktop/Laptop/Tablet/Phone/custom dimensions, rotation and Fit/100% stage pan. Preferences are per document. This is viewport sizing, not full device or Safari emulation.
 
-To review from another device, you need to make your instance reachable. Read the access notes below before exposing it outside your machine.
+## Identity and access
 
-### Preview a frontend viewport
+**Anyone who can reach the instance and knows a document URL can read it.** No public document index does not mean a private document. Sharing does not create individual invitations or accounts.
 
-The persistent header's preview selector defaults to **Article** (the existing page view). Choose **Desktop 1440 × 900**, **Laptop 1366 × 768**, **Tablet 768 × 1024**, **Phone 390 × 844**, or **Custom** (integer width and height, 240–4096 CSS pixels). Rotate swaps the selected dimensions without changing the saved custom dimensions. **Fit** scales only the reviewed page into the available workspace; **100%** keeps CSS pixels unscaled and lets you scroll/pan the preview stage. The adjacent percentage reports the actual scale.
+- **Read:** page only; visitors cannot see discussion records or counts.
+- **Suggest:** page, comments and proposed changes.
+- **Edit:** also permits direct text editing.
 
-Device previews use a real isolated iframe viewport: media queries, `vw`/`vh`, fixed elements, dialogs, and page scrolling use the selected dimensions, not the browser window. Resizing, rotating, changing sidebars, and returning through Article do not refresh the document or discard local input and review drafts. Preferences are stored per document in this browser only; blocked or invalid browser storage falls back safely.
+Only the document owner or instance administrator can manage sharing, accept/reject suggestions, restore history or delete documents. The administrator's recovery cookie/key is separate from the uploader's browser identity. Display names do not prove ownership. Changing browsers/devices does not sync ownership, recent history or reading coordinates. See [ownership recovery](docs/operations.md#identity-ownership-and-cookie-recovery).
 
-Static HTML keeps its existing storage anchors and review workflow; its scripts remain stripped, so a static preview does not make inactive controls interactive. Already-interactive imports keep their existing sandbox and application state. This is viewport sizing, not full device emulation (no simulated touch, browser engine, OS, pixel density, or fake device frame). External resources and the existing comment-only restrictions below are unchanged.
-
-## Who can access a document?
-
-**Anyone who can reach your instance and knows a document's URL can read it.** There are no user accounts, invitation-only documents, or per-person access lists.
-
-The link's setting controls what visitors can do:
-
-- **Read:** view the page. Visitors cannot see its discussion records.
-- **Suggest:** view the page, comment, and propose changes.
-- **Edit:** also change the document text directly.
-
-These settings apply to all visitors, not to individual people. Only the document owner or instance administrator can accept or reject suggestions, restore history, or change sharing permissions.
-
-A signed browser cookie identifies the person who uploaded a document. A display name is only a label, not a verified identity. The instance administrator has a separate recovery key. See [ownership and cookie recovery](docs/operations.md#identity-ownership-and-cookie-recovery) if you lose access.
-
-For confidential documents, put the instance behind a login gate or private network. A private GitHub repository does not make a running instance private.
+For confidential material, use an external login gate or private network. A private source repository does not protect a running instance.
 
 ## Current limits
 
-- Text suggestions work within one ordinary paragraph. Resolve a pending suggestion before proposing another in the same paragraph. Grouped content, cross-paragraph selections, and interactive pages support comments only in the current review interface.
-- Paragraph edits use plain text and can remove inline formatting such as links or bold text in that paragraph.
-- Static exports bundle uploaded `<img src>` images. Remote images, CSS backgrounds, `<picture>` sources, and dependencies of interactive pages are not bundled. Uploaded image filenames must be unique across the instance.
-- Interactive imports can run their own scripts inside an isolated sandbox; this does not grant them access to the review application's origin. Runtime-generated text cannot be reliably written back to the original source, so it remains comment-only where unsupported.
-- Downloads retain the original active content and do not inherit the viewer's sandbox protection. Only open exported HTML from authors you trust.
-- Browser tests use Chromium. Real iPhone and Safari behavior still needs testing.
+- Inline rewriting is bounded to supported single-block source text. Safe inline formatting is preserved where the source mapping supports it; arbitrary rich/grouped, cross-block and runtime-generated content remains comment-only. Resolve an existing pending revision before revising its block again.
+- Static exports include uploaded `<img src>` images, including original animated GIF bytes. Remote images, CSS backgrounds, `<picture>` sources and interactive dependencies are not bundled. Image filenames share an instance-wide namespace; a selected conflicting image must be renamed together with its HTML reference.
+- Interactive scripts run inside an opaque-origin sandbox, not the review application's origin. Only numeric inner-scroll and shell/stage coordinates are retained for interactive documents, never their internal forms or application state.
+- Exported HTML does not inherit the viewer sandbox. Coarse cleanup is not a complete HTML sanitizer; only open downloads from authors you trust.
+- The tool UI is Chinese. Chromium is tested; physical iPhone/Safari behavior remains a device check.
 
 ## Development
 
-The tested Node version is **22.23.4**. To install dependencies and run the unit and API tests:
+Tested with Node **22.23.4**:
 
 ```sh
 npm ci
 npm test
+node test/home-entry-api.test.mjs
+node test/home-entry.browser.mjs
 ```
 
-For browser, security, and end-to-end tests:
-
-```sh
-npm run browser:install
-npm run test:all
-```
-
-See the [test guide](test/README.md) for individual suites. The [operations verification notes](release/operations-evidence.md) record the Docker and recovery checks performed for this alpha.
+For additional suites, install Chromium with `npm run browser:install` and see the [test guide](test/README.md). [Operations evidence](release/operations-evidence.md) documents alpha Docker/recovery checks.
 
 ## Credits and license
 
-Marginroom is based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith, with a revised review interface, inline suggestions, and self-hosting tools.
-
-[MIT license](LICENSE). Original copyright and license notices are preserved.
-
-
-### Browse and annotate
-Fresh documents start in **浏览 (Browse)**: original page controls remain usable.
-**批注 (Annotate)** intercepts page activation: click a rendered element, or drag/
-native-select text. Element context offers **写批注** and bounded parent/first-child
-navigation. Text context offers **写批注 / 建议修改**; replacement is enabled only
-for supported plain, single-block source text (including plain list items).
-Selecting text never enables direct editing. Rich/grouped, cross-block and runtime-
-generated text cannot be rewritten through this context; elements can still be
-commented on. **批注栏** only toggles the existing discussion rail. Direct original
-editing is an authorized overflow action; Browse or the overflow exit returns to
-normal browsing. Pending composers must be submitted or explicitly cancelled.
-
-Element comments use existing suggestion records, with `c2:` SHA-256 identity
-anchors: unique id/data-testid/data-key/data-id first, otherwise a bounded text/
-attribute fingerprint within the closest identified ancestor. No client selector
-is evaluated. Ambiguous duplicates, missing targets and replaced nodes in the same
-loaded document fail closed instead of rebinding to a sibling. Legacy text and
-`c:` anchors remain supported. No database migration or server restart is needed.
-This is not arbitrary access inside cross-origin nested frames, canvas drawings,
-closed shadow DOM or non-rendered nodes: only their rendered host can be selected.
-Sandbox/origin/script permissions are unchanged. Review overlays and new target
-bookkeeping do not modify stored source or original-source exports.
-
-Physical iPhone native callouts/keyboard remain a device check; Chromium touch
-and visualViewport simulations do not establish Safari device compatibility.
+Based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith, with a revised review interface, inline suggestions and self-hosting tools. [MIT license](LICENSE); original copyright and license notices are preserved.

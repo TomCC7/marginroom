@@ -1334,6 +1334,14 @@ async function boot(overlayOverride) {
   // Non-text elements (images, charts, dividers) get comment anchors so a
   // reviewer can comment on anything, not only editable text.
   commentMap = await assignCommentAnchors(root);
+  // Isolated enhancement for the existing canonical Metal Arm plan only.
+  let metalPlanWarning = '';
+  if (docId === 'metal-arm-payload-plan-v2') {
+    try {
+      const { prepareMetalPlan } = await import('./metal-arm-plan.js');
+      await prepareMetalPlan({docId, root, anchorMap, baseHtml: data.baseHtml});
+    } catch (error) { metalPlanWarning = String(error.message || error); }
+  }
   // Capture original template text per anchor BEFORE applying edits, so version
   // diffs can show "original words -> edit" for the very first change to a block.
   baseText = new Map();
@@ -1346,6 +1354,7 @@ async function boot(overlayOverride) {
   setEditable(editMode);
   // Combine asset + stale + unreachable-text warnings into one banner line.
   const warnings = [];
+  if (metalPlanWarning) warnings.push(metalPlanWarning);
   if (assetReport.count > 0) warnings.push(summarizeMissing(assetReport.missing));
   if (stale > 0) warnings.push(`${stale} saved edit(s) could not be re-anchored (the base template text changed) and were NOT applied, to avoid corrupting the layout.`);
   const unreachable = findUnreachableText(root);
