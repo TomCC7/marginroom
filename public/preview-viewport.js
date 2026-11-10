@@ -18,13 +18,12 @@ export function initPreview({docId,bridge,staticPreview}){
  const visibilityKey='marginroom.preview-dock.v1';let dockVisible=true;
  try{dockVisible=localStorage.getItem(visibilityKey)!=='hidden'}catch{}
  const toggle=document.createElement('button');toggle.id='preview-dock-toggle';toggle.type='button';toggle.setAttribute('aria-controls',controls.id);
- function placeToggle(){const focused=document.activeElement===toggle;if(dockVisible)controls.prepend(toggle);else if(matchMedia('(max-width:600px)').matches)document.querySelector('.dock').append(toggle);else document.body.append(toggle);if(focused)toggle.focus({preventScroll:true})}
+ const slot=document.createElement('div');slot.id='preview-toggle-slot';slot.append(toggle);document.body.append(slot);
+
  function showDock(visible,persist=true){
   const focused=document.activeElement===toggle;
-  dockVisible=visible;controls.hidden=!visible;toggle.setAttribute('aria-expanded',String(visible));toggle.title=visible?'收起尺寸栏':'显示尺寸栏';toggle.setAttribute('aria-label',toggle.title);toggle.textContent=visible?'收起':'尺寸 ↑';
-  // One native control lives beside the dock, or becomes a compact edge handle.
-  // Reparent the same node so focus and keyboard activation survive the toggle.
-  placeToggle();
+  dockVisible=visible;controls.hidden=!visible;toggle.setAttribute('aria-expanded',String(visible));toggle.title=visible?'收起尺寸栏':'显示尺寸栏';toggle.setAttribute('aria-label',toggle.title);toggle.textContent=visible?'尺寸 ↓':'尺寸 ↑';
+  // One native control remains in the same shell slot in both states.
   if(focused)toggle.focus({preventScroll:true});
   document.body.classList.toggle('preview-dock-hidden',!visible);
   document.documentElement.style.setProperty('--preview-dock-h',visible?controls.getBoundingClientRect().height+'px':'0px');
@@ -78,7 +77,8 @@ export function initPreview({docId,bridge,staticPreview}){
   raf=0;if(p.mode==='article'||!currentFrame||!article.getClientRects().length)return;
   const dock=document.querySelector('.dock'),dockHeight=getComputedStyle(dock).display==='none'?0:dock.getBoundingClientRect().height;
   const viewportBottom=Math.min(innerHeight,(window.visualViewport?.offsetTop||0)+(window.visualViewport?.height||innerHeight));
-  const availableHeight=Math.max(80,viewportBottom-article.getBoundingClientRect().top-dockHeight-(dockVisible?controls.getBoundingClientRect().height:0)-8);
+  const draftActions=document.querySelector('#draft-actions'),draftHeight=innerWidth<=600&&draftActions&&!draftActions.hidden?draftActions.getBoundingClientRect().height+8:0;
+  const availableHeight=Math.max(80,viewportBottom-article.getBoundingClientRect().top-dockHeight-slot.getBoundingClientRect().height-(dockVisible?controls.getBoundingClientRect().height:0)-draftHeight-8);
   article.style.height=availableHeight+'px';
   const style=getComputedStyle(article),px=v=>parseFloat(v)||0;
   const availableWidth=Math.max(1,article.clientWidth-px(style.paddingLeft)-px(style.paddingRight)),spaceHeight=Math.max(1,article.clientHeight-px(style.paddingTop)-px(style.paddingBottom));
@@ -119,8 +119,9 @@ export function initPreview({docId,bridge,staticPreview}){
  $('#preview-custom').onsubmit=e=>{e.preventDefault();const w=Number($('#preview-width').value),h=Number($('#preview-height').value);if(!validSize(w)||!validSize(h)){$('#preview-error').textContent='宽和高须为 240–4096 的整数';return}p.custom={width:w,height:h};p.rotated=false;$('#preview-error').textContent='';save();paint();measure()};
  new ResizeObserver(schedule).observe(article);new ResizeObserver(schedule).observe(header);
  new ResizeObserver(schedule).observe(document.querySelector('.dock'));
+ const draftActions=document.querySelector('#draft-actions');if(draftActions){new ResizeObserver(schedule).observe(draftActions);new MutationObserver(schedule).observe(draftActions,{attributes:true,attributeFilter:['hidden']})}
  window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);
- window.addEventListener('resize',()=>{placeToggle();schedule()});window.addEventListener('scroll',schedule,{passive:true});
+ window.addEventListener('resize',schedule);window.addEventListener('scroll',schedule,{passive:true});
  new MutationObserver(()=>{const f=staticPreview?.frame||bridge.state.frame;if(f!==currentFrame)update();else schedule()}).observe(root,{childList:true});
  document.addEventListener('preview-change',schedule);
  article.addEventListener('scroll',()=>document.dispatchEvent(new Event('preview-geometry')),{passive:true});

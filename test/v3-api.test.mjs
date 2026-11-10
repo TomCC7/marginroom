@@ -76,8 +76,11 @@ try {
     assert.equal((await suggest({ ...payload, body: 'different' })).status, 409);
     assert.equal((await suggest({ ...payload, author: 'reviewer' })).status, 409);
     const otherCaller = await suggest(payload, guest2);
-    assert.equal(otherCaller.status, 200);
-    assert.notEqual(otherCaller.data.suggestion.id, s.id);
+    // A second caller cannot create an overlapping pending revision. Request
+    // idempotency remains caller-scoped; the existing revision is actionable.
+    assert.equal(otherCaller.status, 409);
+    assert.equal(otherCaller.data.error, 'range_overlap');
+    assert.equal(otherCaller.data.existingId, s.id);
     const otherDoc = await suggest(payload, guest, 'other');
     assert.equal(otherDoc.status, 200);
     const accepted = await decision(s.id, 'accept');
@@ -207,7 +210,13 @@ try {
     assert.equal((await guest('POST', url, { ...payload, requestId: 'bad space' })).status, 400);
   });
 
-  await test('migration upgrades populated legacy suggestions and is repeatable', () => {
+  await test('new range record rejects changed original HTML even without an overlay',async()=>{
+    const r=await suggest({anchor:'source-drift',baseText:'same same',quote:'same',body:'WRONG',kind:'rewrite',rangeStart:5,rangeEnd:9},guest,'other');assert.equal(r.status,200);
+    await writeFile(path.join(dir,'other.html'),'<p>Changed original same same</p>');
+    const result=await decision(r.data.suggestion.id,'accept',owner,'other');assert.equal(result.status,409);assert.equal(result.data.error,'span_stale');assert.equal(getSuggestion(db,r.data.suggestion.id).status,'stale');
+    await writeFile(path.join(dir,'other.html'),'<p>Other disposable fixture</p>');
+  });
+  await test('migration upgrades populated legacy suggestions and is repeatable', async () => {
     const oldPath = path.join(dir, 'old.db');
     const old = new Database(oldPath);
     old.exec(`CREATE TABLE suggestions (id TEXT PRIMARY KEY, doc_id TEXT NOT NULL, anchor TEXT, quote TEXT, body TEXT, kind TEXT, status TEXT NOT NULL DEFAULT 'open', author TEXT, created_at TEXT NOT NULL);

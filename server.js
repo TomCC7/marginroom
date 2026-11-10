@@ -20,6 +20,9 @@ import { makeGuardrails, LIMITS } from './guardrails.js';
 import { makeFeedbackHandler } from './feedback-api.js';
 import { patchSource } from './source-patch.js';
 import { randomUUID, createHash } from 'node:crypto';
+import {rangesConflict} from './public/range-patches.js';
+import {locateRecord} from './public/review-ranges.js';
+import {plainText} from './db.js';
 import { rm } from 'node:fs/promises';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -587,7 +590,8 @@ export function createApp(db, opts = {}) {
   app.post('/api/suggest/:id', writeLimiter, async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
-    if (await readDocHtml(id) == null) return res.status(404).json({ error: 'doc_not_found' });
+    const originalHtml=await readDocHtml(id);
+    if (originalHtml == null) return res.status(404).json({ error: 'doc_not_found' });
     // Suggesting is open to any reviewer EXCEPT on a view-only doc (owner's choice).
     if (!canSuggestDoc(req, id)) return res.status(403).json({ error: 'suggest_not_allowed' });
     const { anchor, quote, body, kind, author, spanOcc, baseText, rangeStart, rangeEnd, requestId } = req.body || {};
@@ -642,6 +646,12 @@ export function createApp(db, opts = {}) {
         return res.json({ ok: true, suggestion: getSuggestion(db, prior.id), replayed: true });
       }
     }
+    if(hasRange&&kind==='rewrite'){
+      const current=getOverlay(db,id)[anchor];
+      if(current&&current.text!==escapeText(baseText))return res.status(409).json({error:'span_stale'});
+      const overlap=listSuggestions(db,id,'open').find(s=>{if(s.kind!=='rewrite'||s.anchor!==anchor)return false;const loc=locateRecord(s,baseText,plainText);return loc.stale||loc.fallback||rangesConflict({start:rangeStart,end:rangeEnd},loc)});
+      if(overlap)return res.status(409).json({error:'range_overlap',existingId:overlap.id});
+    }
     const suggestion = addSuggestion(db, {
       id: randomUUID(),
       range_start: hasRange ? rangeStart : null,
@@ -659,6 +669,7 @@ export function createApp(db, opts = {}) {
       span_occ,
       base_text: escapeText(String(baseText || '').slice(0, MAX_TEXT)),
     });
+    db.prepare('UPDATE suggestions SET source_hash=? WHERE id=?').run(createHash('sha256').update(originalHtml).digest('hex'),suggestion.id);
     noStore(res);
     res.json({ ok: true, suggestion });
   });
@@ -691,7 +702,7 @@ export function createApp(db, opts = {}) {
   });
 
   // POST /api/suggest/:id/:sid/accept -> { ok, overlay }
-  app.post('/api/suggest/:id/:sid/accept', writeLimiter, (req, res) => {
+  app.post('/api/suggest/:id/:sid/accept', writeLimiter, async (req, res) => {
     const { id, sid } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     if (!ownsDoc(req, id)) return res.status(403).json({ error: 'not_your_doc' });
@@ -702,6 +713,7 @@ export function createApp(db, opts = {}) {
     // escaped and rendered as textContent, so decoding happens client-side. For a
     // span-level rewrite, acceptSuggestion ignores `text` and splices `body` into
     // the block's current text at the quote's Nth occurrence.
+    if(s.source_hash&&s.source_hash!==createHash('sha256').update(await readDocHtml(id)||'').digest('hex')){setSuggestionStatus(db,sid,'stale');return res.status(409).json({error:'span_stale'})}
     const result = acceptSuggestion(db)(sid, s.body, new Date().toISOString());
     if (result == null) return res.status(409).json({ error: 'accept_failed' });
     // Span phrase drifted (block edited since the suggestion) -> marked stale,

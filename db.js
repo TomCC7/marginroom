@@ -8,6 +8,7 @@
 // always-on box. The DB path is configurable so tests use a throwaway file and
 // production uses a persistent volume.
 import Database from 'better-sqlite3';
+import {rangesConflict} from './public/range-patches.js';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -62,7 +63,7 @@ export function openDb(path = process.env.HS_DB_PATH || './data/app.db') {
   if (!cols.includes('span_occ')) db.exec('ALTER TABLE suggestions ADD COLUMN span_occ INTEGER NOT NULL DEFAULT -1');
   if (!cols.includes('base_text')) db.exec("ALTER TABLE suggestions ADD COLUMN base_text TEXT NOT NULL DEFAULT ''");
 
-  for (const [name, type] of [['range_start', 'INTEGER'], ['range_end', 'INTEGER'], ['request_id', 'TEXT'], ['request_caller', 'TEXT'], ['request_payload', 'TEXT']]) {
+  for (const [name, type] of [['source_hash', 'TEXT'], ['range_start', 'INTEGER'], ['range_end', 'INTEGER'], ['request_id', 'TEXT'], ['request_caller', 'TEXT'], ['request_payload', 'TEXT']]) {
     if (!cols.includes(name)) db.exec(`ALTER TABLE suggestions ADD COLUMN ${name} ${type}`);
   }
   db.exec(`
@@ -127,7 +128,7 @@ export function getVersion(db, docId, versionId) {
 // --- suggestions (tracked changes) ---
 // A suggestion proposes replacing a block's text (kind='rewrite') or leaves a
 // note (kind='comment'). It never touches the live overlay until accepted.
-const SUGG_COLS = 'id, doc_id, anchor, quote, body, kind, status, author, created_at, span_occ, base_text, range_start, range_end, request_id';
+const SUGG_COLS = 'id, doc_id, anchor, quote, body, kind, status, author, created_at, span_occ, base_text, range_start, range_end, request_id, source_hash';
 
 function withReplies(db, row) {
   if (!row) return row;
@@ -162,7 +163,7 @@ export function addSuggestionReply(db, reply) {
 }
 
 // Decode only the encoding used by escapeText, once (not arbitrary HTML).
-const plainText = (s) => String(s).replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+export const plainText = (s) => String(s).replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
 const storedText = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 export function setSuggestionStatus(db, id, status) {
@@ -223,7 +224,10 @@ export const acceptSuggestion = (db) => db.transaction((id, text, ts) => {
         .run(s.doc_id, ts, JSON.stringify(overlay), `accept suggestion ${id.slice(0, 8)}`);
       return overlay;
     }
+    if(s.range_start==null&&s.span_occ>=0&&s.base_text){const base=plainText(s.base_text),q=plainText(s.quote);let pos=-1,from=0;for(let i=0;q&&i<=s.span_occ;i++){pos=base.indexOf(q,from);if(pos<0)break;from=pos+q.length}if(pos>=0){s.range_start=pos;s.range_end=pos+q.length}}
     if (s.range_start != null) {
+      // Existing exact records remain on the same schema; legacy occurrence
+      // records rebased by an earlier accept arrive here too.
       const current = overlay[s.anchor]?.text ?? s.base_text;
       const base = plainText(s.base_text);
       if (current !== s.base_text || base.slice(s.range_start, s.range_end) !== plainText(s.quote)) {
@@ -231,6 +235,21 @@ export const acceptSuggestion = (db) => db.transaction((id, text, ts) => {
         return { overlay, stale: true };
       }
       applied = storedText(base.slice(0, s.range_start)) + s.body + storedText(base.slice(s.range_end));
+      const next = plainText(applied), delta = plainText(s.body).length - (s.range_end-s.range_start);
+      // Transactionally rebase exact disjoint annotations. Never search another
+      // identical word; overlapped, mismatched or ambiguous records become stale.
+      for(const other of db.prepare("SELECT * FROM suggestions WHERE doc_id=? AND anchor=? AND id<>? AND status='open'").all(s.doc_id,s.anchor,s.id)){
+        let start=other.range_start,end=other.range_end;
+        if(start==null&&other.span_occ>=0&&other.base_text===s.base_text){let p=-1,from=0;const q=plainText(other.quote);for(let i=0;q&&i<=other.span_occ;i++){p=base.indexOf(q,from);if(p<0)break;from=p+q.length}if(p>=0){start=p;end=p+q.length}}
+        if(other.base_text!==s.base_text||start==null||base.slice(start,end)!==plainText(other.quote)||rangesConflict({start,end},{start:s.range_start,end:s.range_end})){
+          setSuggestionStatus(db,other.id,'stale');continue;
+        }
+        if(start>=s.range_end){start+=delta;end+=delta}
+        db.prepare('UPDATE suggestions SET base_text=?,range_start=?,range_end=? WHERE id=?').run(storedText(next),start,end,other.id);
+      }
+      const prior=overlay[s.anchor];
+      const patches=[...(prior?.patches||[]),{base,start:s.range_start,end:s.range_end,old:plainText(s.quote),body:plainText(s.body)}];
+      overlay[s.anchor]={text:applied,updatedAt:ts,patches,...(prior&&!prior.patches?{patchBaseText:plainText(prior.text)}:prior?.patchBaseText!==undefined?{patchBaseText:prior.patchBaseText}:{})};
     } else if (s.span_occ >= 0) {
       const current = overlay[s.anchor]?.text ?? s.base_text ?? '';
       // Never relocate a legacy Nth occurrence after its base block has drifted.
@@ -254,7 +273,7 @@ export const acceptSuggestion = (db) => db.transaction((id, text, ts) => {
       }
     }
     setSuggestionStatus(db, id, 'accepted');
-    overlay[s.anchor] = { text: applied, updatedAt: ts };
+    if (s.range_start == null) overlay[s.anchor] = { text: applied, updatedAt: ts };
     saveOverlay(db, s.doc_id, overlay, ts);
     db.prepare('INSERT INTO document_versions (doc_id, ts, overlay_json, label) VALUES (?, ?, ?, ?)')
       .run(s.doc_id, ts, JSON.stringify(overlay), `accept suggestion ${id.slice(0, 8)}`);

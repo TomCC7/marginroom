@@ -2,6 +2,8 @@
 import {elementReview} from './element-review.js';
 import {sha256hex} from './anchoring.js';
 import {singleBlockRange} from './review-ranges.js';
+import {inlineDraftController,inlineDraftCSS} from './inline-draft.js';
+import {annotationAffordances} from './annotation-affordances.js';
 export function sanitizeStatic(doc) {
  doc.querySelectorAll('script,iframe,frame,frameset,object,embed,base,meta,template,animate,animateMotion,animateTransform,set').forEach(n=>n.remove());
  for(const el of doc.querySelectorAll('*'))for(const a of [...el.attributes]){
@@ -27,7 +29,7 @@ export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'r
   if(m.type==='suspended'){applyForms(m.forms);suspended?.();suspended=null;return}
   if(!active)return;
   if(m.anchor!==undefined&&(typeof m.anchor!=='string'||m.anchor.length>256||!bridge.state.anchorMap.has(m.anchor)&&!bridge.state.commentMap.has(m.anchor)&&!/^c2:[a-f0-9]{64}$/.test(m.anchor)))return;
-  if(['input','selection','comment','thread','key','located','elementTarget','targetCleared','targetMissing'].includes(m.type))onMessage(m);
+  if(['inline-change','inline-key','input','selection','comment','thread','key','located','elementTarget','targetCleared','targetMissing'].includes(m.type))onMessage(m);
   if(m.type==='selection'&&captures.has(m.requestId)){captures.get(m.requestId)(m);captures.delete(m.requestId)}
  });
  async function create(){
@@ -40,8 +42,8 @@ export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'r
   const config=parsed.createElement('script');config.textContent=`window.__staticPreviewToken=${JSON.stringify(token)}`;parsed.body.append(config);
   const hashSource=await fetch(new URL('./anchoring.js',import.meta.url)).then(r=>r.text());
   const controller=await fetch(new URL('./static-frame-controller.js',import.meta.url)).then(r=>{if(!r.ok)throw Error('Static preview controller unavailable');return r.text()});
-  const script=parsed.createElement('script');script.textContent=`{${hashSource.replace(/export /g,'')}\nconst elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};\n${controller}\n}`;parsed.body.append(script);
-  const style=parsed.createElement('style');style.textContent='[data-review-mark]{background:#fff0ad}[data-review-del]{background:#ffe3df;color:#92584e}[data-review-ins]{background:#def1e5;color:#285d48}.marker{cursor:pointer}.record-focus{outline:3px solid #deab56}';parsed.head.append(style);
+  const script=parsed.createElement('script');script.textContent=`{${hashSource.replace(/export /g,'')}\nconst annotationAffordances=${annotationAffordances.toString()};const inlineDraftController=${inlineDraftController.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};\n${controller}\n}`;parsed.body.append(script);
+  const style=parsed.createElement('style');style.textContent=inlineDraftCSS+'[data-review-mark]{background:#e0f0e5;cursor:pointer}[data-review-del]{background:#ffe3df;color:#92584e}[data-review-ins]{background:#def1e5;color:#285d48}.record-focus{outline:1px solid #76a68b}';parsed.head.append(style);
   frame=document.createElement('iframe');frame.className='hs-static-preview';frame.title='文稿设备预览';frame.setAttribute('sandbox','allow-scripts');frame.hidden=true;
   frame.srcdoc='<!doctype html>'+parsed.documentElement.outerHTML;root.append(frame);
   await new Promise((resolve,reject)=>{if(ready)return resolve();const timer=setTimeout(()=>reject(Error('Static preview controller timed out')),10000);frame.addEventListener('static-preview-ready',()=>{clearTimeout(timer);resolve()},{once:true})});

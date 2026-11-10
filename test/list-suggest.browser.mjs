@@ -1,4 +1,4 @@
-// Explicit contextual suggestions; native input stays in the composer, never source.
+// Explicit inline projection; native input never commits the canonical source.
 // GET-only isolated fixture: no source/server writes or relaxed safety assertions.
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
@@ -19,26 +19,26 @@ try{
   const action=page.locator(width<600?'#mobile-suggest':'#selection-suggest');
   const mode=async(preset,zoom)=>{await page.selectOption('#preview-mode',preset);await page.selectOption('#preview-zoom',zoom);await frame.waitForFunction(p=>p==='auto'||innerWidth===390,preset);await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
   const select=async(id,start,end)=>{await frame.locator(id).evaluate((el,{start,end})=>{const w=document.createTreeWalker(el,4);let t,pos=0,a,b,ao,bo;while(t=w.nextNode()){if(a===undefined&&pos+t.length>=start){a=t;ao=start-pos}if(pos+t.length>=end){b=t;bo=end-pos;break}pos+=t.length}const r=document.createRange();r.setStart(a,ao);r.setEnd(b,bo);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'))},{start,end});await page.waitForTimeout(100)};
-  const cancel=async()=>{await page.locator('#cancel-comment').click();assert.equal(await frame.locator('#target').textContent(),text)};
+  const cancel=async()=>{await page.locator('#cancel-draft').click();await frame.waitForFunction(()=>!document.querySelector('[data-inline-editor]'));assert.equal(await frame.locator('#target').textContent(),text)};
   for(const preset of ['auto','phone'])for(const zoom of ['fit','actual']){
    await mode(preset,zoom);
    // Residual native shell selection may not contaminate the frame's UTF16 Range.
    await page.locator(width<600?'.brand':'#hs-docname').dblclick();await select('#target',0,text.length);
-   assert(await action.isEnabled());await action.click();assert.equal(await page.locator('#selected-quote').textContent(),text);
-   await page.locator('#comment-body').fill('replacement');assert.equal(await frame.locator('#target').textContent(),text);
+   assert(await action.isEnabled());await action.click();await frame.locator('[data-inline-editor]').waitFor().catch(async e=>{console.log({width,preset,zoom,errors:evidence.errors,reason:await page.locator('#rewrite-reason').textContent(),status:await page.locator('#hs-status').textContent(),frame:await frame.locator('#target').innerHTML()});throw e});assert.equal(await frame.locator('[data-inline-editor]').textContent(),text);
+   await page.keyboard.insertText('replacement');assert.equal(await frame.locator('[data-inline-editor]').textContent(),'replacement');
    if(out)await page.screenshot({path:`${out}/${width}-${preset}-${zoom}-single-li.png`});
    const before=await frame.locator('#retained').inputValue();// Composer is modal; simulate layout-control events without bypassing submit/auth.
    await page.locator('#preview-dock-toggle').dispatchEvent('click');await page.locator('#preview-dock-toggle').dispatchEvent('click');
-   assert.equal(await page.locator('#comment-body').inputValue(),'replacement');assert.equal(await frame.locator('#retained').inputValue(),before);assert(await page.evaluate(()=>savedFrame===document.querySelector('iframe')));
+   assert.equal(await frame.locator('[data-inline-editor]').textContent(),'replacement');assert.equal(await frame.locator('#retained').inputValue(),before);assert(await page.evaluate(()=>savedFrame===document.querySelector('iframe')));
    metrics.push({width,preset,zoom,singleLiContext:true});await cancel();
   }
   await mode('auto','fit');
-  // Rich markup is commentable, not silently flattened/rewrite-enabled.
+  // Rich markup supports explicit drafts without flattening unaffected inline nodes.
   const rich=await frame.locator('#rich').textContent(),at=rich.lastIndexOf('same');await select('#rich',at,at+4);
-  assert(await action.isDisabled());assert.equal(await frame.locator('#rich em').textContent(),'emphasis');assert.equal(await frame.locator('#rich strong').textContent(),'bold');assert.equal(await frame.locator('#rich a').textContent(),'link');assert.equal(await frame.locator('#rich').textContent(),rich);
+  assert(await action.isEnabled());await action.click();await frame.locator('[data-inline-editor]').waitFor();await page.keyboard.insertText('rich draft');await cancel();assert.equal(await frame.locator('#rich em').textContent(),'emphasis');assert.equal(await frame.locator('#rich strong').textContent(),'bold');assert.equal(await frame.locator('#rich a').textContent(),'link');assert.equal(await frame.locator('#rich').textContent(),rich);
   // Wrapped paragraph is a supported single semantic block; native paste and IME
   // now edit ONLY replacement text, with no host boundary/merge opportunities.
-  await select('#paragraph',1,2);await action.click();await page.locator('#comment-body').fill('paste');await page.locator('#comment-body').press('ControlOrMeta+A');await page.keyboard.insertText('replacement');assert.equal(await page.locator('#comment-body').inputValue(),'replacement');await cancel();
+  await select('#paragraph',1,2);await action.click();await frame.locator('[data-inline-editor]').waitFor();await page.keyboard.insertText('replacement');assert.equal(await frame.locator('[data-inline-editor]').textContent(),'replacement');await cancel();
   for(const [offset,key] of [[0,'Backspace'],[text.length,'Delete']]){await select('#target',offset,offset);await page.keyboard.press(key);assert.equal(await frame.locator('#items>li').count(),5);assert.equal(await frame.locator('#target').textContent(),text)}
   // Genuine cross-li/nested-p/grouped-p selection cannot mutate by keys/paste,
   // and must not leave a functioning stale replacement context.
@@ -46,8 +46,8 @@ try{
    const before=await frame.locator('body').innerHTML();await frame.evaluate(([a,b])=>{const el=document.querySelector(a),last=document.querySelector(b),r=document.createRange();r.setStart(el.firstChild,0);r.setEnd(last.firstChild,2);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'))},[a,b]);await page.waitForTimeout(100);
    assert(!await action.isVisible()||await action.isDisabled());await page.keyboard.insertText('BAD');await frame.locator(a).evaluate(el=>{const d=new DataTransfer();d.setData('text/plain','BAD PASTE\ntwo paragraphs');el.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:d}))});assert.equal(await frame.locator('body').innerHTML(),before);assert.equal(await page.locator('#draft-actions').isVisible(),false);assert(!await page.locator('#composer').isVisible());
   }
-  await select('#target',0,2);await action.click();const cdp=await ctx.newCDPSession(page);await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});await cdp.send('Input.insertText',{text:'中文'});assert.equal(await page.locator('#comment-body').inputValue(),'中文');await cancel();
+  await select('#target',0,2);await action.click();await frame.locator('[data-inline-editor]').waitFor();const cdp=await ctx.newCDPSession(page);await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});await cdp.send('Input.insertText',{text:'中文'});assert.equal(await frame.locator('[data-inline-editor]').textContent(),'中文');await cancel();
   assert.notEqual(await frame.locator('[data-hs-group]').getAttribute('contenteditable'),'true');assert.equal(await frame.locator('#target').textContent(),text);assert.deepEqual(evidence.errors,[]);assert.deepEqual(evidence.writes,[]);await ctx.close();
  }
- if(out)await writeFile(out+'/list-metrics.json',JSON.stringify(metrics,null,2));console.log('PASS explicit list context: 1440/390 Auto/phone Fit/100%, stale shell selection, rich/grouped refusal, composer select-all+IME, wrapped p, edge deletion, real crossblock key/paste no mutation, frame/input/draft retention; zero writes.');
+ if(out)await writeFile(out+'/list-metrics.json',JSON.stringify(metrics,null,2));console.log('PASS explicit inline list context: 1440/390 Auto/phone Fit/100%, stale shell selection, rich-node edit/cancel, inline IME, wrapped p, edge deletion, real crossblock key/paste no mutation, frame/input/draft retention; zero writes.');
 }finally{await browser.close()}

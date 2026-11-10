@@ -1,0 +1,19 @@
+// Shared with the opaque static frame. Only an explicit command can start this
+// projection. The native editable node is never replaced on input (IME/undo).
+export function inlineDraftController({doc,onChange,onKey}){
+ let current=null;
+ function offsets(el,start,end){const w=doc.createTreeWalker(el,4);let n,p=0,a,b,ao,bo;while(n=w.nextNode()){if(n.parentElement.closest('[data-review-ins],[data-review-point]'))continue;if(!a&&p+n.length>=start){a=n;ao=start-p}if(p+n.length>=end){b=n;bo=end-p;break}p+=n.length}if(!a||!b)return null;const r=doc.createRange();r.setStart(a,ao);r.setEnd(b,bo);return r}
+ function restoreSelection(el,start,end){const r=offsets(el,start,end);if(r){const s=doc.defaultView.getSelection();s.removeAllRanges();s.addRange(r)}}
+ function measure(){if(!current)return;const r=current.ins.getBoundingClientRect();onChange({body:current.ins.textContent,composing:current.composing,rect:{left:r.left,top:r.top,width:r.width,height:r.height}})}
+ function stop(restore=true){if(!current)return;const c=current;current=null;if(restore){c.el.innerHTML=c.html;const r=offsets(c.el,c.start,c.end);if(r){const s=doc.defaultView.getSelection();s.removeAllRanges();s.addRange(r)}}}
+ function start(el,start,end){stop();const r=offsets(el,start,end);if(!r)return false;const html=el.innerHTML,old=r.toString(),del=doc.createElement('del'),ins=doc.createElement('ins');del.dataset.inlineOld='';del.contentEditable='false';del.textContent=old;del.hidden=true;ins.dataset.inlineEditor='';ins.contentEditable='true';ins.setAttribute('role','textbox');ins.setAttribute('aria-label','原位修改草稿');ins.textContent=old;const f=doc.createDocumentFragment();f.append(del,ins);r.deleteContents();r.insertNode(f);current={el,html,old,start,end,del,ins,composing:false};ins.focus({preventScroll:true});const selected=doc.createRange();selected.selectNodeContents(ins);const s=doc.defaultView.getSelection();s.removeAllRanges();s.addRange(selected);measure();return true}
+ doc.addEventListener('beforeinput',e=>{if(!current||!current.ins.contains(e.target))return;if(['insertParagraph','insertLineBreak'].includes(e.inputType)){e.preventDefault();onKey('submit');return}const s=doc.defaultView.getSelection();if(!s.rangeCount||!current.ins.contains(s.getRangeAt(0).startContainer)||!current.ins.contains(s.getRangeAt(0).endContainer))e.preventDefault()});
+ doc.addEventListener('input',e=>{if(current&&current.ins.contains(e.target)){current.del.hidden=current.ins.textContent===current.old;measure()}});
+ doc.addEventListener('compositionstart',e=>{if(current&&current.ins.contains(e.target))current.composing=true});
+ doc.addEventListener('compositionend',e=>{if(current&&current.ins.contains(e.target)){current.composing=false;current.del.hidden=current.ins.textContent===current.old;measure()}});
+ doc.addEventListener('paste',e=>{if(!current||!current.ins.contains(e.target))return;e.preventDefault();const t=e.clipboardData.getData('text/plain');if(/[\r\n]/.test(t))return;doc.execCommand('insertText',false,t)});
+ doc.addEventListener('keydown',e=>{if(!current||!current.ins.contains(e.target))return;if(e.key==='Escape'||(e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();onKey(e.key==='Escape'?'cancel':'submit')}} ,true);
+ doc.defaultView.addEventListener('scroll',measure,true);doc.defaultView.addEventListener('resize',measure);
+ return {start,stop,measure,restoreSelection,get active(){return !!current},get anchor(){return current?.el.dataset.hsAnchor}};
+}
+export const inlineDraftCSS='[data-inline-editor]{color:#205b40;background:#dcf0e2;text-decoration:none;outline:1px solid #76a68b;min-width:2px;white-space:pre-wrap}[data-inline-old]{color:#944b45;background:#f9e0dd;text-decoration:line-through;user-select:none}[data-inline-old][hidden]{display:none!important}';

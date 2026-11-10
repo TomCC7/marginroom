@@ -17,6 +17,7 @@ import {elementReview} from './element-review.js';
 import {singleBlockRange} from './review-ranges.js';
 import { resolveSpanSelection } from './span-select.js';
 import { reviewerName, setReviewerName } from './identity.js';
+import {applyDOMPatches} from './range-patches.js';
 import { scopeCssText } from './scope-css.js';
 import { modePolicy, canUseMode, defaultMode as pickDefaultMode } from './mode-policy.js';
 
@@ -246,6 +247,7 @@ function applyOverlay(overlay) {
     if (!el || !entry) { stale++; continue; }
     const text = decodeEntities(entry.text);
     if (isGroup(el)) writeGroupText(el, text);
+    else if(entry.patches){if(entry.patchBaseText!==undefined)el.textContent=entry.patchBaseText;if(!applyDOMPatches(el,entry.patches)){stale++;continue}}
     else el.textContent = text;
     el.setAttribute('data-hs-edited', '1');
   }
@@ -1463,6 +1465,7 @@ async function downloadOriginal() {
     if (!el || !entry) continue;                 // stale edits are skipped, not misplaced
     const text = decodeEntities(entry.text);
     if (el.hasAttribute(GROUP_ATTR)) writeGroupText(el, text);
+    else if(entry.patches){if(entry.patchBaseText!==undefined)el.textContent=entry.patchBaseText;if(!applyDOMPatches(el,entry.patches))continue}
     else el.textContent = text;
   }
 
