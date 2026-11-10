@@ -62,6 +62,18 @@ await test('disjoint caller and legacy records, accept both orders rebases exact
  assert.equal((await b('POST','/api/suggest/fixture',legacy)).data.suggestion.id,y.data.suggestion.id);
  }
 });
+await test('partial accept rebases remaining hunk and continued editing preserves its discussion',async()=>{
+ await reset();let s=(await save((await get()).data,'A CATS and a DOG.')).data.snapshot;
+ const first=s.records.find(r=>r.quote==='cat'),remaining=s.records.find(r=>r.quote==='dog');
+ assert.equal((await b('POST',`/api/suggest/fixture/${remaining.id}/replies`,{body:'dog discussion'})).status,200);
+ const before=(await get()).data;assert.equal((await owner('POST',`/api/suggest/fixture/${first.id}/accept`,{})).status,200);
+ assert.equal((await save(before,'A CATS and a DOGS.')).status,409);
+ s=(await get()).data;assert.equal(s.baseText,'A CATS and a dog.');assert.equal(s.proposedText,'A CATS and a DOG.');
+ const kept=s.records.find(r=>r.id===remaining.id);assert.equal(kept.range_start,13);assert.equal(kept.replies.length,1);
+ s=(await save(s,'A CATS and a DOGS.')).data.snapshot;assert.equal(s.records.find(r=>r.id===remaining.id).body,'DOGS');assert.equal(s.records.find(r=>r.id===remaining.id).replies.length,1);
+ assert.equal((await owner('POST',`/api/suggest/fixture/${remaining.id}/accept`,{})).status,200);
+ assert.equal((await get()).data.baseText,'A CATS and a DOGS.');assert.equal(await readFile(file,'utf8'),original);
+});
 await test('legacy request payload immutable through continuous updates; NULL caller is never claimed',async()=>{
  await reset();const p={anchor,quote:'cat',body:'CAT',kind:'rewrite',baseText:text,rangeStart:2,rangeEnd:5,requestId:'legacy-owned'};
  const row=(await a('POST','/api/suggest/fixture',p)).data.suggestion;const immutable=db.prepare('SELECT request_payload FROM suggestions WHERE id=?').get(row.id).request_payload;

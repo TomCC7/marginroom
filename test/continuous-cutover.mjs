@@ -7,7 +7,7 @@ import {spawnSync} from 'node:child_process';
 const [current,candidate]=process.argv.slice(2);assert(current&&candidate);
 const dir=await mkdtemp(path.join(process.env.TMPDIR,'continuous-cutover-'));
 try{
- const legacy=path.join(dir,'legacy');await mkdir(legacy);await cp(path.join(current,'db.js'),path.join(legacy,'db.js'));await writeFile(path.join(legacy,'package.json'),'{"type":"module"}');await symlink(path.resolve('node_modules'),path.join(legacy,'node_modules'));
+ const legacy=path.join(dir,'legacy');await mkdir(legacy);await cp(path.join(current,'db.js'),path.join(legacy,'db.js'));await writeFile(path.join(legacy,'package.json'),'{"type":"module"}');await symlink(path.resolve('node_modules'),path.join(legacy,'node_modules'));await cp(path.join(current,'public'),path.join(legacy,'public'),{recursive:true});
  const old=await import(pathToFileURL(path.join(legacy,'db.js'))),next=await import(pathToFileURL(path.resolve(candidate,'db.js')));
  const file=path.join(dir,'populated.db');let db=old.openDb(file);
  old.addSuggestion(db,{id:'legacy',doc_id:'synthetic',anchor:'fixture',quote:'cat',body:'CAT',kind:'rewrite',author:'same display name',created_at:'2020-01-01T00:00:00Z',base_text:'cat',range_start:0,range_end:3});
