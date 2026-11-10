@@ -432,7 +432,7 @@
   },{passive:true});
 
   // Parent -> frame. We only accept messages from our embedder.
-  var reviewMarks=annotationAffordances({doc:document,onOpen:function(ids){post({type:'reviewThread',ids:ids})},resolveTarget:function(a){return a.startsWith('c2:')?picker.resolve(a):null}});
+  var reviewMarks=annotationAffordances({doc:document,onOpen:function(ids){post({type:'reviewThread',ids:ids})},resolveTarget:function(a){return a.match(/^c[23]:/)?picker.resolve(a):null}});
   window.addEventListener('message', function (e) {
     if (e.source !== PARENT) return;
     var m = e.data || {};
@@ -460,10 +460,11 @@
   // re-rendered and the element is gone), tell the parent so it can label the card.
   async function flashComment(anchor,highlight) {
     if (typeof anchor !== 'string') return;
-    var el = anchor.startsWith('c2:') ? await picker.reveal(anchor) : commentMap.get(anchor)
+    var el = anchor.match(/^c[23]:/) ? await picker.reveal(anchor) : commentMap.get(anchor)
       || (anchor.charAt(0) === 'c'
             ? document.querySelector('[data-hs-comment-anchor="' + cssEscape(anchor) + '"]')
             : document.querySelector('[data-hs-anchor="' + cssEscape(anchor) + '"]'));
+    if (el === false) return;
     if (!el || !document.body.contains(el)) { post({ type: 'commentMissing', anchor: anchor }); return; }
     // Do not propagate scrollIntoView into the embedding review shell.
     for (var p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
@@ -474,7 +475,7 @@
     var r = el.getBoundingClientRect();
     scrollBy(r.left - (innerWidth - r.width) / 2, r.top - (innerHeight - r.height) / 2);
     r = el.getBoundingClientRect();
-    post({ type: 'commentLocated', rect: { left: r.left, top: r.top, width: r.width, height: r.height } });
+    post({ type: 'commentLocated', anchor: anchor, rect: { left: r.left, top: r.top, width: r.width, height: r.height } });
     if(highlight!==false)el.classList.add('hs-frame-flash');
     setTimeout(function () { el.classList.remove('hs-frame-flash'); }, 1200);
   }

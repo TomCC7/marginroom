@@ -1151,7 +1151,7 @@ function onFrameMessage(e) {
   if (m.type === 'targetCleared') { document.dispatchEvent(new Event('review-target-clear')); return; }
   if (m.type === 'reviewThread' && Array.isArray(m.ids)) document.dispatchEvent(new CustomEvent('review-frame-thread',{detail:m.ids}));
   if (m.type === 'commentLocated' && validRect(m.rect)) {
-    document.dispatchEvent(new CustomEvent('preview-reveal', { detail: { frame, rect: m.rect } }));
+    document.dispatchEvent(new CustomEvent('preview-reveal', { detail: { frame, rect: m.rect, anchor: m.anchor } }));
     return;
   }
   if (m.type === 'ready') {

@@ -76,7 +76,7 @@ function staticMessage(m){
  if(m.type==='elementTarget'){pickTarget(m,staticPreview.frame);return}
  if(m.type==='targetCleared'){if($('#composer').hidden)clearSelection();return}
  if(m.type==='targetMissing'){missingTarget(m.anchor);return}
- if(m.type==='located'&&m.rect&&['left','top','width','height'].every(k=>Number.isFinite(m.rect[k])&&Math.abs(m.rect[k])<100000)){document.dispatchEvent(new CustomEvent('preview-reveal',{detail:{frame:staticPreview.frame,rect:m.rect}}));return}
+ if(m.type==='located'&&m.rect&&['left','top','width','height'].every(k=>Number.isFinite(m.rect[k])&&Math.abs(m.rect[k])<100000)){document.dispatchEvent(new CustomEvent('preview-reveal',{detail:{frame:staticPreview.frame,rect:m.rect,anchor:m.anchor}}));return}
  if(m.type==='selection'){
   if(!m.selection){frameSelection=null;if(!selectionPress&&$('#composer').hidden&&(!selected?.element||m.reason==='invalid')){selected=null;selectionUI(null)}return}
   const current=staticSelection(m);if(!current)return;frameSelection=current;
@@ -126,18 +126,21 @@ function scrollThread(id){
 }
 function openDiscussion(id){dismissTarget();clearSelection();if(draft)return toast('请先提交或取消草稿');setView('article');if(id){active=id;filter='all';$$('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===filter))}document.body.classList.remove('drawer-closed');document.body.classList.add('drawer-open');syncDiscussion();renderThreads();if(id)requestAnimationFrame(()=>scrollThread(id))}
 function openThreadChoices(ids){ids=[...new Set(ids)].filter(id=>records.some(r=>r.id===id));if(!ids.length)return;if(ids.length===1)return openDiscussion(ids[0]);openDiscussion();pop('<h3>此处的批注 · '+ids.length+'</h3>'+ids.map(id=>{const r=records.find(s=>s.id===id);return `<button data-choose-thread="${esc(id)}">${esc(decode(r.author))} · ${esc(decode(r.body).slice(0,75))}</button>`}).join(''));$('#popover').onclick=e=>{const id=e.target.closest('[data-choose-thread]')?.dataset.chooseThread;if(id){$('#popover').hidden=true;openDiscussion(id)}}}
-const marks=annotationAffordances({doc:document,onOpen:openThreadChoices,resolveTarget:a=>a.startsWith('c2:')?picker?.resolve(a):null});
+const marks=annotationAffordances({doc:document,onOpen:openThreadChoices,resolveTarget:a=>a.match(/^c[23]:/)?picker?.resolve(a):null});
 function commentGroups(){const groups=new Map();for(const r of records){if(r.kind!=='comment'||r.status!=='open'||locations.get(r.id)?.stale)continue;if(!groups.has(r.anchor))groups.set(r.anchor,[]);groups.get(r.anchor).push(r.id)}return [...groups].map(([anchor,ids])=>({anchor,ids}))}
 function locate(id,open=true){
- const s=records.find(x=>x.id===id);if(!s)return;if(open)openDiscussion(id);if(staleReason(s))return;else if(!open&&innerWidth<=1100)closeDiscussion();
+ const s=records.find(x=>x.id===id);if(!s)return;if(open)openDiscussion(id);if(staleReason(s)&&!retryElement(s))return;else if(!open&&innerWidth<=1100)closeDiscussion();
  $$('.record-focus').forEach(n=>n.classList.remove('record-focus'));
  if(state().interactive){state().frame?.contentWindow?.postMessage({type:'flashComment',anchor:s.anchor,highlight:s.status==='open'},'*');return}
  if(staticPreview?.active){staticPreview.send({type:'locate',id,anchor:s.anchor,highlight:s.status==='open'});return}
- if(s.anchor?.startsWith('c2:')){picker?.reveal(s.anchor).then(el=>{if(el){el.scrollIntoView({block:'center'});picker.refresh()}else missingTarget(s.anchor)});return}
+ if(s.anchor?.match(/^c[23]:/)){picker?.reveal(s.anchor).then(el=>{if(el===false)return;if(el){targetFound(s.anchor);el.scrollIntoView({block:'center'});picker.refresh()}else missingTarget(s.anchor)});return}
  const loc=locations.get(id);if(loc?.stale){toast(loc.reason);return}
  const el=root.querySelector(`[data-thread="${CSS.escape(id)}"]`)||getBlock(s.anchor?.startsWith('m:')?s.anchor.slice(2).split(',')[0]:s.anchor);
  if(el){if(s.status==='open')el.classList.add('record-focus');el.scrollIntoView({block:'center'});if(loc?.fallback)toast(loc.reason)}else toast('原段落已删除或无法定位；未改挂到其他位置');
 }
+function retryElement(s){return s.kind==='comment'&&/^c[23]:/.test(s.anchor)&&!s.stale_reason&&!s.invalid_reason&&s.status!=='stale'}
+function targetFound(anchor){let changed=false;for(const r of records)if(r.anchor===anchor&&retryElement(r)&&locations.get(r.id)?.stale){locations.set(r.id,{fallback:true,reason:'元素批注'});changed=true}if(changed){syncCommentState();render(true)}}
+document.addEventListener('preview-reveal',e=>targetFound(e.detail?.anchor));
 function missingTarget(anchor){for(const r of records)if(r.anchor===anchor)locations.set(r.id,{stale:true,reason:'元素已变化、不存在或不唯一，无法安全定位；仍可阅读与回复'});render();toast('无法安全定位此元素；未改挂到其他位置')}
 function pendingRecord(s){return s.status==='open'||s.kind==='rewrite'&&s.status==='stale'}
 function staleReason(s){return s.stale_reason||s.invalid_reason||(s.status==='stale'?'原引用或修订范围已失效，不能安全应用；正文未修改':locations.get(s.id)?.stale?locations.get(s.id).reason:'')}
@@ -154,7 +157,7 @@ function renderList(preserve=false){
 }
 function renderThreads(preserve=false){
  const items=records.filter(t=>filter==='all'||(filter==='done'?!pendingRecord(t):pendingRecord(t)));
- const viewport=$('#threads'), scroll=viewport.scrollTop;const html=items.map(t=>`<section class="thread ${active===t.id?'active':''} ${!pendingRecord(t)?'resolved':''}" id="thread-${esc(t.id)}" data-card="${esc(t.id)}"><div class="thread-top"><span class="avatar">${esc([...t.author||'访'][0])}</span><strong>${esc(t.author||'访客')}</strong><span class="time">${esc(new Date(t.created_at).toLocaleDateString('zh-CN'))}</span></div><span class="thread-type">${t.kind==='rewrite'?'↗':'●'} ${typeText(t)}${t.status!=='open'?' · '+statusText(t):''}</span><div class="quote">${quoteHtml(t)}</div><p class="thread-summary">${t.kind==='comment'?esc(decode(t.body)):staleReason(t)?esc(t.resolved_stale?'失效建议已标记处理；正文未修改。':'建议已失效，不能接受；可标记已处理。'):t.status==='open'?'已在正文原位提出修改，等待所有者确认。':statusText(t)}</p>${staleReason(t)?`<p class="stale">${esc(staleReason(t))}</p>`:''}${(t.replies||[]).map(r=>`<div class="reply"><b>${esc(r.author)}</b><br>${esc(decode(r.body))}</div>`).join('')}${rewriteActions(t)}<div class="thread-footer">${staleReason(t)?'<span>原引用失效</span>':`<button data-locate="${esc(t.id)}">↗ 定位原文</button>`}<span>${state().canSuggest?`<button data-reply="${esc(t.id)}">回复</button>`:''}${t.kind==='comment'&&t.status==='open'&&state().isDocOwner?`<button data-resolve="${esc(t.id)}" ${pendingComments.has(t.id)?'disabled aria-busy="true"':''}>解决 ✓</button>`:''}${t.kind==='comment'&&t.status==='rejected'&&state().isDocOwner?`<button data-reopen="${esc(t.id)}" ${pendingComments.has(t.id)?'disabled aria-busy="true"':''}>重新打开</button>`:''}</span></div></section>`).join('')||'<div class="empty">暂时没有符合筛选条件的讨论。<br>选中文字即可添加一条批注。</div>';
+ const viewport=$('#threads'), scroll=viewport.scrollTop;const html=items.map(t=>`<section class="thread ${active===t.id?'active':''} ${!pendingRecord(t)?'resolved':''}" id="thread-${esc(t.id)}" data-card="${esc(t.id)}"><div class="thread-top"><span class="avatar">${esc([...t.author||'访'][0])}</span><strong>${esc(t.author||'访客')}</strong><span class="time">${esc(new Date(t.created_at).toLocaleDateString('zh-CN'))}</span></div><span class="thread-type">${t.kind==='rewrite'?'↗':'●'} ${typeText(t)}${t.status!=='open'?' · '+statusText(t):''}</span><div class="quote">${quoteHtml(t)}</div><p class="thread-summary">${t.kind==='comment'?esc(decode(t.body)):staleReason(t)?esc(t.resolved_stale?'失效建议已标记处理；正文未修改。':'建议已失效，不能接受；可标记已处理。'):t.status==='open'?'已在正文原位提出修改，等待所有者确认。':statusText(t)}</p>${staleReason(t)?`<p class="stale">${esc(staleReason(t))}</p>`:''}${(t.replies||[]).map(r=>`<div class="reply"><b>${esc(r.author)}</b><br>${esc(decode(r.body))}</div>`).join('')}${rewriteActions(t)}<div class="thread-footer">${staleReason(t)&&!retryElement(t)?'<span>原引用失效</span>':`<button data-locate="${esc(t.id)}">↗ ${locations.get(t.id)?.stale?'重试定位':'定位原文'}</button>`}<span>${state().canSuggest?`<button data-reply="${esc(t.id)}">回复</button>`:''}${t.kind==='comment'&&t.status==='open'&&state().isDocOwner?`<button data-resolve="${esc(t.id)}" ${pendingComments.has(t.id)?'disabled aria-busy="true"':''}>解决 ✓</button>`:''}${t.kind==='comment'&&t.status==='rejected'&&state().isDocOwner?`<button data-reopen="${esc(t.id)}" ${pendingComments.has(t.id)?'disabled aria-busy="true"':''}>重新打开</button>`:''}</span></div></section>`).join('')||'<div class="empty">暂时没有符合筛选条件的讨论。<br>选中文字即可添加一条批注。</div>';
  // Keyed cards: preserve existing cards, expanded state, focus and local scroll.
  if(!preserve){viewport.innerHTML=html;viewport.scrollTop=scroll;return}
  const template=document.createElement('template');template.innerHTML=html;const wanted=new Set();
@@ -179,7 +182,7 @@ function decorate(){
  clearSelection();if(state().interactive){syncCommentState();return}restoreClean();locations=new Map();
  for(const s of records){
   if(s.anchor?.startsWith('m:')){const el=getBlock(s.anchor.slice(2).split(',')[0]);locations.set(s.id,el?{fallback:true,reason:'旧多段批注；定位首段'}:{stale:true,reason:'原段落无法定位'});continue}
-  if(s.anchor?.startsWith('c2:')){locations.set(s.id,{fallback:true,reason:'元素批注'});continue}
+  if(s.anchor?.match(/^c[23]:/)){locations.set(s.id,{fallback:true,reason:'元素批注'});continue}
   const el=getBlock(s.anchor), original=clean.get(s.anchor);
   if(!el){locations.set(s.id,{stale:true,reason:'原段落已删除或锚点失效，未改挂到其他位置'});continue}
   if(!original){locations.set(s.id,{fallback:true,reason:'非文本元素批注'});if(s.status==='open')el.dataset.reviewBlockThread=s.id;continue}

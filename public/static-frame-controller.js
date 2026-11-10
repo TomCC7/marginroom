@@ -11,11 +11,11 @@
  function sameSelection(a,b){return a&&b&&a.every((v,i)=>v===b[i])}
  let inlineRequest=null;
  const inline=inlineDraftController({doc:document,onChange:m=>send({type:'inline-change',requestId:inlineRequest,...m}),onKey:key=>send({type:'inline-key',requestId:inlineRequest,key})});
- const marks=annotationAffordances({doc:document,onOpen:ids=>send({type:'thread',id:ids[0],ids}),resolveTarget:a=>a.startsWith('c2:')?picker.resolve(a):null});
+ const marks=annotationAffordances({doc:document,onOpen:ids=>send({type:'thread',id:ids[0],ids}),resolveTarget:a=>a.match(/^c[23]:/)?picker.resolve(a):null});
  const picker=elementReview({root:document.body,hash:sha256hex,enabled:()=>mode==='suggest'&&!inline.active,onPick:t=>{pickedSelection=selectionStamp();send({type:'elementTarget',...t})},onThread:ids=>send({type:'thread',id:ids[0],ids}),onText:()=>{pickedSelection=null;selection()},onCancel:()=>{pickedSelection=selectionStamp();send({type:'targetCleared'})}});
  // Scroll only this document's owners. Native scrollIntoView may also pan the
  // embedding shell, moving its toolbar and invalidating a scaled target rect.
- function reveal(el){for(let p=el.parentElement;p&&p!==document.body&&p!==document.documentElement;p=p.parentElement){const r=el.getBoundingClientRect(),b=p.getBoundingClientRect(),css=getComputedStyle(p);if(/auto|scroll/.test(css.overflowY)&&p.scrollHeight>p.clientHeight)p.scrollTop+=r.top-b.top-(p.clientHeight-r.height)/2;if(/auto|scroll/.test(css.overflowX)&&p.scrollWidth>p.clientWidth)p.scrollLeft+=r.left-b.left-(p.clientWidth-r.width)/2}const r=el.getBoundingClientRect();scrollBy(r.left-(innerWidth-r.width)/2,r.top-(innerHeight-r.height)/2);const b=el.getBoundingClientRect();send({type:'located',rect:{left:b.left,top:b.top,width:b.width,height:b.height}})}
+ function reveal(el,anchor){for(let p=el.parentElement;p&&p!==document.body&&p!==document.documentElement;p=p.parentElement){const r=el.getBoundingClientRect(),b=p.getBoundingClientRect(),css=getComputedStyle(p);if(/auto|scroll/.test(css.overflowY)&&p.scrollHeight>p.clientHeight)p.scrollTop+=r.top-b.top-(p.clientHeight-r.height)/2;if(/auto|scroll/.test(css.overflowX)&&p.scrollWidth>p.clientWidth)p.scrollLeft+=r.left-b.left-(p.clientWidth-r.width)/2}const r=el.getBoundingClientRect();scrollBy(r.left-(innerWidth-r.width)/2,r.top-(innerHeight-r.height)/2);const b=el.getBoundingClientRect();send({type:'located',...(anchor?{anchor}:{}),rect:{left:b.left,top:b.top,width:b.width,height:b.height}})}
  window.addEventListener('message',e=>{
   const m=e.data;if(e.source!==parent||!m||m.channel!=='static-preview'||m.token!==token)return;
   if(m.type==='reading-restore'){const p=sanitizeReading(m.position);if(p){readingPosition('restore',p);send({type:'reading-position',position:readingPosition('capture')})}return}
@@ -35,7 +35,7 @@
     if(n!==null)caret(el,n);
    }el.contentEditable=b.editable;el.title=b.title||'';el.dataset.reviewBlockThread=b.thread;
   }
-  if(m.type==='locate'&&m.anchor?.startsWith('c2:')){picker.reveal(m.anchor).then(el=>{if(el)reveal(el);else send({type:'targetMissing',anchor:m.anchor})});return}
+  if(m.type==='locate'&&m.anchor?.match(/^c[23]:/)){picker.reveal(m.anchor).then(el=>{if(el===false)return;if(el)reveal(el,m.anchor);else send({type:'targetMissing',anchor:m.anchor})});return}
   if(m.type==='locate'){const el=document.querySelector(`[data-thread="${CSS.escape(m.id)}"]`)||find(m.anchor);if(el){reveal(el);if(m.highlight!==false)el.classList.add('record-focus');setTimeout(()=>el.classList.remove('record-focus'),1800)}}
   if(m.type==='visibility'){const controls=[...document.querySelectorAll('input,textarea,select')];if(!m.active){window.__staticScroll={x:scrollX,y:scrollY};send({type:'suspended',forms:controls.map(n=>({value:n.value,checked:n.checked,selected:n.tagName==='SELECT'?[...n.options].map(o=>o.selected):null}))})}else{if(Array.isArray(m.forms))controls.forEach((n,i)=>{const v=m.forms[i];if(v){n.value=v.value;n.checked=v.checked;if(n.tagName==='SELECT'&&Array.isArray(v.selected))[...n.options].forEach((o,j)=>o.selected=v.selected[j]===true)}});if(window.__staticScroll){const p=window.__staticScroll;scrollTo(p.x,p.y);requestAnimationFrame(()=>scrollTo(p.x,p.y))}}}
   if(m.type==='clear-selection')getSelection().removeAllRanges();

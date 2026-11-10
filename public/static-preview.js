@@ -29,7 +29,7 @@ export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'r
   if(m.type==='ready'){ready=true;sync();frame.dispatchEvent(new Event('static-preview-ready'));return}
   if(m.type==='suspended'){applyForms(m.forms);suspended?.();suspended=null;return}
   if(!active)return;
-  if(m.anchor!==undefined&&(typeof m.anchor!=='string'||m.anchor.length>256||!bridge.state.anchorMap.has(m.anchor)&&!bridge.state.commentMap.has(m.anchor)&&!/^c2:[a-f0-9]{64}$/.test(m.anchor)))return;
+  if(m.anchor!==undefined&&(typeof m.anchor!=='string'||m.anchor.length>256||!bridge.state.anchorMap.has(m.anchor)&&!bridge.state.commentMap.has(m.anchor)&&!/^c(?:2:[a-f0-9]{64}|3:[a-f0-9]{64}:(?:self|[0-9a-z]+(?:\.[0-9a-z]+)*))$/.test(m.anchor)))return;
   if(m.type==='reading-position'){const position=sanitizeReading(m.position);if(position)onMessage({type:m.type,position});return}
   if(['inline-change','inline-key','input','selection','comment','thread','key','located','elementTarget','targetCleared','targetMissing'].includes(m.type))onMessage(m);
   if(m.type==='selection'&&captures.has(m.requestId)){captures.get(m.requestId)(m);captures.delete(m.requestId)}
