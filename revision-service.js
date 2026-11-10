@@ -6,7 +6,7 @@ import {collectLeaves,groupText,normalizeText,BLOCK_TAGS,GROUP_ATTR,SKIP_TAGS} f
 import {differences,project} from './public/revision-diff.js';
 import {locateRecord} from './public/review-ranges.js';
 import {rangesConflict} from './public/range-patches.js';
-import {getOverlay,listSuggestions,addSuggestion,plainText} from './db.js';
+import {getOverlay,listSuggestions,addSuggestion,plainText,getSuggestion,setSuggestionStatus,acceptSuggestion} from './db.js';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const escape=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 export class RevisionError extends Error {
@@ -159,5 +159,51 @@ export function revisionService(db,{readSource,readConfig=()=>({})}){
   db.prepare('INSERT INTO revision_receipts(doc_id,caller,request_id,payload,response,created_at) VALUES(?,?,?,?,?,?)').run(docId,caller,requestId,payload,JSON.stringify(response),new Date().toISOString());
   return response;
  });
- return {validateLegacy,checkLegacyOverlap,snapshot:(...args)=>snapshot(...args),reconcile:(...args)=>reconcile.immediate(...args)};
+ // A source hash is a freshness hint, not proof that an unchanged unique
+ // paragraph became invalid. Never search a similar paragraph or shift an
+ // occurrence among duplicate paragraphs after source changes.
+ function invalidReason(docId,row,html=readSource(docId)){
+  if(row.kind!=='rewrite')return null;
+  if(row.status==='stale')return '原引用或修订范围已失效，不能安全应用；正文未修改';
+  if(html==null)return '原文稿已不存在，不能安全应用';
+  const drift=!!row.source_hash&&row.source_hash!==hash(html);
+  if(drift&&affectedAnchors(row).some(a=>!isSourceAnchor(a)))return '源文已变化，旧引用无法安全重验';
+  if(drift){
+   // Occurrence-addressed duplicate paragraphs cannot establish old identity.
+   const leaves=facade(parse(html)),counts=new Map();
+   for(const el of collectLeaves(leaves)){const n=normalizeText(el.textContent);if(n){const h=hash(n);counts.set(h,(counts.get(h)||0)+1)}}
+   if(affectedAnchors(row).some(a=>a.includes('#')||(counts.get(a)||0)>1))return '源文已变化，重复段落身份无法安全确认';
+  }
+  try{validateLegacy(docId,{...row,source_hash:null},html)}catch(e){if(e instanceof RevisionError)return '原段落已删除、锚点失效或修订范围已变化；未改挂到其他位置';throw e}
+  // Synthetic legacy anchors have no parsed source identity; retain their
+  // original overlay/range checks, without treating client flags as authority.
+  const overlay=getOverlay(db,docId);
+  for(const anchor of affectedAnchors(row)){
+   if(isSourceAnchor(anchor))continue;
+   const base=plainText(overlay[anchor]?.text??row.base_text??'');
+   if(!mutationLocation({...row,source_hash:null},base,null,anchor))return '原修订范围已变化，不能安全应用';
+  }
+  return null;
+ }
+ const decide=db.transaction((docId,sid,action)=>{
+  const row=getSuggestion(db,sid);
+  if(!row||row.doc_id!==docId)fail(404,'suggestion_not_found');
+  if(action==='resolve-stale'&&row.resolved_stale)return {ok:true,suggestion:row,replayed:true};
+  if(row.status!=='open'&&!(action==='resolve-stale'&&row.status==='stale'))fail(409,'already_resolved');
+  const reason=invalidReason(docId,row);
+  if(action==='resolve-stale'){
+   if(row.kind!=='rewrite'||!reason)fail(409,'suggestion_not_stale');
+   setSuggestionStatus(db,sid,'rejected');
+   // Reuse the immutable continuous-revision history, not another schema or
+   // lifecycle status. A rejected rewrite can never be reopened by comment API.
+   db.prepare("INSERT INTO rewrite_history(suggestion_id,doc_id,operation,ts,old_json,new_json) VALUES(?,?,'RESOLVE_STALE',?,NULL,?)").run(sid,docId,new Date().toISOString(),JSON.stringify({reason}));
+   return {ok:true,suggestion:getSuggestion(db,sid)};
+  }
+  if(reason){setSuggestionStatus(db,sid,'stale');return {error:'span_stale',overlay:getOverlay(db,docId),suggestion:{...getSuggestion(db,sid),invalid_reason:reason}}}
+  const overlay=acceptSuggestion(db)(sid,row.body,new Date().toISOString());
+  if(!overlay)return {error:'already_resolved'};
+  if(overlay.stale)return {error:'span_stale',suggestion:getSuggestion(db,sid)};
+  return {ok:true,overlay};
+ });
+ return {invalidReason,decide:(...args)=>decide.immediate(...args),validateLegacy,checkLegacyOverlap,snapshot:(...args)=>snapshot(...args),reconcile:(...args)=>reconcile.immediate(...args)};
 }

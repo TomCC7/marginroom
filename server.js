@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   openDb, getOverlay, setBlockAndSnapshot, listVersions, getVersion, restoreVersion,
-  listSuggestions, addSuggestion, getSuggestion, setSuggestionStatus, acceptSuggestion,
+  listSuggestions, addSuggestion, getSuggestion, setSuggestionStatus,
   findSuggestionRequest, addSuggestionReply,
   setDocOwner, getDocOwner, countDocsOwnedBy, countGuestOwners, deleteDocData, ownerMap,
   getDocAccess, setDocAccess, ACCESS_LEVELS,
@@ -677,7 +677,8 @@ export function createApp(db, opts = {}) {
     const status = req.query.status ?? 'open';
     if (!['open', 'all', 'accepted', 'rejected', 'stale', 'withdrawn'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
     noStore(res);
-    res.json({ suggestions: listSuggestions(db, id, status) });
+    const html = await readDocHtml(id);
+    res.json({ suggestions: listSuggestions(db, id, status).map(s => s.kind==='rewrite'&&(s.status==='open'||s.status==='stale') ? {...s,invalid_reason:revisions.invalidReason(id,s,html)} : s) });
   });
 
   // POST /api/suggest/:id { anchor, quote, body, kind, author } -> { ok, suggestion }
@@ -803,23 +804,20 @@ export function createApp(db, opts = {}) {
     const { id, sid } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     if (!ownsDoc(req, id)) return res.status(403).json({ error: 'not_your_doc' });
-    const s = getSuggestion(db, sid);
-    if (!s || s.doc_id !== id) return res.status(404).json({ error: 'suggestion_not_found' });
-    if (s.status !== 'open') return res.status(409).json({ error: 'already_resolved' });
-    // Body was stored escaped; it is applied via the overlay which is also stored
-    // escaped and rendered as textContent, so decoding happens client-side. For a
-    // span-level rewrite, acceptSuggestion ignores `text` and splices `body` into
-    // the block's current text at the quote's Nth occurrence.
-    const acceptHtml=await readDocHtml(id);
-    if(s.source_hash&&s.source_hash!==createHash('sha256').update(acceptHtml||'').digest('hex')){setSuggestionStatus(db,sid,'stale');return res.status(409).json({error:'span_stale'})}
-    if(s.kind==='rewrite')try{revisions.validateLegacy(id,s,acceptHtml)}catch(e){if(e instanceof RevisionError){setSuggestionStatus(db,sid,'stale');return res.status(409).json({error:'span_stale'})}throw e}
-    const result = acceptSuggestion(db)(sid, s.body, new Date().toISOString());
-    if (result == null) return res.status(409).json({ error: 'accept_failed' });
-    // Span phrase drifted (block edited since the suggestion) -> marked stale,
-    // nothing applied. Tell the client so it can surface why.
-    if (result.stale) return res.status(409).json({ error: 'span_stale', overlay: result.overlay });
-    noStore(res);
-    res.json({ ok: true, overlay: result });
+    try {
+      const result = revisions.decide(id,sid,'accept');
+      noStore(res);
+      res.status(result.error?409:200).json(result);
+    } catch(e) { if(e instanceof RevisionError)return res.status(e.status).json(e.response);throw e }
+  });
+
+  // Server facts and history/status commit share an immediate transaction.
+  app.post('/api/suggest/:id/:sid/resolve-stale', writeLimiter, (req,res) => {
+    const {id,sid}=req.params;
+    if(!isValidDocId(id))return res.status(400).json({error:'invalid_doc_id'});
+    if(!ownsDoc(req,id))return res.status(403).json({error:'not_your_doc'});
+    try { const result=revisions.decide(id,sid,'resolve-stale');noStore(res);res.json(result) }
+    catch(e){if(e instanceof RevisionError)return res.status(e.status).json(e.response);throw e}
   });
 
   // POST /api/suggest/:id/:sid/reject -> { ok }

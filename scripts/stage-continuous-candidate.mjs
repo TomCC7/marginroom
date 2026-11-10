@@ -9,7 +9,7 @@ assert(out!==current&&!out.startsWith(current+path.sep)&&out.startsWith(repo+'/r
 assert(!await lstat(out).then(()=>true).catch(e=>{if(e.code==='ENOENT')return false;throw e}),'new candidate required');
 const baseline='a881608b4775b9e15865f7e798fe559e67af4cd5',git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 assert.equal(git('status','--porcelain'),'','clean exact source commit required');
-const overlay=['db.js','server.js','revision-service.js','public/inline-draft.js','public/review-v3.js','public/revision-diff.js','public/static-frame-controller.js','public/static-preview.js'].sort();
+const overlay=['db.js','server.js','revision-service.js','public/annotation-affordances.js','public/inline-draft.js','public/review-v3.js','public/revision-diff.js','public/static-frame-controller.js','public/static-preview.js'].sort();
 assert.deepEqual(git('diff','--name-only',baseline,'HEAD','--','public','db.js','server.js','revision-service.js').split('\n').filter(Boolean).sort(),overlay);
 const roots=['db.js','server.js','source-patch.js','revision-service.js','guardrails.js','feedback-api.js','package.json','package-lock.json'];
 const sha=b=>createHash('sha256').update(b).digest('hex');

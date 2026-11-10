@@ -29,5 +29,13 @@ export function annotationAffordances({doc,onOpen,resolveTarget}){
  doc.addEventListener('click',open);
  doc.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)&&e.target.hasAttribute?.('data-thread')){e.preventDefault();const ids=[];for(let n=e.target;n;n=n.parentElement)if(n.dataset?.thread)ids.push(n.dataset.thread);onOpen([...new Set(ids)])}});
  win.addEventListener('scroll',paint,true);win.addEventListener('resize',paint);
- return {comments,sync(value,phone){groups=value;mobile=phone;paint()},paint};
+ function retireRewrites(ids,skipAnchor){
+  for(const n of doc.querySelectorAll('[data-review-del][data-thread],[data-review-ins][data-thread]')){
+   if(!ids.includes(n.dataset.thread)||n.closest('[data-inline-editor]')||n.closest('[data-hs-anchor]')?.dataset.hsAnchor===skipAnchor)continue;
+   if(n.hasAttribute('data-review-ins')){n.remove();continue}
+   delete n.dataset.reviewDel;delete n.dataset.reviewPoint;delete n.dataset.thread;
+   n.style.textDecoration='none';n.style.background='none';n.style.color='inherit';n.removeAttribute('contenteditable');n.classList.remove('record-focus');
+  }
+ }
+ return {comments,retireRewrites,sync(value,phone){groups=value;mobile=phone;paint()},paint};
 }

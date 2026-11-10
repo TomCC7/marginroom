@@ -182,7 +182,9 @@ const SUGG_COLS = 'id, doc_id, anchor, quote, body, kind, status, author, create
 
 function withReplies(db, row) {
   if (!row) return row;
-  return { ...row, replies: db.prepare('SELECT id, parent_id, author, body, created_at FROM suggestion_replies WHERE parent_id = ? ORDER BY created_at, rowid').all(row.id) };
+  const event = row.kind === 'rewrite' && db.prepare("SELECT new_json FROM rewrite_history WHERE suggestion_id=? AND doc_id=? AND operation='RESOLVE_STALE' ORDER BY id DESC LIMIT 1").get(row.id,row.doc_id);
+  const resolution = event ? {resolved_stale:true, stale_reason:JSON.parse(event.new_json).reason} : {};
+  return { ...row, ...resolution, replies: db.prepare('SELECT id, parent_id, author, body, created_at FROM suggestion_replies WHERE parent_id = ? ORDER BY created_at, rowid').all(row.id) };
 }
 
 export function listSuggestions(db, docId, status = 'open') {
