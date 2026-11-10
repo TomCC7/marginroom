@@ -1,4 +1,5 @@
 import {elementReview} from '../public/element-review.js';
+import {annotationAffordances} from '../public/annotation-affordances.js';
 import {singleBlockRange} from '../public/review-ranges.js';
 // Suggesting/commenting on ANY element inside the interactive (sandboxed) frame.
 //
@@ -58,7 +59,7 @@ win.__MMW_DOC__ = 'zz-suggest';
 const posted = [];
 win.parent = { postMessage: (msg) => posted.push(msg) };
 
-win.eval('const elementReview='+elementReview.toString()+';const singleBlockRange='+singleBlockRange.toString()+';'+controller);
+win.eval('const annotationAffordances='+annotationAffordances.toString()+';const elementReview='+elementReview.toString()+';const singleBlockRange='+singleBlockRange.toString()+';'+controller);
 win.dispatchEvent(new win.Event('load'));
 await new Promise((r) => setTimeout(r, 700));
 

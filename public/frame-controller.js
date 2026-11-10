@@ -413,13 +413,15 @@
   }
 
   // Parent -> frame. We only accept messages from our embedder.
+  var reviewMarks=annotationAffordances({doc:document,onOpen:function(ids){post({type:'reviewThread',ids:ids})},resolveTarget:function(a){return a.startsWith('c2:')?picker.resolve(a):null}});
   window.addEventListener('message', function (e) {
     if (e.source !== PARENT) return;
     var m = e.data || {};
-    if (m.type === 'applyOverlay') { applyOverlay(m.overlay || {}); }
+    if (m.type === 'comment-state') { reviewMarks.comments(m.comments||[]);reviewMarks.sync(m.groups||[],m.mobile===true); }
+    else if (m.type === 'applyOverlay') { applyOverlay(m.overlay || {}); }
     else if (m.type === 'setMode') { setMode(m.mode); }
     else if (m.type === 'serialize') { post({ type: 'snapshot', html: serialize() }); }
-    else if (m.type === 'flashComment') { flashComment(m.anchor); }
+    else if (m.type === 'flashComment') { flashComment(m.anchor,m.highlight); }
     else if (m.type === 'targetNavigate' && currentMode==='suggest') { picker.navigate(m.direction); }
     else if (m.type === 'clearTarget') { picker.clear(); }
   });
@@ -427,7 +429,7 @@
   // Parent asked to reveal a commented element (panel "goto"). Resolve the anchor to
   // a live element, scroll it into view, and flash it. If we can't find it (the doc
   // re-rendered and the element is gone), tell the parent so it can label the card.
-  async function flashComment(anchor) {
+  async function flashComment(anchor,highlight) {
     if (typeof anchor !== 'string') return;
     var el = anchor.startsWith('c2:') ? await picker.reveal(anchor) : commentMap.get(anchor)
       || (anchor.charAt(0) === 'c'
@@ -444,7 +446,7 @@
     scrollBy(r.left - (innerWidth - r.width) / 2, r.top - (innerHeight - r.height) / 2);
     r = el.getBoundingClientRect();
     post({ type: 'commentLocated', rect: { left: r.left, top: r.top, width: r.width, height: r.height } });
-    el.classList.add('hs-frame-flash');
+    if(highlight!==false)el.classList.add('hs-frame-flash');
     setTimeout(function () { el.classList.remove('hs-frame-flash'); }, 1200);
   }
   // Minimal CSS.escape for attribute-selector values (jsdom/older browsers lack it).

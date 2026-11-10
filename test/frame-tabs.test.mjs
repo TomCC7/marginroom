@@ -1,4 +1,5 @@
 import {elementReview} from '../public/element-review.js';
+import {annotationAffordances} from '../public/annotation-affordances.js';
 import {singleBlockRange} from '../public/review-ranges.js';
 // Tab-heavy / dynamic-DOM editability for the interactive-doc frame.
 //
@@ -107,7 +108,7 @@ win.parent = { postMessage: (msg) => posted.push(msg) };
 const latestReady = () => [...posted].reverse().find((m) => m && m.type === 'ready');
 
 // Run the controller and let it boot (load + 300ms + async scan).
-win.eval('const elementReview='+elementReview.toString()+';const singleBlockRange='+singleBlockRange.toString()+';'+controller);
+win.eval('const annotationAffordances='+annotationAffordances.toString()+';const elementReview='+elementReview.toString()+';const singleBlockRange='+singleBlockRange.toString()+';'+controller);
 win.dispatchEvent(new win.Event('load'));
 await new Promise((r) => setTimeout(r, 700));
 

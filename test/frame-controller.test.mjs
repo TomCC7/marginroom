@@ -1,4 +1,5 @@
 import {elementReview} from '../public/element-review.js';
+import {annotationAffordances} from '../public/annotation-affordances.js';
 import {singleBlockRange} from '../public/review-ranges.js';
 // Regression guard for the "cannot edit any of the text" bug (two parts).
 //
@@ -50,7 +51,7 @@ const posted = [];
 win.parent = { postMessage: (msg) => posted.push(msg) };
 
 // Run the controller IIFE inside the window.
-win.eval('const elementReview='+elementReview.toString()+';const singleBlockRange='+singleBlockRange.toString()+';'+controller);
+win.eval('const annotationAffordances='+annotationAffordances.toString()+';const elementReview='+elementReview.toString()+';const singleBlockRange='+singleBlockRange.toString()+';'+controller);
 
 // boot() is scheduled via load event + setTimeout(300). Fire load, then wait.
 win.dispatchEvent(new win.Event('load'));

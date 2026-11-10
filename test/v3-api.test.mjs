@@ -166,6 +166,20 @@ try {
     await owner('PUT', '/api/access/fixture', { level: 'suggest' });
   });
 
+  await test('owner-only resolved comments reopen in place and persist, never rewrites', async () => {
+    const row=(await suggest(comment('reopen-target'))).data.suggestion;
+    assert.equal((await decision(row.id,'reopen')).status,409);
+    const resolved=await decision(row.id,'reject');assert.equal(resolved.data.suggestion.status,'rejected');
+    assert.equal((await decision(row.id,'reopen',guest)).status,403);
+    assert.equal((await decision('missing','reopen')).status,404);
+    assert.equal((await decision(row.id,'reopen',owner,'other')).status,404);
+    assert.equal((await decision(acceptedId,'reopen')).status,409);
+    const rewrite=(await suggest({anchor:'reopen-rewrite',kind:'rewrite',baseText:'word',quote:'word',body:'new'})).data.suggestion;
+    await decision(rewrite.id,'reject');assert.equal((await decision(rewrite.id,'reopen')).status,409);
+    const result=await decision(row.id,'reopen');assert.equal(result.status,200);assert.equal(result.data.suggestion.id,row.id);assert.equal(result.data.suggestion.status,'open');
+    await stop();db.close();db=openDb(dbPath);await start();assert.equal(getSuggestion(db,row.id).status,'open');assert.equal((await decision(row.id,'reopen')).status,409);
+  });
+
   await test('legacy whole-block/multi-block drift and ambiguous no-base phrases cannot overwrite newer edits', async () => {
     const block = await suggest({ anchor: 'legacy-whole', quote: 'old paragraph', body: 'replacement', kind: 'rewrite' });
     await owner('POST', '/api/edit/fixture', { anchor: 'legacy-whole', text: 'human newer paragraph' });

@@ -11,7 +11,7 @@
  function sameSelection(a,b){return a&&b&&a.every((v,i)=>v===b[i])}
  let inlineRequest=null;
  const inline=inlineDraftController({doc:document,onChange:m=>send({type:'inline-change',requestId:inlineRequest,...m}),onKey:key=>send({type:'inline-key',requestId:inlineRequest,key})});
- const marks=annotationAffordances({doc:document,onOpen:ids=>send({type:'thread',id:ids[0],ids})});
+ const marks=annotationAffordances({doc:document,onOpen:ids=>send({type:'thread',id:ids[0],ids}),resolveTarget:a=>a.startsWith('c2:')?picker.resolve(a):null});
  const picker=elementReview({root:document.body,hash:sha256hex,enabled:()=>mode==='suggest'&&!inline.active,onPick:t=>{pickedSelection=selectionStamp();send({type:'elementTarget',...t})},onThread:ids=>send({type:'thread',id:ids[0],ids}),onText:()=>{pickedSelection=null;selection()},onCancel:()=>send({type:'targetCleared'})});
  // Scroll only this document's owners. Native scrollIntoView may also pan the
  // embedding shell, moving its toolbar and invalidating a scaled target rect.
@@ -22,6 +22,7 @@
   if(m.type==='targetNavigate'&&mode==='suggest'&&!inline.active)picker.navigate(m.direction);
   if(m.type==='clearTarget')picker.clear();
   if(m.type==='comment-groups')marks.sync(m.groups||[],m.mobile===true);
+  if(m.type==='comment-state'){marks.comments(m.comments||[],inline.anchor);marks.sync(m.groups||[],m.mobile===true)}
   if(m.type==='inline-start'){inlineRequest=m.requestId;const el=find(m.anchor);if(el&&Number.isInteger(m.start)&&Number.isInteger(m.end)){picker.clear();if(typeof m.html==='string')el.innerHTML=m.html;inline.start(el,m.start,m.end)}}
   if(m.type==='inline-stop'){inlineRequest=null;inline.stop()}
   if(m.type==='restore-selection'){const el=find(m.anchor);if(el)inline.restoreSelection(el,m.start,m.end)}
@@ -34,7 +35,7 @@
    }el.contentEditable=b.editable;el.title=b.title||'';el.dataset.reviewBlockThread=b.thread;
   }
   if(m.type==='locate'&&m.anchor?.startsWith('c2:')){picker.reveal(m.anchor).then(el=>{if(el)reveal(el);else send({type:'targetMissing',anchor:m.anchor})});return}
-  if(m.type==='locate'){const el=document.querySelector(`[data-thread="${CSS.escape(m.id)}"]`)||find(m.anchor);if(el){reveal(el);el.classList.add('record-focus');setTimeout(()=>el.classList.remove('record-focus'),1800)}}
+  if(m.type==='locate'){const el=document.querySelector(`[data-thread="${CSS.escape(m.id)}"]`)||find(m.anchor);if(el){reveal(el);if(m.highlight!==false)el.classList.add('record-focus');setTimeout(()=>el.classList.remove('record-focus'),1800)}}
   if(m.type==='visibility'){const controls=[...document.querySelectorAll('input,textarea,select')];if(!m.active){window.__staticScroll={x:scrollX,y:scrollY};send({type:'suspended',forms:controls.map(n=>({value:n.value,checked:n.checked,selected:n.tagName==='SELECT'?[...n.options].map(o=>o.selected):null}))})}else{if(Array.isArray(m.forms))controls.forEach((n,i)=>{const v=m.forms[i];if(v){n.value=v.value;n.checked=v.checked;if(n.tagName==='SELECT'&&Array.isArray(v.selected))[...n.options].forEach((o,j)=>o.selected=v.selected[j]===true)}});if(window.__staticScroll){const p=window.__staticScroll;scrollTo(p.x,p.y);requestAnimationFrame(()=>scrollTo(p.x,p.y))}}}
   if(m.type==='clear-selection')getSelection().removeAllRanges();
   if(m.type==='measure-selection')selection(m.requestId);

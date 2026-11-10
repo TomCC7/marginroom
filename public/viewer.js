@@ -13,6 +13,7 @@ import { diffWords, renderDiffHtml } from './diff.js';
 import { resolveAssets, forceRevealContent, summarizeMissing, healImageAssets } from './assets.js';
 import { icon } from './icons.js';
 import { parseSuggestTarget, validRect } from './frame-messages.js';
+import {annotationAffordances} from './annotation-affordances.js';
 import {elementReview} from './element-review.js';
 import {singleBlockRange} from './review-ranges.js';
 import { resolveSpanSelection } from './span-select.js';
@@ -1136,7 +1137,7 @@ function buildSrcdoc(rawHtml, controllerSrc, id) {
   const controller = `<script>${controllerSrc}</script>`;
   // Prepend the bootstrap (globals must exist before the doc's scripts, harmless
   // there) and append the controller at end of body via string concat.
-  return boot + `<script>const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};</script>` + controller + String(rawHtml);
+  return boot + `<script>const annotationAffordances=${annotationAffordances.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};</script>` + controller + String(rawHtml);
 }
 
 // Handle a message from the sandboxed frame. The frame runs untrusted JS next to
@@ -1148,6 +1149,7 @@ function onFrameMessage(e) {
   const m = e.data;
   if (!m || typeof m !== 'object') return;
   if (m.type === 'targetCleared') { document.dispatchEvent(new Event('review-target-clear')); return; }
+  if (m.type === 'reviewThread' && Array.isArray(m.ids)) document.dispatchEvent(new CustomEvent('review-frame-thread',{detail:m.ids}));
   if (m.type === 'commentLocated' && validRect(m.rect)) {
     document.dispatchEvent(new CustomEvent('preview-reveal', { detail: { frame, rect: m.rect } }));
     return;

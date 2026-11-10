@@ -733,7 +733,20 @@ export function createApp(db, opts = {}) {
     if (s.status !== 'open') return res.status(409).json({ error: 'already_resolved' });
     setSuggestionStatus(db, sid, 'rejected');
     noStore(res);
-    res.json({ ok: true });
+    res.json({ ok: true, suggestion: getSuggestion(db, sid) });
+  });
+
+  // Reopen history, never undo an accepted/rejected source rewrite.
+  app.post('/api/suggest/:id/:sid/reopen', writeLimiter, (req, res) => {
+    const { id, sid } = req.params;
+    if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
+    if (!ownsDoc(req, id)) return res.status(403).json({ error: 'not_your_doc' });
+    const s = getSuggestion(db, sid);
+    if (!s || s.doc_id !== id) return res.status(404).json({ error: 'suggestion_not_found' });
+    if (s.kind !== 'comment' || s.status !== 'rejected') return res.status(409).json({ error: 'not_resolved_comment' });
+    setSuggestionStatus(db, sid, 'open');
+    noStore(res);
+    res.json({ ok: true, suggestion: getSuggestion(db, sid) });
   });
 
   // In-app feedback → GitHub issue. Its own same-origin + honeypot + per-IP
