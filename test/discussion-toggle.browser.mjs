@@ -11,7 +11,7 @@ try{
   fixture.records=Array.from({length:16},(_,i)=>({id:'toggle-'+i,kind:'comment',anchor:'h1-0',quote:'讨论面板开关',body:'Review note '+i+' '+ '独立讨论内容。'.repeat(40),author:'Synthetic reviewer',status:'open',created_at:'2026-01-01T00:00:00Z',replies:[]}));
   const evidence=await isolate(context,fixture);await context.route('**/api/raw/synthetic',r=>r.fulfill({json:{rawHtml:html}}));
   await context.addInitScript(()=>{if(window===top){window.loads=0;document.addEventListener('load',e=>{if(e.target.tagName==='IFRAME')loads++},true)}});
-  const page=await context.newPage();page.setDefaultTimeout(6000);await openFixture(page);const frame=page.frames()[1];await frame.locator('#retained').fill('unsent iframe input');await page.evaluate(()=>window.originalFrame=document.querySelector('iframe'));
+  const page=await context.newPage();page.on('console',m=>{if(m.type()==='error')evidence.errors.push(m.text())});page.setDefaultTimeout(6000);await openFixture(page);const frame=page.frames()[1];await frame.locator('#retained').fill('unsent iframe input');await page.evaluate(()=>window.originalFrame=document.querySelector('iframe'));
   const button=page.locator(width>600?'.topbar .show-discussion':'.comment-toggle'),settle=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(r)))));
   async function check(open,label){await settle();assert.equal(await page.locator('.discussion').isVisible(),open,label);for(const s of ['.show-discussion','.comment-toggle']){assert.equal(await page.locator(s).getAttribute('aria-expanded'),String(open),label+' aria');assert.equal(await page.locator(s).evaluate(n=>n.classList.contains('selected')),open);assert.equal(await page.locator(s+' .total').textContent(),'16')}
    assert.equal(await frame.locator('#retained').inputValue(),'unsent iframe input');assert(await page.evaluate(()=>originalFrame===document.querySelector('iframe')&&loads===1));const dims=await frame.evaluate(()=>[innerWidth,innerHeight]);metrics.push({width,label,open,dims});return dims}
@@ -36,12 +36,39 @@ try{
   await page.setViewportSize({width:width===1440?390:1440,height:900});await settle();assert.equal(await button.getAttribute('aria-expanded'),String(await page.locator('.discussion').isVisible()));
   assert.deepEqual(evidence.errors,[]);assert.deepEqual(evidence.writes,[]);await context.close();
   // Article anchors and inline suggestion drafts use the real static document path.
-  const articleContext=await browser.newContext({viewport:{width,height:900}}),articleFixture=syntheticFixture(),articleEvidence=await isolate(articleContext,articleFixture),article=await articleContext.newPage();
+  const articleContext=await browser.newContext({viewport:{width,height:900}}),articleFixture=syntheticFixture(),articleEvidence=await isolate(articleContext,articleFixture),article=await articleContext.newPage();article.on('console',m=>{if(m.type()==='error')articleEvidence.errors.push(m.text())});article.setDefaultTimeout(6000);
   await openFixture(article);await article.waitForFunction(()=>document.querySelector('iframe')?.dataset.previewScale);
+  // Removing sidebar view links must leave real TOC and rail navigation intact.
+  if(width<1100)await article.locator('#nav-toggle').click();
+  assert(await article.locator('.nav').isVisible());
+  assert.match(await article.locator('.nav-heading').textContent(),/REVIEW/);
+  if(!process.env.SIDEBAR_BASELINE){
+   assert.equal(await article.locator('#nav-article,#nav-comments').count(),0);
+   assert.deepEqual(await article.locator('.nav').evaluate(n=>[...n.children].map(c=>c.id||c.className)),['nav-heading','nav-label','toc']);
+   const gap=await article.locator('.nav').evaluate(n=>n.children[1].getBoundingClientRect().top-n.children[0].getBoundingClientRect().bottom);assert(gap>=0&&gap<20,'no reserved nav slot');
+  }
+  if(out)await article.screenshot({path:`${out}/${width}-toc-open.png`});
+  await article.locator('#nav-close').click();assert(await article.locator('.nav').isHidden());
+  await article.locator('#nav-toggle').click();assert(await article.locator('.nav').isVisible());
+  assert.equal(await article.locator('#toc button').count(),19);
+  for(const index of [0,9]){
+   if(await article.locator('.nav').isHidden())await article.locator('#nav-toggle').click();
+   await article.locator('#toc button').nth(index).evaluate(n=>{const v=n.parentElement;v.scrollTop+=n.getBoundingClientRect().top-v.getBoundingClientRect().top-v.clientHeight/2});
+   await article.locator('#toc button').nth(index).click();
+   const heading=article.frames()[1].locator('h1,h2,h3').nth(index);await heading.waitFor();
+   await article.waitForTimeout(120);
+   const bounds=await heading.evaluate(n=>({top:n.getBoundingClientRect().top,bottom:n.getBoundingClientRect().bottom,height:innerHeight}));assert(bounds.top>=-2&&bounds.bottom<=bounds.height,'TOC reveals actual heading '+index+': '+JSON.stringify(bounds));
+   if(width<1100)assert(await article.locator('.nav').isHidden());
+  }
+  assert(await article.locator('#article').isVisible());assert(await article.locator('#annotation-list').isHidden());
+  assert(await article.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal shell overflow');
+  const sizeToggle=article.locator('#preview-dock-toggle'),sizeBox=await sizeToggle.boundingBox(),point={x:sizeBox.x+sizeBox.width/2,y:sizeBox.y+sizeBox.height/2};
+  for(let i=0;i<3;i++){const expanded=await sizeToggle.getAttribute('aria-expanded');await article.mouse.click(point.x,point.y);await article.waitForTimeout(100);assert.notEqual(await sizeToggle.getAttribute('aria-expanded'),expanded);assert.deepEqual(await sizeToggle.boundingBox(),sizeBox,'size toggle stays under same point')}
+  metrics.push({width,label:'sidebar removal',tocHeadings:19,navigated:[0,9],removed:await article.locator('#nav-article,#nav-comments').count(),sizeToggleSamePoint:true,overflow:await article.evaluate(()=>document.documentElement.scrollWidth-innerWidth)});
   const anchor=await article.locator('#hs-doc-root p[data-hs-anchor]').first().evaluate(n=>({anchor:n.dataset.hsAnchor,text:n.textContent}));
   articleFixture.records=[{id:'inline',anchor:anchor.anchor,base_text:anchor.text,quote:anchor.text.slice(0,20),range_start:0,range_end:20,body:'Inline fixture',kind:'comment',status:'open',author:'Synthetic',created_at:'2026-01-01T00:00:00Z',replies:[]}];
   await openFixture(article);const articleButton=article.locator(width>600?'.topbar .show-discussion':'.comment-toggle');
-  const content=article.frames()[1];const marker=content.locator('.marker[data-thread="inline"]');await marker.scrollIntoViewIfNeeded();await article.evaluate(()=>scrollBy(0,-120));await marker.click();await article.locator('.discussion').waitFor({state:'visible'});assert(await article.locator('.discussion').isVisible());
+  const content=article.frames()[1];const marker=content.locator('[data-review-mark][data-thread="inline"]');await marker.scrollIntoViewIfNeeded();await article.evaluate(()=>scrollBy(0,-120));await marker.click();await article.locator('.discussion').waitFor({state:'visible'});assert(await article.locator('.discussion').isVisible());
   // On mobile the overlay covers the marker; dispatch the same real anchor handler twice.
   await marker.evaluate(n=>n.click());await article.locator('.discussion').waitFor({state:'visible'});assert(await article.locator('.discussion').isVisible());assert.equal(await articleButton.getAttribute('aria-expanded'),'true');
   await article.locator('.close-drawer').click();await article.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(r)))));await marker.click();await article.locator('.discussion').waitFor({state:'visible'});assert(await article.locator('.discussion').isVisible());await article.locator('.close-drawer').click();

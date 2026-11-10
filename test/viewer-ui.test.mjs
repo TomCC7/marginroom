@@ -10,7 +10,7 @@ for (const scope of ['.topbar', '.dock']) {
   assert.ok(buttons.every(b => b.textContent.trim()), 'every mode has a label');
   assert.ok(buttons.every(b => b.tagName === 'BUTTON'));
 }
-for (const id of ['nav-toggle', 'nav-close', 'nav-shade', 'toc', 'nav-article', 'nav-comments', 'name-btn', 'share-btn', 'more-btn', 'hs-docname', 'hs-status', 'hs-doc-root', 'discussion', 'threads', 'annotation-list', 'toast', 'composer', 'comment-body', 'send-comment', 'cancel-comment']) {
+for (const id of ['nav-toggle', 'nav-close', 'nav-shade', 'toc', 'name-btn', 'share-btn', 'more-btn', 'hs-docname', 'hs-status', 'hs-doc-root', 'discussion', 'threads', 'annotation-list', 'toast', 'composer', 'comment-body', 'send-comment', 'cancel-comment']) {
   assert.equal(doc.querySelectorAll(`#${id}`).length, 1, `${id} is uniquely addressable`);
 }
 for (const id of ['popover', 'shade', 'composer', 'selection-context', 'draft-actions', 'annotation-list']) assert.equal(doc.getElementById(id).hidden, true, `${id} starts hidden`);
@@ -25,6 +25,8 @@ assert.deepEqual([...doc.querySelectorAll('[data-type]')].map(b => b.dataset.typ
 assert.ok(doc.querySelector('script[type="module"][src="/review-v3.js"]'));
 assert.ok(doc.querySelector('link[href="/review-v3.css"]'));
 assert.equal(doc.querySelectorAll('#hs-mode-trigger,#hs-mode-menu,#hs-access,.nav-docs,#doc-links').length, 0, 'obsolete shell controls are absent');
+assert.equal(doc.querySelectorAll('#nav-article,#nav-comments').length, 0, 'redundant sidebar view links are absent');
+assert.deepEqual([...doc.querySelector('.nav').children].map(n => n.id || n.className), ['nav-heading', 'nav-label', 'toc'], 'no empty navigation strip or spacer remains');
 assert.ok(ICON_NAMES.includes('link'));
 assert.ok(icon('link').startsWith('<svg'));
 assert.ok(icon('pencil').startsWith('<svg'));
