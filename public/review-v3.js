@@ -1,3 +1,4 @@
+import {icon} from './icons.js';
 import {elementReview} from './element-review.js';
 import {sha256hex} from './anchoring.js';
 import {reviewBridge as bridge} from './viewer.js';
@@ -16,8 +17,17 @@ let mode='read', records=[], filter='open', listStatus='all', listType='all', ac
 let clean=new Map(), locations=new Map(), reloading=false;
 const editBuffers=new Map();
 let staticPreview=null, frameSelection=null, picker=null, composeKind='comment';
-function pickTarget(t,frame=null){if(mode!=='suggest'||!state().canSuggest||!$('#composer').hidden||draft)return;let rect=t.rect;if(frame&&rect){const b=frame.getBoundingClientRect(),sx=b.width/frame.offsetWidth,sy=b.height/frame.offsetHeight;rect={left:b.left+rect.left*sx,top:b.top+rect.top*sy}}selected={anchor:t.anchor,quote:t.quote||t.snippet,baseText:'',element:!t.isText,parent:t.parent,child:t.child,rect};selectionUI(selected)}
-function navigateTarget(direction){if(!$('#composer').hidden)return;if(state().interactive)state().frame?.contentWindow.postMessage({type:'targetNavigate',direction},'*');else if(staticPreview?.active)staticPreview.send({type:'targetNavigate',direction});else picker?.navigate(direction)}
+function pickTarget(t,frame=null){if(mode!=='suggest'||!state().canSuggest||!$('#composer').hidden||draft)return;let rect=t.rect;if(frame&&rect){const b=frame.getBoundingClientRect(),sx=b.width/frame.offsetWidth,sy=b.height/frame.offsetHeight;rect={left:b.left+rect.left*sx,top:b.top+rect.top*sy}}selected={anchor:t.anchor,quote:t.quote||t.snippet,baseText:'',element:!t.isText,textAnchor:t.textAnchor,tag:t.tag,context:t.context,parent:t.parent,child:t.child,rect};selectionUI(selected)}
+function navigateTarget(direction){if(!$('#composer').hidden||draft)return;if(state().interactive)state().frame?.contentWindow.postMessage({type:'targetNavigate',direction},'*');else if(staticPreview?.active)staticPreview.send({type:'targetNavigate',direction});else picker?.navigate(direction)}
+function elementScope(s){
+ if(!s?.element||state().interactive||!s.textAnchor)return null;
+ const el=getBlock(s.textAnchor),c=clean.get(s.textAnchor);
+ // Exact canonical single text unit only, never a container's descendant.
+ if(!el||!c||!c.text.trim()||el.hasAttribute('data-hs-group'))return null;
+ const textLeaf=el.localName==='div'&&!new DOMParser().parseFromString(c.html,'text/html').body.children.length;
+ if(!textLeaf&&!el.matches('p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,figcaption,dt,dd,caption,td,th'))return null;
+ return {...s,element:false,anchor:s.textAnchor,baseText:c.text,quote:c.text,rangeStart:0,rangeEnd:c.text.length};
+}
 function rewriteReason(s){
  if(!state().canSuggest)return '当前链接没有建议权限';
  if(state().interactive)return '交互页面仅支持批注，不支持静态原位修订';
@@ -27,14 +37,14 @@ function rewriteReason(s){
  if(doc.body.querySelector('br,img,svg,math,input,textarea,select,button,table,ul,ol,li,iframe,[contenteditable]'))return '此段包含换行、控件或嵌套结构，仅支持批注';
  if(c.text!==s.baseText||c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote)return '原文已变化，请重新选择；不会移到同名文字';
  const overlap=records.find(r=>{if(r.anchor!==s.anchor||r.kind!=='rewrite'||r.status!=='open')return false;const loc=locateRecord(r,c.text,decode);return loc.stale||loc.fallback||rangesConflict({start:s.rangeStart,end:s.rangeEnd},loc)});
- return overlap?{id:overlap.id,text:'此处已有修订'}:null;
+ return overlap?{id:overlap.id,text:'此处已有修订；请先查看并处理，再修改整个元素'}:null;
 }
 function rewriteAllowed(s){return !rewriteReason(s)}
 const inlineStyle=document.createElement('style');inlineStyle.textContent=inlineDraftCSS;document.head.append(inlineStyle);
 function draftChanged(m){if(!draft)return;draft.body=m.body;composing=!!m.composing;draft.rect=m.rect;positionDraft();status('原位建议草稿 · 尚未提交','dirty')}
 const inlineEditor=inlineDraftController({doc:document,onChange:draftChanged,onKey:k=>k==='cancel'?cancelDraft():submitDraft()});
 function positionDraft(){if(!draft)return;const actions=$('#draft-actions');if(phone.matches){actions.style.left='';actions.style.top='';return}let r=draft.rect;if(!r)return;if(staticPreview?.active){const b=staticPreview.frame.getBoundingClientRect(),scale=b.width/staticPreview.frame.offsetWidth;r={left:b.left+r.left*scale,top:b.top+(r.top+r.height)*scale}}else r={left:r.left,top:r.top+r.height};actions.style.left=Math.max(12,Math.min(innerWidth-300,r.left))+'px';actions.style.top=Math.max(75,Math.min(innerHeight-90,r.top+8))+'px'}
-function startInline(){const s=selected,reason=rewriteReason(s);if(reason){if(reason.id)openDiscussion(reason.id);return toast(reason.text||reason)}draft={...s,body:s.quote,requestId:crypto.randomUUID?.()||'inline'+Date.now()};selectionUI(null);$('#draft-actions').hidden=false;picker?.clear();if(staticPreview?.active)staticPreview.send({type:'inline-start',anchor:s.anchor,start:s.rangeStart,end:s.rangeEnd,html:clean.get(s.anchor).html});else {getBlock(s.anchor).innerHTML=clean.get(s.anchor).html;inlineEditor.start(getBlock(s.anchor),s.rangeStart,s.rangeEnd)}status('原位建议草稿 · 尚未提交','dirty')}
+function startInline(){const s=elementScope(selected);if(!s)return toast('请选择可修改的单个正文元素；拖选文字仅支持写批注');const reason=rewriteReason(s);if(reason){if(reason.id)openDiscussion(reason.id);return toast(reason.text||reason)}draft={...s,body:s.quote,requestId:crypto.randomUUID?.()||'inline'+Date.now()};selectionUI(null);$('#draft-actions').hidden=false;picker?.clear();if(staticPreview?.active)staticPreview.send({type:'inline-start',anchor:s.anchor,start:s.rangeStart,end:s.rangeEnd,requestId:draft.requestId,html:clean.get(s.anchor).html});else {getBlock(s.anchor).innerHTML=clean.get(s.anchor).html;inlineEditor.start(getBlock(s.anchor),s.rangeStart,s.rangeEnd)}status('原位建议草稿 · 尚未提交','dirty')}
 function staticSelection(m){
  const s=m.selection,c=clean.get(m.anchor),r=s?.rect,grouped=getBlock(m.anchor)?.hasAttribute('data-hs-group');
  if(!s||!c||typeof s.quote!=='string'||s.quote.length>100000||!Number.isInteger(s.rangeStart)||!Number.isInteger(s.rangeEnd)||s.rangeStart<0||s.rangeEnd<s.rangeStart||!grouped&&c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote||!r||!['left','top','width','height'].every(k=>Number.isFinite(r[k])&&Math.abs(r[k])<100000))return null;
@@ -44,8 +54,8 @@ function staticSelection(m){
 }
 function staticMessage(m){
  if(state().interactive)return;
- if(m.type==='inline-change'){if(draft&&typeof m.body==='string'&&m.body.length<=200000)draftChanged(m);return}
- if(m.type==='inline-key'){if(m.key==='cancel')cancelDraft();else if(m.key==='submit')submitDraft();return}
+ if(m.type==='inline-change'){if(draft&&m.requestId===draft.requestId&&typeof m.body==='string'&&m.body.length<=200000)draftChanged(m);return}
+ if(m.type==='inline-key'){if(!draft||m.requestId!==draft.requestId)return;if(m.key==='cancel')cancelDraft();else if(m.key==='submit')submitDraft();return}
  if(m.type==='elementTarget'){pickTarget(m,staticPreview.frame);return}
  if(m.type==='targetCleared'){if($('#composer').hidden)clearSelection();return}
  if(m.type==='targetMissing'){missingTarget(m.anchor);return}
@@ -196,27 +206,31 @@ function selectionInfo(){
 let selectionPress=null, selectionPressTimer;
 const phone=matchMedia('(max-width:600px)');
 function selectionUI(s){
+ const scope=elementScope(s);$('#selection-context').classList.toggle('element-target',!!s?.element);
  const available=!!s&&mode==='suggest'&&$('#composer').hidden&&!draft&&!composing;
- $('#mobile-selection').hidden=!(available&&phone.matches);
- $('.dock').classList.toggle('has-selection',available&&phone.matches);
+ $('#mobile-selection').hidden=!(available&&phone.matches&&!s.element);
+ $('.dock').classList.toggle('has-selection',available&&phone.matches&&!s.element);
  $('#selection-context').hidden=!(available&&(!phone.matches||s.element));
- $('#selection-action').hidden=!available||phone.matches;
- $('#selection-suggest').hidden=!available||phone.matches||s.element;
- const reason=s?.element?null:rewriteReason(s),overlap=reason?.id;
+ $('#selection-action').hidden=!available||(phone.matches&&!s.element);
+ $('#selection-suggest').hidden=!available||!scope;
+ const reason=scope?rewriteReason(scope):null,overlap=reason?.id;
  $('#selection-suggest').disabled=!!reason&&!overlap;
- $('#selection-suggest').textContent=overlap?'查看修订':'原位修改';
+ $('#selection-suggest').innerHTML=icon('edit',{size:16})+'<span>'+(overlap?'查看修订':'原位修改')+'</span>';
  $('#selection-suggest').title=reason?.text||reason||'在所选正文位置输入修改';
  let note=$('#rewrite-reason');if(!note){note=document.createElement('span');note.id='rewrite-reason';note.setAttribute('role','status');$('#selection-context').append(note)}note.textContent=reason?.text||reason||'';note.hidden=!reason;
- $('#mobile-suggest').hidden=!available||s.element;$('#mobile-suggest').disabled=!!reason&&!overlap;$('#mobile-suggest').textContent=overlap?'查看修订':'原位修改';$('#mobile-suggest').title=reason?.text||reason||'原位修改';
- $('#target-label').textContent=s?.element?s.quote:'';
+ $('#target-label').textContent=s?.element?s.quote:'';$('#target-label').title=s?.element?(scope?.quote||s.context||s.quote):'';$('#target-tag').textContent=s?.tag||s?.quote?.split(/[ :]/)[0]||'';$('#target-heading').hidden=!available||!s.element;
  $('#target-navigation').hidden=!available||!s.element;
  $('#target-parent').disabled=!s?.parent;$('#target-child').disabled=!s?.child;
  $('#mobile-selection [role="status"]').textContent=reason?.text||reason||(s?.element?'已选元素':'已选文字');
- if(available&&!phone.matches){$('#selection-context').style.left=Math.min(innerWidth-290,Math.max(10,s.rect.left))+'px';$('#selection-context').style.top=Math.min(innerHeight-130,Math.max(70,s.rect.top-76))+'px'}
+ if(available&&!phone.matches){const pop=$('#selection-context'),stage=$('#article').getBoundingClientRect(),left=Math.max(8,stage.left+8),right=Math.min(innerWidth-8,stage.right-8),top=Math.max(70,stage.top+8),bottom=Math.min(innerHeight-12,stage.bottom-8);pop.style.left=Math.max(left,Math.min(right-pop.offsetWidth,s.rect.left))+'px';const height=pop.offsetHeight,above=s.rect.top-height-10;pop.style.top=Math.max(top,Math.min(bottom-height,above>=top?above:s.rect.top+(s.rect.height||0)+10))+'px'}
 }
 function clearSelection(remove=false){if(!$('#composer').hidden)return;clearTimeout(selectionPressTimer);selectionPress=null;selectionCapture=null;selected=null;frameSelection=null;selectionUI(null);if(remove){getSelection()?.removeAllRanges();staticPreview?.send({type:'clear-selection'})}}
 function captureSelection(){
  if(selectionPress||!$('#composer').hidden)return;
+ // A shell selectionchange must not turn an explicit frame element pick back
+ // into the frame's previous native text range. Fresh frame ranges arrive via
+ // staticMessage, in the owning document.
+ if(staticPreview?.active&&selected?.element){selectionUI(selected);return}
  if(mode!=='suggest'||composing||draft||reloading||!state().canSuggest||state().interactive){clearSelection();return}
  const info=selectionInfo();if(info)selected=info;else if(!selected?.element)selected=null;selectionUI(selected);
 }
@@ -235,7 +249,7 @@ async function showComposer(id,kind='comment'){
  if(!id&&staticPreview?.active&&!selected?.element){openingComposer=true;try{const m=await (selectionCapture||staticPreview.captureSelection());if(m.reason==='invalid'){clearSelection();return}if(m.selection){const current=staticSelection(m);if(!current){clearSelection();return}selectionPress=current}}catch(e){toast(e.message);return}finally{openingComposer=false;selectionCapture=null}}
  if(!$('#composer').hidden||draft||busy)return;
  if(!id){selected=selectionPress||(selected?.element?selected:selectionInfo()||selected);if(!selected||(!state().interactive&&selected.rangeStart!=null&&!getBlock(selected.anchor)))return}
- if(kind==='rewrite'){clearTimeout(selectionPressTimer);selectionPress=null;startInline();return}
+ if(kind==='rewrite'){if(!selected?.element)return;clearTimeout(selectionPressTimer);selectionPress=null;startInline();return}
  composeKind=kind;clearTimeout(selectionPressTimer);selectionPress=null;replyTo=id||null;showComposer.requestId=crypto.randomUUID?.()||'r'+Date.now();
  selectionUI(null);$('#composer-title').textContent=id?'回复讨论':kind==='rewrite'?'建议修改':'写批注';$('#selected-quote').textContent=id?decode(records.find(s=>s.id===id)?.quote):selected.quote;$('#comment-body').value='';$('#send-comment').textContent=id?'回复':kind==='rewrite'?'提交建议':'写批注';$('#composer').hidden=false;$('#shade').hidden=false;$('#comment-body').focus({preventScroll:true});$('#comment-body').scrollTop=0;
 }
@@ -254,7 +268,9 @@ async function submitDraft(){
  if(!draft||busy||composing)return;const current=draft;if(current.quote===current.body){cancelDraft();return}
  busy=true;$('#submit-draft').disabled=true;
  try{
-  const res=await api(`/api/suggest/${encodeURIComponent(docId)}`,{anchor:current.anchor,quote:current.quote,body:current.body,kind:'rewrite',author:myName,baseText:current.baseText,rangeStart:current.rangeStart,rangeEnd:current.rangeEnd,requestId:current.requestId});
+  // The editable scope is the whole element; persist only the changed range.
+  const diff=difference(current.quote,current.body);
+  const res=await api(`/api/suggest/${encodeURIComponent(docId)}`,{anchor:current.anchor,quote:diff.old,body:diff.next,kind:'rewrite',author:myName,baseText:current.baseText,rangeStart:current.rangeStart+diff.start,rangeEnd:current.rangeStart+diff.end,requestId:current.requestId});
   inlineEditor.stop();staticPreview?.send({type:'inline-stop'});draft=null;$('#draft-actions').hidden=true;await refresh();active=res.suggestion.id;render();status('建议已保存，等待确认');toast('建议已保存；原文尚未改变');
  }catch(e){toast(e.message);status('草稿未提交，可重试或取消','error')}finally{busy=false;$('#submit-draft').disabled=false}
 }
@@ -352,15 +368,16 @@ async function main(){
  window.addEventListener('resize',()=>{marks.sync(staticPreview?.active?[]:commentGroups(),phone.matches);staticPreview?.send({type:'comment-groups',groups:commentGroups(),mobile:phone.matches})});
  document.addEventListener('preview-geometry',()=>{positionDraft();if(staticPreview?.active)staticPreview.send({type:'measure-selection'})});
  for(const button of [$('#selection-action'),$('#mobile-add-comment')]){button.onpointerdown=armSelection;button.onpointercancel=()=>{selectionPress=null;selectionCapture=null;captureSelection()};button.onclick=()=>showComposer()}
+ $('#target-parent').innerHTML=icon('chevronDown',{size:16})+'<span>父元素</span>';$('#target-child').innerHTML=icon('chevronDown',{size:16})+'<span>子元素</span>';$('#selection-action').innerHTML=icon('message',{size:16})+'<span>写批注</span>';
  $('#target-parent').onclick=()=>navigateTarget('parent');$('#target-child').onclick=()=>navigateTarget('child');
- for(const b of [$('#selection-suggest'),$('#mobile-suggest')]){b.onpointerdown=armSelection;b.onclick=()=>showComposer(null,'rewrite')}
+ for(const b of [$('#selection-suggest')]){b.onpointerdown=armSelection;b.onclick=()=>showComposer(null,'rewrite')}
  $('#cancel-selection').onclick=()=>{changeMode('read');clearSelection(true);picker?.clear();staticPreview?.send({type:'clearTarget'});state().frame?.contentWindow?.postMessage({type:'clearTarget'},'*')};$('#close-composer').onclick=closeComposer;phone.addEventListener('change',captureSelection);$('#cancel-comment').onclick=closeComposer;$('#shade').onclick=closeComposer;$('#send-comment').onclick=sendComment;
  root.addEventListener('beforeinput',beginInput);root.addEventListener('input',handleInput);root.addEventListener('compositionstart',e=>{beginInput(e);composing=true});root.addEventListener('compositionend',e=>{composing=false;handleInput(e)});
  root.addEventListener('paste',e=>{if(e.target.closest?.('[data-inline-editor]'))return;if(mode==='read'||state().interactive||reloading)return;e.preventDefault();const text=e.clipboardData.getData('text/plain');if(/[\r\n]/.test(text)){toast('原位修改限单段，请分段粘贴');return}let blocked=false;beginInput({target:e.target,inputType:'insertText',preventDefault(){blocked=true}});if(blocked)return;document.execCommand('insertText',false,text);handleInput(e)});
  // In edit mode decorate() already restores accepted HTML; never reset a live edit buffer on refocus.
  root.addEventListener('focusout',e=>{const el=e.target.closest('[data-hs-anchor]'),b=el&&editBuffers.get(el.dataset.hsAnchor);if(mode==='edit'&&el&&b&&b.seq>b.saved)saveEdit(el)});
  $('#submit-draft').onclick=submitDraft;$('#cancel-draft').onclick=cancelDraft;
- $('#name-btn').onclick=nameMenu;$('#share-btn').onclick=shareMenu;$('#more-btn').onclick=()=>{pop('<h3>文稿选项</h3>'+ (state().canEdit?'<button id="direct-edit-menu">'+(mode==='edit'?'退出原文编辑 · 返回浏览':'直接编辑原文')+'</button>':'')+'<button id="history-menu">版本历史</button><button id="export-menu">导出已接受的 HTML</button><button id="help-menu">审稿操作说明</button>');if($('#direct-edit-menu'))$('#direct-edit-menu').onclick=()=>{changeMode(mode==='edit'?'read':'edit');$('#popover').hidden=true;status(mode==='edit'?'直接编辑原文 · 菜单退出返回浏览':'已返回浏览')};$('#history-menu').onclick=showHistory;$('#export-menu').onclick=async()=>{if(draft||editTimers.size||editInflight)return toast('请先提交草稿并等待正文保存');$('#popover').hidden=true;await bridge.exportHtml()};$('#help-menu').onclick=()=>{toast('浏览时操作原页面；批注时点击元素，拖选文字后写批注或建议修改；Ctrl/⌘+Enter 或提交按钮保存，Esc取消草稿。已提交建议用接受/拒绝处理，跨段及分组富文本仅支持评论。');$('#popover').hidden=true}};
+ $('#name-btn').onclick=nameMenu;$('#share-btn').onclick=shareMenu;$('#more-btn').onclick=()=>{pop('<h3>文稿选项</h3>'+ (state().canEdit?'<button id="direct-edit-menu">'+(mode==='edit'?'退出原文编辑 · 返回浏览':'直接编辑原文')+'</button>':'')+'<button id="history-menu">版本历史</button><button id="export-menu">导出已接受的 HTML</button><button id="help-menu">审稿操作说明</button>');if($('#direct-edit-menu'))$('#direct-edit-menu').onclick=()=>{changeMode(mode==='edit'?'read':'edit');$('#popover').hidden=true;status(mode==='edit'?'直接编辑原文 · 菜单退出返回浏览':'已返回浏览')};$('#history-menu').onclick=showHistory;$('#export-menu').onclick=async()=>{if(draft||editTimers.size||editInflight)return toast('请先提交草稿并等待正文保存');$('#popover').hidden=true;await bridge.exportHtml()};$('#help-menu').onclick=()=>{toast('浏览时操作原页面；批注时点击元素，拖选文字仅写批注；点击正文元素后可原位修改其全部文字；Ctrl/⌘+Enter 或提交按钮保存，Esc取消草稿。已提交建议用接受/拒绝处理，跨段及分组富文本仅支持评论。');$('#popover').hidden=true}};
  $('#hs-versions').onclick=async e=>{const b=e.target.closest('button');if(b?.dataset.previewVersion){const r=await fetch(`/api/version/${encodeURIComponent(docId)}/${b.dataset.previewVersion}`).then(r=>r.json());$('#version-'+b.dataset.previewVersion).textContent=JSON.stringify(r.overlay,null,2)}if(b?.dataset.restoreVersion){if(draft||!confirm('恢复此版本？当前正文会保存为可追溯的历史。'))return;try{await api(`/api/restore/${encodeURIComponent(docId)}`,{versionId:Number(b.dataset.restoreVersion)});await refresh(true);showHistory()}catch(err){toast(err.message)}}};
  document.addEventListener('pointerdown',e=>{if(!e.target.closest('#popover,#name-btn,#share-btn,#more-btn'))$('#popover').hidden=true});
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){picker?.clear();staticPreview?.send({type:'clearTarget'});state().frame?.contentWindow?.postMessage({type:'clearTarget'},'*');if(draft)cancelDraft();else{closeComposer();closeDiscussion();closeNav();$('#popover').hidden=true;$('#hs-versions').classList.remove('open')}}if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&draft){e.preventDefault();submitDraft()}});
