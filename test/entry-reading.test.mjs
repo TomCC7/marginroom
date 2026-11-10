@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {sanitizeReading,readingPosition,initReading} from '../public/entry-reading.js';
 import {JSDOM} from 'jsdom';
 import {launchBrowser,isolate,syntheticFixture,openFixture} from './helpers/browser.mjs';
+import {resolveParagraph} from '../revision-service.js';
 assert.equal(sanitizeReading({x:NaN,y:1}),null);
 assert.equal(sanitizeReading({x:1,y:1e20}),null);
 assert.deepEqual(sanitizeReading({x:-1,y:20,html:'private',forms:['secret'],anchor:'stable',offset:-8,containers:[{anchor:'a',up:1,x:3,y:4,text:'secret'},{anchor:'b',up:17,x:1,y:2}]}),{x:0,y:20,anchor:'stable',offset:-8,containers:[{x:3,y:4,anchor:'a',up:1}]});
@@ -19,6 +20,9 @@ const browser=await launchBrowser();
 try{
  const ctx=await browser.newContext({viewport:{width:1440,height:1000}}),fixture=syntheticFixture(),evidence=await isolate(ctx,fixture);
  await ctx.route('**/api/doc-meta/*',r=>r.fulfill({json:{id:'synthetic',title:'Canonical fixture title'}}));
+ // Reading/leave-guard fixture is read-only; persistence is exercised separately
+ // against real HTTP/SQLite in continuous-revision.browser.mjs.
+ await ctx.route('**/api/revision/*',r=>{assert.equal(r.request().method(),'GET');const anchor=new URL(r.request().url()).searchParams.get('anchor'),baseText=resolveParagraph(fixture.doc.baseHtml,anchor);return r.fulfill({json:{anchor,baseText,proposedText:baseText,version:'0'.repeat(64),sourceHash:'0'.repeat(64),records:[]}})});
  await ctx.route('http://frontend.test/',r=>r.fulfill({body:'<!doctype html><title>Home fixture</title><h1>Home</h1>',contentType:'text/html'}));
  const page=await ctx.newPage();await openFixture(page);await page.waitForSelector('iframe.hs-static-preview');
  let frame=page.frames().find(f=>f!==page.mainFrame());await frame.waitForFunction(()=>document.querySelector('[data-hs-anchor]'));
@@ -52,9 +56,10 @@ try{
  await frame.locator('p').first().click();await page.locator('#selection-suggest').waitFor({state:'visible'});await page.locator('#selection-suggest').click();
  await frame.locator('[data-inline-editor]').waitFor();
  assert.equal(await page.evaluate(()=>{const e=new Event('beforeunload',{cancelable:true});dispatchEvent(e);return e.defaultPrevented}),false);
- await frame.locator('[data-inline-editor]').fill('actual changed inline draft');
+ await frame.locator('[data-inline-editor]').evaluate(el=>{el.focus();const range=document.createRange();range.selectNodeContents(el);const sel=getSelection();sel.removeAllRanges();sel.addRange(range)});
+ await page.keyboard.insertText('actual changed inline draft');
  await page.waitForTimeout(100);await page.locator('#viewer-home').click();await page.locator('#leave-dialog').waitFor({state:'visible'});await page.locator('#leave-stay').click();
- assert.equal(await frame.locator('[data-inline-editor]').textContent(),'actual changed inline draft');
+ assert.equal(await frame.locator('[data-inline-editor]').evaluate(el=>{const clone=el.cloneNode(true);clone.querySelectorAll('[data-inline-old],[data-inline-foreign]').forEach(n=>n.remove());return clone.textContent}),'actual changed inline draft');
  await page.locator('#cancel-draft').click();
  let editAttempts=0;await ctx.route('**/api/edit/synthetic',r=>{editAttempts++;return r.fulfill({status:503,json:{error:'Synthetic save failure'}})});
  await page.locator('#more-btn').click();await page.locator('#direct-edit-menu').click();await frame.waitForFunction(()=>document.querySelector('p')?.contentEditable==='true');

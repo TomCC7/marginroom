@@ -38,15 +38,29 @@ function rewriteReason(s){
  const doc=new DOMParser().parseFromString(c.html,'text/html');
  if(doc.body.querySelector('br,img,svg,math,input,textarea,select,button,table,ul,ol,li,iframe,[contenteditable]'))return '此段包含换行、控件或嵌套结构，仅支持批注';
  if(c.text!==s.baseText||c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote)return '原文已变化，请重新选择；不会移到同名文字';
- const overlap=records.find(r=>{if(r.anchor!==s.anchor||r.kind!=='rewrite'||r.status!=='open')return false;const loc=locateRecord(r,c.text,decode);return loc.stale||loc.fallback||rangesConflict({start:s.rangeStart,end:s.rangeEnd},loc)});
- return overlap?{id:overlap.id,text:'此处已有修订；请先查看并处理，再修改整个元素'}:null;
+ // Pending changes are reconciled by the server against actual changed hunks,
+ // never against this whole editable scope.
+ return null;
 }
 function rewriteAllowed(s){return !rewriteReason(s)}
 const inlineStyle=document.createElement('style');inlineStyle.textContent=inlineDraftCSS;document.head.append(inlineStyle);
 function draftChanged(m){if(!draft)return;draft.body=m.body;composing=!!m.composing;draft.rect=m.rect;positionDraft();status('原位建议草稿 · 尚未提交','dirty')}
 const inlineEditor=inlineDraftController({doc:document,onChange:draftChanged,onKey:k=>k==='cancel'?cancelDraft():submitDraft()});
 function positionDraft(){if(!draft)return;const actions=$('#draft-actions');if(phone.matches){actions.style.left='';actions.style.top='';return}let r=draft.rect;if(!r)return;if(staticPreview?.active){const b=staticPreview.frame.getBoundingClientRect(),scale=b.width/staticPreview.frame.offsetWidth;r={left:b.left+r.left*scale,top:b.top+(r.top+r.height)*scale}}else r={left:r.left,top:r.top+r.height};actions.style.left=Math.max(12,Math.min(innerWidth-300,r.left))+'px';actions.style.top=Math.max(75,Math.min(innerHeight-90,r.top+8))+'px'}
-function startInline(){const s=elementScope(selected);if(!s)return toast('请选择可修改的单个正文元素；拖选文字仅支持写批注');const reason=rewriteReason(s);if(reason){if(reason.id)openDiscussion(reason.id);return toast(reason.text||reason)}draft={...s,body:s.quote,requestId:crypto.randomUUID?.()||'inline'+Date.now()};selectionUI(null);$('#draft-actions').hidden=false;picker?.clear();if(staticPreview?.active)staticPreview.send({type:'inline-start',anchor:s.anchor,start:s.rangeStart,end:s.rangeEnd,requestId:draft.requestId,html:clean.get(s.anchor).html});else {getBlock(s.anchor).innerHTML=clean.get(s.anchor).html;inlineEditor.start(getBlock(s.anchor),s.rangeStart,s.rangeEnd)}status('原位建议草稿 · 尚未提交','dirty')}
+async function startInline(){
+ const s=elementScope(selected);if(!s||busy||draft)return;if(rewriteReason(s))return toast(rewriteReason(s));
+ busy=true;
+ try{
+  const snapshot=await api(`/api/revision/${encodeURIComponent(docId)}?anchor=${encodeURIComponent(s.anchor)}`,undefined,'GET');
+  if(snapshot.baseText!==s.baseText)throw Error('原文已变化，请重新选择');
+  const foreign=snapshot.records.filter(r=>r.kind==='rewrite'&&r.status==='open'&&!r.canUpdate).flatMap(r=>{const loc=locateRecord(r,snapshot.baseText,decode);return loc.stale||loc.fallback?[]:[{id:r.id,...loc,next:decode(r.body)}]});
+  draft={...s,quote:snapshot.proposedText,body:snapshot.proposedText,snapshot,foreign,requestId:crypto.randomUUID?.()||'inline'+Date.now()};
+  selectionUI(null);$('#draft-actions').hidden=false;picker?.clear();
+  if(staticPreview?.active)staticPreview.send({type:'inline-start',anchor:s.anchor,start:0,end:s.baseText.length,requestId:draft.requestId,html:clean.get(s.anchor).html,proposedText:snapshot.proposedText,foreign});
+  else {getBlock(s.anchor).innerHTML=clean.get(s.anchor).html;inlineEditor.start(getBlock(s.anchor),0,s.baseText.length,snapshot.proposedText,foreign)}
+  status('原位建议草稿 · 尚未提交','dirty');
+ }catch(e){toast(e.message);status('未能打开草稿','error')}finally{busy=false}
+}
 function staticSelection(m){
  const s=m.selection,c=clean.get(m.anchor),r=s?.rect,grouped=getBlock(m.anchor)?.hasAttribute('data-hs-group');
  if(!s||!c||typeof s.quote!=='string'||s.quote.length>100000||!Number.isInteger(s.rangeStart)||!Number.isInteger(s.rangeEnd)||s.rangeStart<0||s.rangeEnd<s.rangeStart||!grouped&&c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote||!r||!['left','top','width','height'].every(k=>Number.isFinite(r[k])&&Math.abs(r[k])<100000))return null;
@@ -83,7 +97,7 @@ function status(text,kind='saved'){const e=$('#hs-status');e.className='saved '+
 function toast(t){$('#toast').textContent=t;$('#toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').hidden=true,4000)}
 async function api(path,body,method='POST'){
  const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
- const data=await r.json().catch(()=>({}));if(!r.ok){const err=new Error(({span_stale:'原段落已改变，建议未应用',not_your_doc:'只有文稿所有者可以处理批注',edit_not_allowed:'无直接编辑权限',suggest_not_allowed:'当前链接不允许建议',rate_limited:'操作过快，请稍后重试'}[data.error]||data.error||'请求失败'));err.code=r.status;throw err}return data;
+ const data=await r.json().catch(()=>({}));if(!r.ok){const err=new Error(({range_overlap:'range_overlap：与已保存修订重叠，草稿已保留',revision_stale:'revision_stale：原文或建议已变化，草稿已保留',unsupported_anchor:'此正文结构暂不支持持续修订，仍可批注',span_stale:'原段落已改变，建议未应用',not_your_doc:'只有文稿所有者可以处理批注',edit_not_allowed:'无直接编辑权限',suggest_not_allowed:'当前链接不允许建议',rate_limited:'操作过快，请稍后重试'}[data.error]||data.error||'请求失败')+(typeof data.existingId==='string'?`（修订 ${data.existingId.slice(0,8)}）`:''));err.code=r.status;err.existingId=data.existingId;throw err}return data;
 }
 function state(){return bridge.state}
 function getBlock(anchor){return state().anchorMap.get(anchor)||state().commentMap.get(anchor)}
@@ -125,7 +139,7 @@ function locate(id,open=true){
  if(el){if(s.status==='open')el.classList.add('record-focus');el.scrollIntoView({block:'center'});if(loc?.fallback)toast(loc.reason)}else toast('原段落已删除或无法定位；未改挂到其他位置');
 }
 function missingTarget(anchor){for(const r of records)if(r.anchor===anchor)locations.set(r.id,{stale:true,reason:'元素已变化、不存在或不唯一，无法安全定位；仍可阅读与回复'});render();toast('无法安全定位此元素；未改挂到其他位置')}
-function statusText(s){return ({open:'未处理',accepted:'已处理 · 已接受',rejected:s.kind==='comment'?'已处理 · 已解决':'已处理 · 已拒绝',stale:'已处理 · 锚点失效'}[s.status]||s.status)}
+function statusText(s){return ({open:'未处理',accepted:'已处理 · 已接受',rejected:s.kind==='comment'?'已处理 · 已解决':'已处理 · 已拒绝',withdrawn:'已处理 · 已撤回',stale:'已处理 · 锚点失效'}[s.status]||s.status)}
 function typeText(s){return s.kind==='comment'?'评论':'修改建议'}
 function quoteHtml(s){return s.kind==='rewrite'?`<del style="color:#92584e">${esc(decode(s.quote))||'（无删除）'}</del> → <span style="color:#285d48">${esc(decode(s.body))||'（删除此处）'}</span>`:esc(decode(s.quote))}
 function renderList(preserve=false){
@@ -348,10 +362,11 @@ async function submitDraft(){
  if(!draft||busy||composing)return;const current=draft;if(current.quote===current.body){cancelDraft();return}
  busy=true;$('#submit-draft').disabled=true;
  try{
-  // The editable scope is the whole element; persist only the changed range.
-  const diff=difference(current.quote,current.body);
-  const res=await api(`/api/suggest/${encodeURIComponent(docId)}`,{anchor:current.anchor,quote:diff.old,body:diff.next,kind:'rewrite',author:myName,baseText:current.baseText,rangeStart:current.rangeStart+diff.start,rangeEnd:current.rangeStart+diff.end,requestId:current.requestId});
-  inlineEditor.stop();staticPreview?.send({type:'inline-stop'});draft=null;$('#draft-actions').hidden=true;await refresh();active=res.suggestion.id;render();status('建议已保存，等待确认');toast('建议已保存；原文尚未改变');
+  const payload={anchor:current.anchor,version:current.snapshot.version,sourceHash:current.snapshot.sourceHash,proposedText:current.body,requestId:current.requestId,author:myName};
+  // A changed payload needs a fresh receipt key after a rejected/ambiguous retry.
+  const serialized=JSON.stringify(payload);if(current.attempt&&current.attempt!==serialized){current.requestId=crypto.randomUUID();payload.requestId=current.requestId}current.attempt=JSON.stringify(payload);
+  const res=await api(`/api/revision/${encodeURIComponent(docId)}`,payload);
+  inlineEditor.stop();staticPreview?.send({type:'inline-stop'});draft=null;$('#draft-actions').hidden=true;await refresh();active=res.snapshot.records.find(r=>r.canUpdate)?.id||null;render();status('建议已保存，等待确认');toast('建议已保存；原文尚未改变');
  }catch(e){toast(e.message);status('草稿未提交，可重试或取消','error')}finally{busy=false;$('#submit-draft').disabled=false}
 }
 function beginInput(e,sel=getSelection()){

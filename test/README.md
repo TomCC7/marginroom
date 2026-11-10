@@ -125,7 +125,19 @@ mobile press-snapshot, real mobile SQLite, element/static dashboard and real
 element SQLite suites. `element-review.test.mjs` covers the ordinary authority
 picker, identity/fingerprint ambiguity and no detached-node retargeting.
 The list-suggest/list-selection-storage scripts are migrated to explicit context
-submission too: UTF16 offsets, native double/triple quotes, pending locks, rich
-source/cross-block refusal, sibling/inline-shell integrity and actual export
-assertions remain exercised. IME belongs to the replacement composer; Annotate
-never grants contenteditable or treats typing/paste as source mutation.
+submission too: UTF16 offsets, native double/triple quotes, actual-hunk overlap,
+rich source/cross-block refusal, sibling/inline-shell integrity and actual export
+assertions remain exercised. Explicit 原位修改 opens a temporary native editable
+projection; Annotate alone never grants contenteditable or mutates source.
+
+Continuous revision: `node --test test/revision-diff.test.mjs test/continuous-revision-api.test.mjs`
+checks deterministic grapheme hunks, bidirectional UTF-16 maps, atomic reconciliation,
+caller ownership, immutable retries, paragraph-scoped ABA versions, populated legacy
+records, split/merge discussion history and both acceptance orders with real SQLite/HTTP.
+`node test/continuous-revision.browser.mjs` exercises ordinary/static 1440/390
+save → reenter → distant edit → save/reload, stable IDs/replies, withdrawal/cancel,
+foreign overlap and stale draft retention. `node test/draft-diff.browser.mjs`
+checks native undo/redo/IME and inline deletion flow, including long cross-line runs.
+`REVISION_RUNTIME` selects an independent CURRENT-derived candidate; optional
+`REVISION_ARTIFACTS` selects native screenshot/evidence output. Physical Safari
+keyboard/selection remains unverified.

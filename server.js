@@ -21,10 +21,10 @@ import { makeGuardrails, LIMITS } from './guardrails.js';
 import { makeFeedbackHandler } from './feedback-api.js';
 import { patchSource } from './source-patch.js';
 import { randomUUID, createHash } from 'node:crypto';
-import {rangesConflict} from './public/range-patches.js';
-import {locateRecord} from './public/review-ranges.js';
 import {plainText} from './db.js';
 import { rm } from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
+import {revisionService,RevisionError} from './revision-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // DOCS_DIR holds deliverable HTML (seed + uploads). On a host with an ephemeral
@@ -592,6 +592,25 @@ export function createApp(db, opts = {}) {
     return ownsDoc(req, id) || getDocAccess(db, id) !== 'view';
   }
 
+  const revisions = revisionService(db, {
+    readSource(id) { try { return readFileSync(path.join(DOCS_DIR, `${id}.html`), 'utf8'); } catch { return null; } },
+    readConfig(id) { try { return JSON.parse(readFileSync(path.join(DOCS_DIR, `${id}.config.json`), 'utf8')); } catch { return {}; } },
+  });
+  app.get('/api/revision/:id', readLimiter, (req,res,next) => {
+    const {id}=req.params;
+    if(!isValidDocId(id))return res.status(400).json({error:'invalid_doc_id'});
+    if(!canSuggestDoc(req,id))return res.status(403).json({error:'view_only'});
+    try { noStore(res);res.json(revisions.snapshot(id,req.query.anchor,req.caller.token)); }
+    catch(e){if(e instanceof RevisionError)return res.status(e.status).json(e.response);next(e)}
+  });
+  app.post('/api/revision/:id', writeLimiter, (req,res,next) => {
+    const {id}=req.params;
+    if(!isValidDocId(id))return res.status(400).json({error:'invalid_doc_id'});
+    if(!canSuggestDoc(req,id))return res.status(403).json({error:'suggest_not_allowed'});
+    try { noStore(res);res.json(revisions.reconcile(id,req.caller.token,req.body||{})); }
+    catch(e){if(e instanceof RevisionError)return res.status(e.status).json(e.response);next(e)}
+  });
+
   // POST /api/edit/:id { anchor, text } -> { ok, overlay }
   app.post('/api/edit/:id', writeLimiter, async (req, res) => {
     const { id } = req.params;
@@ -656,7 +675,7 @@ export function createApp(db, opts = {}) {
     // keep a client from seeing pending edits). Owner/doc-owner always see them.
     if (!canSuggestDoc(req, id)) return res.status(403).json({ error: 'view_only' });
     const status = req.query.status ?? 'open';
-    if (!['open', 'all', 'accepted', 'rejected', 'stale'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+    if (!['open', 'all', 'accepted', 'rejected', 'stale', 'withdrawn'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
     noStore(res);
     res.json({ suggestions: listSuggestions(db, id, status) });
   });
@@ -721,18 +740,21 @@ export function createApp(db, opts = {}) {
         return res.json({ ok: true, suggestion: getSuggestion(db, prior.id), replayed: true });
       }
     }
-    if(hasRange&&kind==='rewrite'){
-      const current=getOverlay(db,id)[anchor];
-      if(current&&current.text!==escapeText(baseText))return res.status(409).json({error:'span_stale'});
-      const overlap=listSuggestions(db,id,'open').find(s=>{if(s.kind!=='rewrite'||s.anchor!==anchor)return false;const loc=locateRecord(s,baseText,plainText);return loc.stale||loc.fallback||rangesConflict({start:rangeStart,end:rangeEnd},loc)});
-      if(overlap)return res.status(409).json({error:'range_overlap',existingId:overlap.id});
+    if(kind==='rewrite'){
+      const record={anchor,kind,span_occ,range_start:hasRange?rangeStart:null,range_end:hasRange?rangeEnd:null,quote:escapeText(String(quote||'')),base_text:escapeText(String(baseText||''))};
+      try{
+        revisions.validateLegacy(id,record,originalHtml);
+        const current=getOverlay(db,id)[anchor];
+        if(hasRange&&current&&current.text!==record.base_text)return res.status(409).json({error:'span_stale'});
+        revisions.checkLegacyOverlap(id,record,originalHtml);
+      }catch(e){if(e instanceof RevisionError)return res.status(e.status).json(e.response);throw e}
     }
     const suggestion = addSuggestion(db, {
       id: randomUUID(),
       range_start: hasRange ? rangeStart : null,
       range_end: hasRange ? rangeEnd : null,
       request_id: requestId ?? null,
-      request_caller: requestId !== undefined ? req.caller.token : null,
+      request_caller: req.caller.token,
       request_payload: requestId !== undefined ? requestPayload : null,
       doc_id: id,
       anchor,
@@ -788,7 +810,9 @@ export function createApp(db, opts = {}) {
     // escaped and rendered as textContent, so decoding happens client-side. For a
     // span-level rewrite, acceptSuggestion ignores `text` and splices `body` into
     // the block's current text at the quote's Nth occurrence.
-    if(s.source_hash&&s.source_hash!==createHash('sha256').update(await readDocHtml(id)||'').digest('hex')){setSuggestionStatus(db,sid,'stale');return res.status(409).json({error:'span_stale'})}
+    const acceptHtml=await readDocHtml(id);
+    if(s.source_hash&&s.source_hash!==createHash('sha256').update(acceptHtml||'').digest('hex')){setSuggestionStatus(db,sid,'stale');return res.status(409).json({error:'span_stale'})}
+    if(s.kind==='rewrite')try{revisions.validateLegacy(id,s,acceptHtml)}catch(e){if(e instanceof RevisionError){setSuggestionStatus(db,sid,'stale');return res.status(409).json({error:'span_stale'})}throw e}
     const result = acceptSuggestion(db)(sid, s.body, new Date().toISOString());
     if (result == null) return res.status(409).json({ error: 'accept_failed' });
     // Span phrase drifted (block edited since the suggestion) -> marked stale,

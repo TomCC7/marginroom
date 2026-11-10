@@ -24,7 +24,7 @@
   if(m.type==='clearTarget')picker.clear();
   if(m.type==='comment-groups')marks.sync(m.groups||[],m.mobile===true);
   if(m.type==='comment-state'){marks.comments(m.comments||[],inline.anchor);marks.sync(m.groups||[],m.mobile===true)}
-  if(m.type==='inline-start'){inlineRequest=m.requestId;const el=find(m.anchor);if(el&&Number.isInteger(m.start)&&Number.isInteger(m.end)){picker.clear();if(typeof m.html==='string')el.innerHTML=m.html;inline.start(el,m.start,m.end)}}
+  if(m.type==='inline-start'){inlineRequest=m.requestId;const el=find(m.anchor);if(el&&Number.isInteger(m.start)&&Number.isInteger(m.end)){picker.clear();if(typeof m.html==='string')el.innerHTML=m.html;inline.start(el,m.start,m.end,m.proposedText,m.foreign)}}
   if(m.type==='inline-stop'){inlineRequest=null;inline.stop()}
   if(m.type==='restore-selection'){const el=find(m.anchor);if(el)inline.restoreSelection(el,m.start,m.end)}
   if(m.type==='sync'&&Array.isArray(m.blocks))for(const b of m.blocks){const el=find(b.anchor);if(!el||inline.anchor===b.anchor)continue;

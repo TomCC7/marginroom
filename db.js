@@ -86,6 +86,56 @@ export function openDb(path = process.env.HS_DB_PATH || './data/app.db') {
   if (!ownerCols.includes('access_level')) {
     db.exec("ALTER TABLE doc_owners ADD COLUMN access_level TEXT NOT NULL DEFAULT 'suggest'");
   }
+  // Additive checkpoint: durable request receipts, mutation epochs and rewrite
+  // history. Triggers cover legacy writers and accept/rebase/restore paths too.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS revision_receipts (
+      doc_id TEXT NOT NULL, caller TEXT NOT NULL, request_id TEXT NOT NULL,
+      payload TEXT NOT NULL, response TEXT NOT NULL, created_at TEXT NOT NULL,
+      PRIMARY KEY(doc_id, caller, request_id)
+    );
+    CREATE TABLE IF NOT EXISTS revision_scope_epochs (doc_id TEXT NOT NULL, anchor TEXT NOT NULL, epoch INTEGER NOT NULL, PRIMARY KEY(doc_id,anchor));
+    CREATE TABLE IF NOT EXISTS revision_epoch (singleton INTEGER PRIMARY KEY CHECK(singleton=1), epoch INTEGER NOT NULL);
+    INSERT OR IGNORE INTO revision_epoch VALUES (1,0);
+    CREATE TABLE IF NOT EXISTS rewrite_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, suggestion_id TEXT NOT NULL,
+      doc_id TEXT NOT NULL, operation TEXT NOT NULL, ts TEXT NOT NULL,
+      old_json TEXT, new_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rewrite_history ON rewrite_history(doc_id,suggestion_id,id);
+    CREATE TRIGGER IF NOT EXISTS rewrite_history_no_update BEFORE UPDATE ON rewrite_history
+      BEGIN SELECT RAISE(ABORT,'append_only_history'); END;
+    -- Only the explicit document privacy purge may delete immutable history.
+    CREATE TABLE IF NOT EXISTS revision_purges (doc_id TEXT PRIMARY KEY);
+    DROP TRIGGER IF EXISTS rewrite_history_no_delete;
+    CREATE TRIGGER rewrite_history_no_delete BEFORE DELETE ON rewrite_history
+      WHEN NOT EXISTS (SELECT 1 FROM revision_purges WHERE doc_id=OLD.doc_id)
+      BEGIN SELECT RAISE(ABORT,'append_only_history'); END;
+  `);
+  const snapshot = (prefix) => `json_object('id',${prefix}.id,'anchor',${prefix}.anchor,'quote',${prefix}.quote,'body',${prefix}.body,'status',${prefix}.status,'author',${prefix}.author,'created_at',${prefix}.created_at,'base_text',${prefix}.base_text,'range_start',${prefix}.range_start,'range_end',${prefix}.range_end,'span_occ',${prefix}.span_occ,'source_hash',${prefix}.source_hash)`;
+  for (const table of ['suggestions','documents','suggestion_replies','doc_owners']) {
+    for (const operation of ['INSERT','UPDATE','DELETE']) {
+      db.exec(`CREATE TRIGGER IF NOT EXISTS revision_epoch_${table}_${operation} AFTER ${operation} ON ${table}
+        BEGIN UPDATE revision_epoch SET epoch=epoch+1 WHERE singleton=1; END;`);
+    }
+  }
+  // Paragraph-scoped ABA stamps: unrelated documents/paragraph comments do not
+  // invalidate a draft. Accepted overlay/source/access mutations are doc-wide.
+  for(const table of ['suggestions','documents','doc_owners'])for(const operation of ['INSERT','UPDATE','DELETE']){
+    const ref=operation==='DELETE'?'OLD':'NEW',scope=table==='suggestions'?`COALESCE(${ref}.anchor,'*')`:"'*'";
+    db.exec(`CREATE TRIGGER IF NOT EXISTS revision_scope_${table}_${operation} AFTER ${operation} ON ${table}
+      BEGIN INSERT INTO revision_scope_epochs(doc_id,anchor,epoch) VALUES(${ref}.doc_id,${scope},1)
+      ON CONFLICT(doc_id,anchor) DO UPDATE SET epoch=epoch+1; END;`);
+  }
+  for(const operation of ['INSERT','UPDATE','DELETE']){const ref=operation==='DELETE'?'OLD':'NEW';db.exec(`CREATE TRIGGER IF NOT EXISTS revision_scope_replies_${operation} AFTER ${operation} ON suggestion_replies
+    BEGIN INSERT INTO revision_scope_epochs(doc_id,anchor,epoch) SELECT doc_id,COALESCE(anchor,'*'),1 FROM suggestions WHERE id=${ref}.parent_id
+    ON CONFLICT(doc_id,anchor) DO UPDATE SET epoch=epoch+1; END;`)}
+  for (const operation of ['INSERT','UPDATE','DELETE']) {
+    const ref = operation === 'DELETE' ? 'OLD' : 'NEW';
+    db.exec(`CREATE TRIGGER IF NOT EXISTS revision_history_${operation} AFTER ${operation} ON suggestions WHEN ${ref}.kind='rewrite'
+      BEGIN INSERT INTO rewrite_history(suggestion_id,doc_id,operation,ts,old_json,new_json)
+      VALUES(${ref}.id,${ref}.doc_id,'${operation}',strftime('%Y-%m-%dT%H:%M:%fZ','now'),${operation === 'INSERT' ? 'NULL' : snapshot('OLD')},${operation === 'DELETE' ? 'NULL' : snapshot('NEW')}); END;`);
+  }
   return db;
 }
 
@@ -350,6 +400,11 @@ export const deleteDocData = (db) => db.transaction((docId) => {
   db.prepare('DELETE FROM document_versions WHERE doc_id = ?').run(docId);
   db.prepare('DELETE FROM suggestions WHERE doc_id = ?').run(docId);
   db.prepare('DELETE FROM doc_owners WHERE doc_id = ?').run(docId);
+  // DELETE suggestions first so its final history event is purged as well.
+  db.prepare('INSERT INTO revision_purges(doc_id) VALUES (?)').run(docId);
+  db.prepare('DELETE FROM rewrite_history WHERE doc_id = ?').run(docId);
+  db.prepare('DELETE FROM revision_receipts WHERE doc_id = ?').run(docId);
+  db.prepare('DELETE FROM revision_purges WHERE doc_id = ?').run(docId);
 });
 
 // Restore a version: copy its overlay to live AND record the restore as a new
