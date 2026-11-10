@@ -17,7 +17,7 @@ export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'r
  let frame=null,active=false,ready=false,source=null,boot=null,suspended=null,captureId=0;
  const captures=new Map();
  const token=[...crypto.getRandomValues(new Uint32Array(4))].map(n=>n.toString(16).padStart(8,'0')).join('');
- const send=data=>{if(ready)frame.contentWindow.postMessage({channel:'static-preview',token,...data},'*')};
+ const send=data=>{if(ready&&frame?.isConnected)frame.contentWindow?.postMessage({channel:'static-preview',token,...data},'*')};
  const controls=()=>[...root.querySelectorAll('input,textarea,select')];
  const formState=()=>controls().map(n=>({value:n.value,checked:n.checked,selected:n.tagName==='SELECT'?[...n.options].map(o=>o.selected):null}));
  function applyForms(values){if(!Array.isArray(values))return;controls().forEach((n,i)=>{const v=values[i];if(!v||typeof v.value!=='string')return;n.value=v.value;n.checked=v.checked===true;if(n.tagName==='SELECT'&&Array.isArray(v.selected))[...n.options].forEach((o,j)=>o.selected=v.selected[j]===true)})}

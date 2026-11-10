@@ -124,10 +124,10 @@ function scrollThread(id){
  const box=card.getBoundingClientRect(), view=viewport.getBoundingClientRect();
  if(box.top<view.top||box.bottom>view.bottom)viewport.scrollTop+=box.top-view.top;
 }
-function openDiscussion(id){dismissTarget();clearSelection();if(draft)return toast('请先提交或取消草稿');setView('article');if(id){active=id;filter='all';$$('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===filter))}document.body.classList.remove('drawer-closed');document.body.classList.add('drawer-open');syncDiscussion();renderThreads();if(id)requestAnimationFrame(()=>scrollThread(id))}
-function openThreadChoices(ids){ids=[...new Set(ids)].filter(id=>records.some(r=>r.id===id));if(!ids.length)return;if(ids.length===1)return openDiscussion(ids[0]);openDiscussion();pop('<h3>此处的批注 · '+ids.length+'</h3>'+ids.map(id=>{const r=records.find(s=>s.id===id);return `<button data-choose-thread="${esc(id)}">${esc(decode(r.author))} · ${esc(decode(r.body).slice(0,75))}</button>`}).join(''));$('#popover').onclick=e=>{const id=e.target.closest('[data-choose-thread]')?.dataset.chooseThread;if(id){$('#popover').hidden=true;openDiscussion(id)}}}
+function openDiscussion(id){dismissTarget();clearSelection();if(draft)return toast('请先提交或取消草稿');setView('article');if(id){active=id;filter='all';$$('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===filter))}document.body.classList.remove('drawer-closed');document.body.classList.add('drawer-open');syncDiscussion();renderThreads();if(id){marks.focus(id);staticPreview?.send({type:'tag-focus',id});if(state().interactive)state().frame?.contentWindow?.postMessage({type:'tag-focus',id},'*');requestAnimationFrame(()=>scrollThread(id))}}
+function openThreadChoices(ids){ids=[...new Set(ids)].filter(id=>records.some(r=>r.id===id));if(!ids.length)return;if(ids.length===1)return openDiscussion(ids[0]);openDiscussion();pop('<h3>此处的讨论 · '+ids.length+'</h3>'+ids.map(id=>{const r=records.find(s=>s.id===id);return `<button data-choose-thread="${esc(id)}">${r.kind==='rewrite'?'修订':'批注'} · ${esc(decode(r.author))} · ${esc(decode(r.body||r.quote).slice(0,75))}</button>`}).join(''));$('#popover').onclick=e=>{const id=e.target.closest('[data-choose-thread]')?.dataset.chooseThread;if(id){$('#popover').hidden=true;openDiscussion(id)}}}
 const marks=annotationAffordances({doc:document,onOpen:openThreadChoices,resolveTarget:a=>a.match(/^c[23]:/)?picker?.resolve(a):null});
-function commentGroups(){const groups=new Map();for(const r of records){if(r.kind!=='comment'||r.status!=='open'||locations.get(r.id)?.stale)continue;if(!groups.has(r.anchor))groups.set(r.anchor,[]);groups.get(r.anchor).push(r.id)}return [...groups].map(([anchor,ids])=>({anchor,ids}))}
+function commentGroups(){const groups=new Map();for(const r of records){if(r.status!=='open'||staleReason(r)||!['comment','rewrite'].includes(r.kind))continue;const key=r.anchor+':'+r.kind;if(!groups.has(key))groups.set(key,{anchor:r.anchor,kind:r.kind,ids:[]});groups.get(key).ids.push(r.id)}return [...groups.values()]}
 function locate(id,open=true){
  const s=records.find(x=>x.id===id);if(!s)return;if(open)openDiscussion(id);if(staleReason(s)&&!retryElement(s))return;else if(!open&&innerWidth<=1100)closeDiscussion();
  $$('.record-focus').forEach(n=>n.classList.remove('record-focus'));
@@ -234,7 +234,7 @@ async function refresh(reload=false){
  try{
   if(reload){reloading=true;root.inert=true;await bridge.reload();await staticPreview?.reconnect();captureClean();editBuffers.clear();buildToc()}
   const r=await fetch(`/api/suggestions/${encodeURIComponent(docId)}?status=all`);
-  if(r.status===403){records=[];$('#threads').innerHTML='<div class="empty">当前链接仅允许阅读，不展示批注记录。</div>';return}
+  if(r.status===403){records=[];locations.clear();syncCommentState();render();$('#threads').innerHTML='<div class="empty">当前链接仅允许阅读，不展示批注记录。</div>';return}
   if(!r.ok)throw Error('批注加载失败');const next=(await r.json()).suggestions||[];if(version!==commentVersion||pendingComments.size)return;const same=JSON.stringify(next)===JSON.stringify(records);const withoutStatus=rows=>JSON.stringify(rows.map(({status,invalid_reason,resolved_stale,stale_reason,...r})=>r));const statusOnly=withoutStatus(next)===withoutStatus(records);records=next;if(!localEditing()&&(!same||reload)){if(statusOnly&&!reload)syncCommentState();else decorate();render(statusOnly&&!reload)}
  }catch(e){status(e.message,'error')}finally{refreshBusy=false;reloading=false;root.inert=false}
 }

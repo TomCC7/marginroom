@@ -22,6 +22,7 @@
   if(m.type==='sync'){const previous=mode;mode=m.mode;if(previous!==mode&&mode!=='suggest')picker.clear()}
   if(m.type==='targetNavigate'&&mode==='suggest'&&!inline.active)picker.navigate(m.direction);
   if(m.type==='clearTarget')picker.clear();
+  if(m.type==='tag-focus')marks.focus(m.id);
   if(m.type==='comment-groups')marks.sync(m.groups||[],m.mobile===true);
   if(m.type==='comment-state'){marks.retireRewrites(Array.isArray(m.retired)?m.retired:[],inline.anchor);marks.comments(m.comments||[],inline.anchor);marks.sync(m.groups||[],m.mobile===true)}
   if(m.type==='inline-start'){inlineRequest=m.requestId;const el=find(m.anchor);if(el&&Number.isInteger(m.start)&&Number.isInteger(m.end)){picker.clear();if(typeof m.html==='string')el.innerHTML=m.html;inline.start(el,m.start,m.end,m.proposedText,m.foreign)}}

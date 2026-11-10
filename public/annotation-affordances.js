@@ -1,11 +1,23 @@
 // Review-only controls live outside source flow. Status transitions never
 // replace source HTML, form nodes, frames or a live inline editor.
 export function annotationAffordances({doc,onOpen,resolveTarget}){
- const win=doc.defaultView,layer=doc.createElement('div');layer.dataset.reviewOverlay='';layer.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483645;overflow:hidden';doc.documentElement.append(layer);let groups=[],mobile=false,epoch=0;
+ const win=doc.defaultView,layer=doc.createElement('div');layer.dataset.reviewOverlay='';layer.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483645;overflow:hidden';doc.documentElement.append(layer);let groups=[],mobile=false,epoch=0,active=null;
  const find=a=>[...doc.querySelectorAll('[data-hs-anchor],[data-hs-comment-anchor]')].find(n=>(n.dataset.hsAnchor||n.dataset.hsCommentAnchor)===a);
- async function paint(){const ticket=++epoch;const targets=await Promise.all(groups.map(async g=>({...g,el:find(g.anchor)||await resolveTarget?.(g.anchor)})));if(ticket!==epoch)return;layer.replaceChildren();for(const g of targets){const el=g.el;if(!el?.isConnected||!g.ids.length)continue;const r=el.getBoundingClientRect();if(r.bottom<0||r.top>win.innerHeight)continue;
+ const style=doc.createElement('style');style.dataset.reviewOverlay='';style.textContent='[data-review-tag]:focus-visible{outline:3px solid #123e2c!important;outline-offset:2px}@media(forced-colors:active){[data-review-tag]{border:1px solid ButtonText!important}[data-review-tag]:focus-visible{outline:3px solid Highlight!important}}';layer.append(style);
+ // Source-safe gutters only: never reserve width, clamp onto letters, or float
+ // tags for a target clipped by a nested scroller. Inline marks + rail remain
+ // available when the imported page has no safe margin (including full bleed).
+ function visible(el,r){if(!r.width||!r.height||r.top<0||r.top+30>win.innerHeight||r.right<=0||r.left>=win.innerWidth)return false;for(let p=el.parentElement;p;p=p.parentElement){const css=win.getComputedStyle(p),b=p.getBoundingClientRect();if(/auto|scroll|hidden|clip/.test(css.overflowY)&& (r.top<b.top||r.top+30>b.bottom))return false;if(/auto|scroll|hidden|clip/.test(css.overflowX)&&(r.right<=b.left||r.left>=b.right))return false}return true}
+ async function paint(){const ticket=++epoch;const targets=await Promise.all(groups.map(async g=>({...g,el:find(g.anchor)||await resolveTarget?.(g.anchor)})));if(ticket!==epoch)return;const focused=doc.activeElement?.dataset.reviewTag,placed=[];layer.replaceChildren(style);for(const g of targets){const el=g.el;if(!el?.isConnected||!g.ids.length)continue;const r=el.getBoundingClientRect();if(!visible(el,r))continue;
   if(g.anchor.startsWith('c')){const outline=doc.createElement('div');outline.dataset.reviewOverlay='';outline.style.cssText=`position:absolute;pointer-events:none;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;outline:1px solid #71a087`;layer.append(outline)}
-  if(mobile)continue;const size=30,x=r.right+size+4<=win.innerWidth?r.right+4:r.left>=size+4?r.left-size-4:null;if(x===null)continue;const b=doc.createElement('button');b.type='button';b.dataset.reviewOverlay='';b.dataset.commentCount=String(g.ids.length);b.dataset.commentAnchor=g.anchor;b.textContent='◯ '+g.ids.length;b.setAttribute('aria-label',`打开此段 ${g.ids.length} 条批注`);b.style.cssText=`position:absolute;pointer-events:auto;box-sizing:border-box;left:${x}px;top:${Math.max(0,r.top)}px;width:${size}px;min-height:30px;padding:3px;border:1px solid #9dc1ab;border-radius:12px;background:#edf6ef;color:#285d48;font:12px/1.5 system-ui;cursor:pointer`;b.onclick=()=>onOpen(g.ids);layer.append(b)}}
+  const rewrite=g.kind==='rewrite',w=mobile?24:(rewrite?(g.ids.length>1?72:58):36),h=30,gap=mobile?3:4;
+  const safe=(x,y)=>{if(x<2||x+w>win.innerWidth-2||y<0||y+h>win.innerHeight||placed.some(b=>x<b.x+b.w+2&&x+w+2>b.x&&y<b.y+h+2&&y+h+2>b.y))return false;for(const px of [x+1,x+w/2,x+w-1])for(const py of [y+1,y+h/2,y+h-1]){const hit=doc.elementFromPoint(px,py);if(hit&&!hit.closest('[data-review-overlay]')&&(!hit.contains(el)||hit.matches('button,a,input,select,textarea,[contenteditable=true]')))return false}return true};
+  let pos=null;for(const y of [r.top,r.top+34]){for(const x of [r.right+gap,r.left-w-gap])if(safe(x,y)){pos={x,y};break}if(pos)break}if(!pos)continue;placed.push({...pos,w});
+  const b=doc.createElement('button');b.type='button';b.dataset.reviewOverlay='';b.dataset.reviewTag=g.anchor+':'+(g.kind||'comment');b.dataset.tagKind=rewrite?'rewrite':'comment';b.dataset[rewrite?'revisionCount':'commentCount']=String(g.ids.length);b.dataset[rewrite?'revisionAnchor':'commentAnchor']=g.anchor;
+  const label=rewrite?'修订':'批注';b.title=`${label} · ${g.ids.length} 条待处理${label}`;b.setAttribute('aria-label',`打开此段 ${g.ids.length} 条待处理${label}`);b.setAttribute('aria-pressed',String(g.ids.includes(active)));
+  b.innerHTML=`<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">${rewrite?'<path d="m15 4 5 5M4 15 15 4a3.5 3.5 0 0 1 5 5L9 20l-6 1z"/>':'<path d="M20 11a8 8 0 0 1-8 8H5l-3 3V11a9 9 0 0 1 18 0Z"/>'}</svg>`;b.append(doc.createTextNode(rewrite?(mobile?(g.ids.length>1?' '+g.ids.length:''):' 修订'+(g.ids.length>1?' '+g.ids.length:'')):' '+g.ids.length));
+  b.style.cssText=`position:absolute;display:flex;flex-direction:${mobile?'column':'row'};align-items:center;justify-content:center;gap:0;pointer-events:auto;box-sizing:border-box;left:${pos.x}px;top:${pos.y}px;width:${w}px;height:${h}px;padding:${mobile?1:3}px;border:1px solid #9dc1ab;border-radius:12px;background:#edf6ef;color:#285d48;font:12px/1.2 system-ui;white-space:nowrap;cursor:pointer;${g.ids.includes(active)?'box-shadow:0 0 0 2px #285d48;':''}`;b.onclick=e=>{e.stopPropagation();onOpen(g.ids)};layer.append(b);if(focused===b.dataset.reviewTag)b.focus({preventScroll:true})}}
+ function focus(id){active=id;paint()}
  function comments(items,skipAnchor){
   // Keep dormant wrappers as inert spans: resolving changes attributes only,
   // preserving native text nodes/ranges, nested controls and source handlers.
@@ -28,7 +40,10 @@ export function annotationAffordances({doc,onOpen,resolveTarget}){
  function open(e){const marked=e.target.closest?.('[data-thread]');if(!marked)return;const ids=[...new Set([marked,...Array.from(doc.elementsFromPoint?.(e.clientX||0,e.clientY||0)||[])].filter(n=>n.hasAttribute?.('data-thread')).map(n=>n.dataset.thread))];if(ids.length){e.preventDefault();e.stopPropagation();onOpen(ids)}}
  doc.addEventListener('click',open);
  doc.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)&&e.target.hasAttribute?.('data-thread')){e.preventDefault();const ids=[];for(let n=e.target;n;n=n.parentElement)if(n.dataset?.thread)ids.push(n.dataset.thread);onOpen([...new Set(ids)])}});
- win.addEventListener('scroll',paint,true);win.addEventListener('resize',paint);
+ let queued=false;function schedule(){if(queued)return;queued=true;win.requestAnimationFrame(()=>{queued=false;paint()})}
+ win.addEventListener('scroll',schedule,true);win.addEventListener('resize',schedule);
+ const observer=new win.MutationObserver(changes=>{if(changes.some(m=>!m.target.parentElement?.closest('[data-review-overlay]')&&!m.target.closest?.('[data-review-overlay]')))schedule()});observer.observe(doc.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['style','class','hidden']});
+ if(win.ResizeObserver)new win.ResizeObserver(schedule).observe(doc.documentElement);
  function retireRewrites(ids,skipAnchor){
   for(const n of doc.querySelectorAll('[data-review-del][data-thread],[data-review-ins][data-thread]')){
    if(!ids.includes(n.dataset.thread)||n.closest('[data-inline-editor]')||n.closest('[data-hs-anchor]')?.dataset.hsAnchor===skipAnchor)continue;
@@ -37,5 +52,5 @@ export function annotationAffordances({doc,onOpen,resolveTarget}){
    n.style.textDecoration='none';n.style.background='none';n.style.color='inherit';n.removeAttribute('contenteditable');n.classList.remove('record-focus');
   }
  }
- return {comments,retireRewrites,sync(value,phone){groups=value;mobile=phone;paint()},paint};
+ return {comments,retireRewrites,focus,sync(value,phone){groups=value;mobile=phone;paint()},paint};
 }

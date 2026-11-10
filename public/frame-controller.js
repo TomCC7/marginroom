@@ -447,6 +447,7 @@
       postReading(); return;
     }
     if (m.type === 'comment-state') { reviewMarks.comments(m.comments||[]);reviewMarks.sync(m.groups||[],m.mobile===true); }
+    else if (m.type === 'tag-focus') { reviewMarks.focus(m.id); }
     else if (m.type === 'applyOverlay') { applyOverlay(m.overlay || {}); }
     else if (m.type === 'setMode') { setMode(m.mode); }
     else if (m.type === 'serialize') { post({ type: 'snapshot', html: serialize() }); }
