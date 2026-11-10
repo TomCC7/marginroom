@@ -12,7 +12,9 @@ const same=doc.querySelector('.same'),ambiguous=await picker.anchor(same);assert
 // Removed/replaced nodes cannot silently rebind during this document lifetime.
 button.remove();root.querySelector('section').insertAdjacentHTML('beforeend','<button id="stable">Action</button>');assert.equal(await picker.resolve(b),null);
 const w=dom.window,el=doc.querySelector('img');for(const type of ['pointerdown','pointerup','click'])el.dispatchEvent(new w.MouseEvent(type,{bubbles:true,cancelable:true,clientX:20,clientY:20}));await new Promise(r=>setTimeout(r,360));assert.equal(picked.anchor,a);assert.equal(picked.isText,false);
-await picker.navigate('parent');assert.match(picked.quote,/section #card/);await picker.navigate('child');assert.match(picked.quote,/img/);
+await picker.navigate('parent');assert.match(picked.quote,/section #card/);assert.equal(picked.parent,false);assert.equal('child' in picked,false);
+const top=picked;for(const direction of ['child','down','',undefined,'parent']){await picker.navigate(direction);assert.equal(picked,top,'root/unsupported navigation is a no-op')}
+const other=doc.querySelector('canvas');other.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await new Promise(r=>setTimeout(r,0));assert.match(picked.quote,/canvas/);await picker.navigate('parent');assert.match(picked.quote,/section #card/);await picker.navigate('child');assert.match(picked.quote,/section #card/);
 // Keyboard target selection and Escape, no tab-index/source bookkeeping writes.
 el.tabIndex=0;el.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await new Promise(r=>setTimeout(r,0));assert.equal(picked.anchor,a);el.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert(cancelled);assert.equal(doc.querySelector('[data-review-overlay]').style.display,'none');
 assert.equal(root.querySelectorAll('[data-hs-comment-anchor]').length,0);assert.equal(root.querySelectorAll('[data-review-overlay]').length,0);

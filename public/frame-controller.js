@@ -452,7 +452,7 @@
     else if (m.type === 'setMode') { setMode(m.mode); }
     else if (m.type === 'serialize') { post({ type: 'snapshot', html: serialize() }); }
     else if (m.type === 'flashComment') { flashComment(m.anchor,m.highlight); }
-    else if (m.type === 'targetNavigate' && currentMode==='suggest') { picker.navigate(m.direction); }
+    else if (m.type === 'targetNavigate' && m.direction==='parent' && currentMode==='suggest') { picker.navigate(m.direction); }
     else if (m.type === 'clearTarget') { picker.clear(); }
   });
 

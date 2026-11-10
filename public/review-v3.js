@@ -19,8 +19,8 @@ let mode='read', records=[], filter='open', listStatus='all', listType='all', ac
 let clean=new Map(), locations=new Map(), reloading=false;
 const editBuffers=new Map(), pendingComments=new Set();let commentVersion=0;
 let staticPreview=null, reading=null, frameSelection=null, picker=null, composeKind='comment';
-function pickTarget(t,frame=null){if(mode!=='suggest'||!state().canSuggest||!$('#composer').hidden||draft)return;let rect=t.rect;if(frame&&rect){const b=frame.getBoundingClientRect(),sx=b.width/frame.offsetWidth,sy=b.height/frame.offsetHeight;rect={left:b.left+rect.left*sx,top:b.top+rect.top*sy}}selected={anchor:t.anchor,quote:t.quote||t.snippet,baseText:'',element:!t.isText,textAnchor:t.textAnchor,tag:t.tag,context:t.context,parent:t.parent,child:t.child,rect};selectionUI(selected)}
-function navigateTarget(direction){if(!$('#composer').hidden||draft)return;if(state().interactive)state().frame?.contentWindow.postMessage({type:'targetNavigate',direction},'*');else if(staticPreview?.active)staticPreview.send({type:'targetNavigate',direction});else picker?.navigate(direction)}
+function pickTarget(t,frame=null){if(mode!=='suggest'||!state().canSuggest||!$('#composer').hidden||draft)return;let rect=t.rect;if(frame&&rect){const b=frame.getBoundingClientRect(),sx=b.width/frame.offsetWidth,sy=b.height/frame.offsetHeight;rect={left:b.left+rect.left*sx,top:b.top+rect.top*sy}}selected={anchor:t.anchor,quote:t.quote||t.snippet,baseText:'',element:!t.isText,textAnchor:t.textAnchor,tag:t.tag,context:t.context,parent:t.parent,rect};selectionUI(selected)}
+function navigateTarget(direction){if(direction!=='parent'||!$('#composer').hidden||draft)return;if(state().interactive)state().frame?.contentWindow.postMessage({type:'targetNavigate',direction},'*');else if(staticPreview?.active)staticPreview.send({type:'targetNavigate',direction});else picker?.navigate(direction)}
 function elementScope(s){
  if(!s?.element||state().interactive||!s.textAnchor)return null;
  const el=getBlock(s.textAnchor),c=clean.get(s.textAnchor);
@@ -278,7 +278,7 @@ function selectionUI(s){
  let note=$('#rewrite-reason');if(!note){note=document.createElement('span');note.id='rewrite-reason';note.setAttribute('role','status');$('#selection-context').append(note)}note.textContent=reason?.text||reason||'';note.hidden=!reason;
  $('#target-label').textContent=s?.element?s.quote:'';$('#target-label').title=s?.element?(scope?.quote||s.context||s.quote):'';$('#target-tag').textContent=s?.tag||s?.quote?.split(/[ :]/)[0]||'';$('#target-heading').hidden=!available||!s.element;
  $('#target-navigation').hidden=!available||!s.element;
- $('#target-parent').disabled=!s?.parent;$('#target-child').disabled=!s?.child;
+ $('#target-parent').disabled=!s?.parent;
  $('#mobile-selection [role="status"]').textContent=reason?.text||reason||(s?.element?'已选元素':'已选文字');
  if(available&&!phone.matches){const pop=$('#selection-context'),stage=$('#article').getBoundingClientRect(),left=Math.max(8,stage.left+8),right=Math.min(innerWidth-8,stage.right-8),top=Math.max(70,stage.top+8),bottom=Math.min(innerHeight-12,stage.bottom-8);pop.style.left=Math.max(left,Math.min(right-pop.offsetWidth,s.rect.left))+'px';const height=pop.offsetHeight,above=s.rect.top-height-10;pop.style.top=Math.max(top,Math.min(bottom-height,above>=top?above:s.rect.top+(s.rect.height||0)+10))+'px'}
 }
@@ -480,8 +480,8 @@ async function main(){
  window.addEventListener('resize',()=>{marks.sync(staticPreview?.active?[]:commentGroups(),phone.matches);staticPreview?.send({type:'comment-groups',groups:commentGroups(),mobile:phone.matches})});
  document.addEventListener('preview-geometry',()=>{positionDraft();if(staticPreview?.active)staticPreview.send({type:'measure-selection'})});
  for(const button of [$('#selection-action'),$('#mobile-add-comment')]){button.onpointerdown=armSelection;button.onpointercancel=()=>{selectionPress=null;selectionCapture=null;captureSelection()};button.onclick=()=>showComposer()}
- $('#target-parent').innerHTML=icon('chevronDown',{size:16})+'<span>父元素</span>';$('#target-child').innerHTML=icon('chevronDown',{size:16})+'<span>子元素</span>';$('#selection-action').innerHTML=icon('message',{size:16})+'<span>写批注</span>';
- $('#target-parent').onclick=()=>navigateTarget('parent');$('#target-child').onclick=()=>navigateTarget('child');
+ $('#target-parent').innerHTML=icon('chevronDown',{size:16})+'<span>父元素</span>';$('#selection-action').innerHTML=icon('message',{size:16})+'<span>写批注</span>';
+ $('#target-parent').onclick=()=>navigateTarget('parent');
  $('#close-selection').onpointerdown=e=>e.preventDefault();$('#close-selection').onclick=()=>dismissTarget(true);
  // Bubble-phase shell blank only. Frame blanks arrive through their existing
  // source/token/origin-validated targetCleared routes, never raw coordinates.

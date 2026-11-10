@@ -20,7 +20,7 @@
   const m=e.data;if(e.source!==parent||!m||m.channel!=='static-preview'||m.token!==token)return;
   if(m.type==='reading-restore'){const p=sanitizeReading(m.position);if(p){readingPosition('restore',p);send({type:'reading-position',position:readingPosition('capture')})}return}
   if(m.type==='sync'){const previous=mode;mode=m.mode;if(previous!==mode&&mode!=='suggest')picker.clear()}
-  if(m.type==='targetNavigate'&&mode==='suggest'&&!inline.active)picker.navigate(m.direction);
+  if(m.type==='targetNavigate'&&m.direction==='parent'&&mode==='suggest'&&!inline.active)picker.navigate(m.direction);
   if(m.type==='clearTarget')picker.clear();
   if(m.type==='tag-focus')marks.focus(m.id);
   if(m.type==='comment-groups')marks.sync(m.groups||[],m.mobile===true);
