@@ -25,17 +25,19 @@
   // run an action before the annotation gate. Native down defaults are retained.
   var picker = elementReview({root:document.documentElement,hash:sha256hex,
     enabled:function(){return currentMode==='suggest';},
-    onPick:function(t){frameHadText=false;post(Object.assign({type:'suggestTarget'},t));},
-    onCancel:function(){post({type:'targetCleared'});},
+    onPick:function(t){textEpoch++;pickedText=textStamp();frameHadText=false;post(Object.assign({type:'suggestTarget'},t));},
+    onCancel:function(){textEpoch++;pickedText=textStamp();frameHadText=false;post({type:'targetCleared'});},
     onText:publishText
   });
-  var frameHadText=false;
+  var frameHadText=false,pickedText=null,textEpoch=0;
+  function textStamp(){var s=getSelection();if(!s||!s.rangeCount||s.isCollapsed)return null;var r=s.getRangeAt(0);return [r.startContainer,r.startOffset,r.endContainer,r.endOffset];}
   async function publishText(){
     if(currentMode!=='suggest')return;
+    var stamp=textStamp();if(pickedText&&stamp&&pickedText.every(function(v,i){return v===stamp[i];}))return;pickedText=null;var ticket=++textEpoch;
     var s=getSelection();if(!s||s.isCollapsed){if(frameHadText){frameHadText=false;post({type:'targetCleared'});}return;}
     var raw=s.getRangeAt(0),snapshot=s.toString(),block=singleBlockRange(raw),r=block?block.range:raw,el=block?block.el:(raw.startContainer.nodeType===1?raw.startContainer:raw.startContainer.parentElement);
     if(!el||el===document.body)return;var b=r.getBoundingClientRect(),quote=r.toString(),anchor=await picker.anchor(el);
-    if(currentMode!=='suggest'||getSelection().toString()!==snapshot)return;
+    if(ticket!==textEpoch||currentMode!=='suggest'||getSelection().toString()!==snapshot)return;
     frameHadText=true;post({type:'suggestTarget',anchor:anchor,isText:true,snippet:quote,quote:quote,rect:{left:b.left,top:b.top,width:b.width,height:b.height}});
   }
   document.addEventListener('selectionchange',publishText);
