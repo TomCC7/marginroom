@@ -17,8 +17,8 @@ try{
   const evidence=await isolate(ctx,fixture);
   if(interactive)await ctx.route('**/api/raw/synthetic',r=>r.fulfill({json:{rawHtml:dashboard}}));
   await ctx.addInitScript(()=>{if(window===top){window.__previewLoads=0;document.addEventListener('load',e=>{if(e.target.tagName==='IFRAME')window.__previewLoads++},true)}});
-  const page=await ctx.newPage();page.setDefaultTimeout(10000);await openFixture(page);
-  if(interactive){assert.equal(await page.locator('#hs-warn').textContent(),'');assert.equal(await page.locator('#hs-warn').evaluate(n=>n.getBoundingClientRect().height),0,'no standing sandbox explanation or reserved space');const readme=await (await import('node:fs/promises')).readFile(new URL('../README.md',import.meta.url),'utf8');assert.match(readme,/Runtime-generated text cannot be reliably written back/);assert.match(readme,/Only open exported HTML from authors you trust/)}
+  const page=await ctx.newPage();page.setDefaultTimeout(10000);await openFixture(page);await page.locator('#preview-dock-toggle').click();
+  if(interactive){assert.equal(await page.locator('#hs-warn').textContent(),'');assert.equal(await page.locator('#hs-warn').evaluate(n=>n.getBoundingClientRect().height),0,'no standing sandbox explanation or reserved space');const readme=await (await import('node:fs/promises')).readFile(new URL('../README.md',import.meta.url),'utf8');assert.match(readme,/runtime-generated content remains comment-only/);assert.match(readme,/Only open downloads from authors you trust/)}
   assert.equal(await page.locator('#preview-mode').inputValue(),'auto');
   await page.selectOption('#preview-mode','auto');await page.waitForFunction(()=>document.body.classList.contains('preview-device'));
   if(out){const file=`${interactive?'interactive':'static'}-auto.png`;await page.screenshot({path:out+'/'+file});screenshots.push({file,mode:'auto',host:await page.viewportSize()})}
@@ -68,7 +68,7 @@ try{
   if(interactive){
    await page.selectOption('#preview-mode','phone');await frame.waitForFunction(()=>innerWidth===390);await page.selectOption('#preview-zoom','fit');
    await clickInside('#modal');if(out)await page.screenshot({path:out+'/modal-click.png'});await frame.waitForFunction(()=>document.querySelector('dialog').open);const modal=await frame.locator('dialog').boundingBox();assert(modal);await clickInside('#close');
-   await page.locator('.dock [data-mode="suggest"]').click();await clickInside('#repeat');await page.locator('#mobile-add-comment').click();await page.locator('#composer').waitFor({state:'visible'});await page.locator('#comment-body').fill('unsent retained composer');
+   await page.locator('.dock [data-mode="suggest"]').click();await clickInside('#repeat');await page.locator('#selection-action').click();await page.locator('#composer').waitFor({state:'visible'});await page.locator('#comment-body').fill('unsent retained composer');
    await page.selectOption('#preview-mode','desktop');await page.locator('#preview-rotate').evaluate(b=>b.click());assert.equal(await page.locator('#comment-body').inputValue(),'unsent retained composer');await page.locator('#cancel-comment').click();
   }
   const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('marginroom.preview.v1:synthetic')));await page.reload();await page.waitForFunction(()=>document.body.classList.contains('preview-device'));

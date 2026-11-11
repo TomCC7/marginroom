@@ -14,24 +14,25 @@ export function initPreview({docId,bridge,staticPreview}){
  let currentFrame=null,changing=false,again=false,raf=0;
  const controls=document.createElement('div');controls.className='preview-controls';controls.setAttribute('aria-label','预览视口');
  controls.innerHTML='<label class="sr-only" for="preview-mode">预览视口</label><select id="preview-mode"><option value="auto">Auto · 填满可用区</option><option value="desktop">Desktop · 1440 × 900</option><option value="laptop">Laptop · 1366 × 768</option><option value="tablet">Tablet · 768 × 1024</option><option value="phone">Phone · 390 × 844</option><option value="custom">自定义尺寸</option></select><button id="preview-rotate" title="旋转视口" aria-label="旋转视口" type="button">↔</button><label class="sr-only" for="preview-zoom">预览缩放</label><select id="preview-zoom"><option value="fit">适应窗口</option><option value="actual">100%</option></select><output id="preview-percent" aria-live="polite"></output><form id="preview-custom" hidden><label>宽 <input id="preview-width" type="number" min="240" max="4096" step="1" required></label><span>×</span><label>高 <input id="preview-height" type="number" min="240" max="4096" step="1" required></label><button type="submit">应用</button><span id="preview-error" role="alert"></span></form>';
- controls.id='preview-controls';document.body.append(controls);
- const visibilityKey='marginroom.preview-dock.v1';let dockVisible=true;
- try{dockVisible=localStorage.getItem(visibilityKey)!=='hidden'}catch{}
+ controls.id='preview-controls';header.append(controls);
+ const visibilityKey='marginroom.preview-dock.v1';let dockVisible=false;
+ try{dockVisible=localStorage.getItem(visibilityKey)==='visible'}catch{}
  const toggle=document.createElement('button');toggle.id='preview-dock-toggle';toggle.type='button';toggle.setAttribute('aria-controls',controls.id);
- const slot=document.createElement('div');slot.id='preview-toggle-slot';slot.append(toggle);document.body.append(slot);
+ header.insertBefore(toggle,header.querySelector('.header-tools'));
+ const row=document.createElement('div');row.className='topbar-row';
+ for(const node of [...header.children])if(node!==controls)row.append(node);
+ header.prepend(row);
 
  function showDock(visible,persist=true){
   const focused=document.activeElement===toggle;
-  dockVisible=visible;controls.hidden=!visible;toggle.setAttribute('aria-expanded',String(visible));toggle.title=visible?'收起尺寸栏':'显示尺寸栏';toggle.setAttribute('aria-label',toggle.title);toggle.textContent=visible?'尺寸 ↓':'尺寸 ↑';
-  // One native control remains in the same shell slot in both states.
+  dockVisible=visible;controls.hidden=!visible;toggle.setAttribute('aria-expanded',String(visible));toggle.title=visible?'收起尺寸栏':'显示尺寸栏';toggle.setAttribute('aria-label',toggle.title);toggle.textContent=visible?'尺寸 ▴':'尺寸 ▾';
+  // The native trigger stays in the first header row; the panel owns its own row.
   if(focused)toggle.focus({preventScroll:true});
-  document.body.classList.toggle('preview-dock-hidden',!visible);
-  document.documentElement.style.setProperty('--preview-dock-h',visible?controls.getBoundingClientRect().height+'px':'0px');
   if(persist)try{localStorage.setItem(visibilityKey,visible?'visible':'hidden')}catch{}
   schedule();
  }
  toggle.onclick=()=>showDock(!dockVisible);showDock(dockVisible,false);
- new ResizeObserver(()=>{document.documentElement.style.setProperty('--preview-dock-h',dockVisible?controls.getBoundingClientRect().height+'px':'0px');schedule()}).observe(controls);
+ new ResizeObserver(schedule).observe(controls);
  const $=s=>controls.querySelector(s);
  // Initialization/validation errors remain visible even outside custom mode.
  controls.append($('#preview-error'));
@@ -78,7 +79,7 @@ export function initPreview({docId,bridge,staticPreview}){
   const dock=document.querySelector('.dock'),dockHeight=getComputedStyle(dock).display==='none'?0:dock.getBoundingClientRect().height;
   const viewportBottom=Math.min(innerHeight,(window.visualViewport?.offsetTop||0)+(window.visualViewport?.height||innerHeight));
   const draftActions=document.querySelector('#draft-actions'),draftHeight=innerWidth<=600&&draftActions&&!draftActions.hidden?draftActions.getBoundingClientRect().height+8:0;
-  const availableHeight=Math.max(80,viewportBottom-article.getBoundingClientRect().top-dockHeight-slot.getBoundingClientRect().height-(dockVisible?controls.getBoundingClientRect().height:0)-draftHeight-8);
+  const availableHeight=Math.max(80,viewportBottom-article.getBoundingClientRect().top-dockHeight-draftHeight-8);
   article.style.height=availableHeight+'px';
   const style=getComputedStyle(article),px=v=>parseFloat(v)||0;
   const availableWidth=Math.max(1,article.clientWidth-px(style.paddingLeft)-px(style.paddingRight)),spaceHeight=Math.max(1,article.clientHeight-px(style.paddingTop)-px(style.paddingBottom));
