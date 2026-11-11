@@ -33,6 +33,16 @@ If the owner's browser cookie is cleared or expires, present the saved `OWNER_KE
 
 The image refuses to start if explicit environment secrets conflict with persisted identity; it does not silently rotate them. Changing `SESSION_SECRET` invalidates existing signatures. Changing just `OWNER_KEY` does **not** revoke existing signed owner cookies: rotate the session secret too when revocation is needed. Back up first and perform such manual changes only while stopped.
 
+## Sharing an instance
+
+The Compose quickstart publishes port 3939 on loopback. A link containing `localhost` refers to the recipient's own computer, so copying it does not make your instance available to another reviewer.
+
+For collaboration, give reviewers a URL routed to this instance through a private network or an HTTPS reverse proxy. Keep the app's loopback binding when the proxy runs on the same host. A private-network forwarding setup must make the address reachable by each reviewer; a public HTTPS deployment should have an external login gate for confidential documents. Merely knowing a document URL grants read access once the instance is reachable.
+
+For HTTPS, set `NODE_ENV=production` in the environment passed to the app so it uses Secure cookies. Use the deployed address consistently: a browser identity established on `localhost` is not automatically available on another hostname. If necessary, recover administrator access on the deployed address using your saved key, then return to a plain URL before sharing.
+
+Open the document through that reachable address, choose **分享**, select the link access level and copy the link. The permission applies to every holder of that document link. Test the URL in a separate guest browser before inviting reviewers. Share the plain document URL, never `?key=...` or the recovery key itself.
+
 ## Runtime and configuration
 
 The supported/tested packaging baseline is **Node 22.23.4** on Debian Bookworm (Docker). Native dependencies make arbitrary Node upgrades or copying host `node_modules` into a container unsafe. Host `npm ci` was also exercised on Node 22.23.4; other runtimes/platforms are not certified by this release.
