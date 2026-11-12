@@ -346,7 +346,7 @@ function requestLeave(intent='home'){
 function stayHere(){if(leaving)return;$('#leave-dialog').close();leaveIntent=null;leaveFocus?.focus({preventScroll:true})}
 async function finishLeave(save){
  if(leaving||busy)return;
- if(editInflight&&!save){$('#leave-message').textContent=tr('review.savingLeave');return}
+ if(editInflight&&!save){bind($('#leave-message'),'review.savingLeave');return}
  if(composing)return toast(()=>tr('review.finishInput'));
  leaving=true;for(const b of $('#leave-dialog').querySelectorAll('button'))b.disabled=true;
  try{
@@ -355,7 +355,7 @@ async function finishLeave(save){
    if(draft&&draft.body!==draft.quote)await submitDraft();
    // Flush debounce timers and retry failed buffers, without dropping newer text.
    for(const [a,b] of editBuffers)if(b.seq>b.saved){const el=getBlock(a);if(el)await saveEdit(el)}
-   if(unsavedDrafts()){$('#leave-message').textContent=tr('review.stillUnsaved');return}
+   if(unsavedDrafts()){bind($('#leave-message'),'review.stillUnsaved');return}
   }else if(leaveIntent==='home'){for(const t of editTimers.values())clearTimeout(t);editTimers.clear();editBuffers.clear()}
   const intent=leaveIntent;$('#leave-dialog').close();leaveIntent=null;
   if(intent==='home'){reading?.persist();if(draft)cancelDraft();closeComposer(true);location.assign('/')}
@@ -424,8 +424,8 @@ function paintName(){$$('.my-avatar').forEach(n=>n.textContent=[...myName][0]);$
 function nameMenu(){pop(()=>`<h3>${tr('review.nameTitle')}</h3><p>${tr('review.nameHelp')}</p><input id="review-name" aria-label="${tr('review.reviewName')}" maxlength="80" value="${esc(myName)}"><button id="save-name" class="primary" style="margin-top:12px">${tr('review.confirm')}</button>`);$('#save-name').onclick=()=>{myName=setReviewerName($('#review-name').value);paintName();$('#popover').hidden=true}}
 function shareMenu(){const url=new URL(location.href);url.searchParams.delete('key');pop(()=>`<h3>${tr('review.shareTitle')}</h3><input aria-label="${tr('review.publicLink')}" readonly value="${esc(url.href)}"><button id="copy-link" class="primary" style="margin-top:12px">${tr('review.copyLink')}</button>${state().isDocOwner?`<label>${tr('review.linkAccess')}<select id="access-level"><option value="view">${tr('review.accessView')}</option><option value="suggest">${tr('review.accessSuggest')}</option><option value="edit">${tr('review.accessEdit')}</option></select></label>`:''}<p id="share-note">${state().canEdit?tr('review.canEditHelp'):state().canSuggest?tr('review.canSuggestHelp'):tr('review.viewOnlyHelp')}</p>`);$('#copy-link').onclick=async()=>{try{await navigator.clipboard.writeText(url.href);toast(()=>tr('review.copied'))}catch{$('#popover input').select();toast(()=>tr('review.copyManually'))}};if($('#access-level')){fetch(`/api/doc/${encodeURIComponent(docId)}`).then(r=>r.json()).then(d=>{$('#access-level')&&($('#access-level').value=d.access)});$('#access-level').onchange=async e=>{try{await api(`/api/access/${encodeURIComponent(docId)}`,{level:e.target.value},'PUT');await refresh(true);toast(()=>tr('review.accessUpdated'))}catch(err){toast(()=>errorText(err))}}}}
 async function showHistory(){
- $('#popover').hidden=true;const panel=$('#hs-versions');panel.classList.add('open');panel.innerHTML=`<button id="close-history" style="float:right">×</button><h3 data-i18n="review.history">${tr('review.history')}</h3><div id="history-records">${tr('review.loading')}</div>`;bindShell(panel);$('#close-history').onclick=()=>panel.classList.remove('open');
- try{const data=await fetch(`/api/versions/${encodeURIComponent(docId)}`).then(r=>r.json());$('#history-records').innerHTML=(data.versions||[]).map(v=>`<div class="thread"><p class="version-time" data-ts="${esc(v.ts)}">${esc(date(v.ts))}</p><p>${esc(v.label||tr('review.sourceEdit'))}</p><button data-i18n="review.viewVersion" data-preview-version="${v.id}">${tr('review.viewVersion')}</button>${state().isDocOwner?`<button data-i18n="review.restoreVersion" data-restore-version="${v.id}">${tr('review.restoreVersion')}</button>`:''}<pre id="version-${v.id}" style="white-space:pre-wrap;font-size:12px"></pre></div>`).join('')||`<p data-i18n="review.noHistory">${tr('review.noHistory')}</p>`;bindShell($('#history-records'))}catch{bind($('#history-records'),'review.historyFailed')}
+ $('#popover').hidden=true;const panel=$('#hs-versions');panel.classList.add('open');panel.innerHTML=`<button id="close-history" style="float:right">×</button><h3 data-i18n="review.history">${tr('review.history')}</h3><div id="history-records"><span data-i18n="review.loading">${tr('review.loading')}</span></div>`;bindShell(panel);$('#close-history').onclick=()=>panel.classList.remove('open');
+ try{const data=await fetch(`/api/versions/${encodeURIComponent(docId)}`).then(r=>r.json());$('#history-records').innerHTML=(data.versions||[]).map(v=>`<div class="thread"><p class="version-time" data-ts="${esc(v.ts)}">${esc(date(v.ts))}</p><p${v.label?'':' data-i18n="review.sourceEdit"'}>${esc(v.label||tr('review.sourceEdit'))}</p><button data-i18n="review.viewVersion" data-preview-version="${v.id}">${tr('review.viewVersion')}</button>${state().isDocOwner?`<button data-i18n="review.restoreVersion" data-restore-version="${v.id}">${tr('review.restoreVersion')}</button>`:''}<pre id="version-${v.id}" style="white-space:pre-wrap;font-size:12px"></pre></div>`).join('')||`<p data-i18n="review.noHistory">${tr('review.noHistory')}</p>`;bindShell($('#history-records'))}catch{bind($('#history-records'),'review.historyFailed')}
 }
 async function poll(){
  if(localEditing()||selectionPress||selectionInfo()||busy||composing||editTimers.size||editInflight||root.contains(document.activeElement)&&['edit','suggest'].includes(mode))return;
@@ -503,7 +503,7 @@ async function main(){
  $('#submit-draft').onclick=submitDraft;$('#cancel-draft').onclick=cancelDraft;
  $('#name-btn').onclick=nameMenu;$('#share-btn').onclick=shareMenu;$('#more-btn').onclick=()=>{pop(()=>`<h3>${tr('review.options')}</h3>`+ (state().canEdit?'<button id="direct-edit-menu">'+(mode==='edit'?tr('review.exitEdit'):tr('review.editSource'))+'</button>':'')+`<button id="history-menu">${tr('review.history')}</button><button id="export-menu">${tr('review.export')}</button><button id="help-menu">${tr('review.help')}</button>`);if($('#direct-edit-menu'))$('#direct-edit-menu').onclick=()=>{changeMode(mode==='edit'?'read':'edit');$('#popover').hidden=true;status(()=>mode==='edit'?tr('review.editStatus'):tr('review.backBrowse'))};$('#history-menu').onclick=showHistory;$('#export-menu').onclick=async()=>{if(draft||editTimers.size||editInflight)return toast(()=>tr('review.finishExport'));$('#popover').hidden=true;await bridge.exportHtml()};$('#help-menu').onclick=()=>{toast(()=>tr('review.helpText'));$('#popover').hidden=true}};
  $('#hs-versions').onclick=async e=>{const b=e.target.closest('button');if(b?.dataset.previewVersion){const r=await fetch(`/api/version/${encodeURIComponent(docId)}/${b.dataset.previewVersion}`).then(r=>r.json());$('#version-'+b.dataset.previewVersion).textContent=JSON.stringify(r.overlay,null,2)}if(b?.dataset.restoreVersion){if(draft||!confirm(tr('review.restoreConfirm')))return;try{await api(`/api/restore/${encodeURIComponent(docId)}`,{versionId:Number(b.dataset.restoreVersion)});await refresh(true);showHistory()}catch(err){toast(()=>errorText(err))}}};
- document.addEventListener('pointerdown',e=>{if(!e.target.closest('#popover,#name-btn,#share-btn,#more-btn'))$('#popover').hidden=true});
+ document.addEventListener('pointerdown',e=>{if(e.target.closest('[data-locale-select]'))return;if(!e.target.closest('#popover,#name-btn,#share-btn,#more-btn'))$('#popover').hidden=true});
  document.addEventListener('keydown',e=>{if($('#leave-dialog').open){if(e.key==='Escape'){e.preventDefault();stayHere()}return}if(e.key==='Escape'){if(!$('#selection-context').hidden&&dismissTarget(true)){e.preventDefault();return}picker?.clear();staticPreview?.send({type:'clearTarget'});state().frame?.contentWindow?.postMessage({type:'clearTarget'},'*');if(draft)cancelDraft();else{closeComposer();closeDiscussion();closeNav();$('#popover').hidden=true;$('#hs-versions').classList.remove('open')}}if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&draft){e.preventDefault();submitDraft()}});
  window.addEventListener('beforeunload',e=>{if(unsavedDrafts()){e.preventDefault();e.returnValue=tr('review.unsaved')}});
  syncDiscussion();matchMedia('(max-width:1100px)').addEventListener('change',syncDiscussion);
@@ -534,6 +534,7 @@ function paintViewerLocale(){
  renderList(true,true);renderThreads(true,true);
  syncDiscussion();
  $('#nav-toggle').setAttribute('aria-label',tr($('#nav-toggle').getAttribute('aria-expanded')==='true'?'review.collapseNav':'review.expandNav'));
+ for(const el of root.querySelectorAll('[data-hs-group]'))if(mode==='suggest')el.title=tr('review.groupRevisionHelp');
  inlineEditor.locale?.();marks.locale?.();
  staticPreview?.send({type:'locale',locale:locale.language});
  if(state().interactive)state().frame?.contentWindow?.postMessage({type:'locale',locale:locale.language},'*');

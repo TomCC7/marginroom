@@ -121,6 +121,7 @@
     "test/home-entry.browser.mjs",
     "test/i18n-docs.test.mjs",
     "test/i18n-home.browser.mjs",
+    "test/i18n-open-states.browser.mjs",
     "test/i18n-viewer.browser.mjs",
     "test/i18n.test.mjs",
     "test/identity.test.mjs",

@@ -53,6 +53,10 @@ backend schema or npm dependency cutover is introduced by localization.
 - `node test/i18n-viewer.browser.mjs`: actual disposable SQLite/HTTP/browser
   import, comment/reply, inline draft, save/reload and locale invariants at
   desktop/mobile widths, with ordinary/static/interactive render paths.
+- `node test/i18n-open-states.browser.mjs`: bounded open name/share/filter,
+  failed-submit leave confirmation, grouped help and loading/empty/populated
+  history locale roundtrips. Only denial and held-history probes intercept HTTP;
+  synthetic version rows live solely in the disposable database.
 - The browser checks use synthetic native composition events. They are **not**
   physical IME, iPhone, Safari or native-keyboard certification.
 
