@@ -1,5 +1,7 @@
 // Trusted controller only: uploaded scripts and event handlers are stripped.
 (()=>{
+ const assetLabels=[...document.querySelectorAll('[data-hs-asset-missing] [data-product-asset-label]')];
+ const paintAssets=()=>{for(const n of assetLabels)n.textContent=globalThis.__marginroomLocale.t('asset.missingImage',{label:n.dataset.assetLabel||globalThis.__marginroomLocale.t('asset.noSource')})};paintAssets();
  const token=window.__staticPreviewToken;delete window.__staticPreviewToken;
  const send=data=>parent.postMessage({channel:'static-preview',token,...data},'*');
  const find=a=>[...document.querySelectorAll('[data-hs-anchor],[data-hs-comment-anchor]')].find(n=>(n.dataset.hsAnchor||n.dataset.hsCommentAnchor)===a);
@@ -18,6 +20,7 @@
  function reveal(el,anchor){for(let p=el.parentElement;p&&p!==document.body&&p!==document.documentElement;p=p.parentElement){const r=el.getBoundingClientRect(),b=p.getBoundingClientRect(),css=getComputedStyle(p);if(/auto|scroll/.test(css.overflowY)&&p.scrollHeight>p.clientHeight)p.scrollTop+=r.top-b.top-(p.clientHeight-r.height)/2;if(/auto|scroll/.test(css.overflowX)&&p.scrollWidth>p.clientWidth)p.scrollLeft+=r.left-b.left-(p.clientWidth-r.width)/2}const r=el.getBoundingClientRect();scrollBy(r.left-(innerWidth-r.width)/2,r.top-(innerHeight-r.height)/2);const b=el.getBoundingClientRect();send({type:'located',...(anchor?{anchor}:{}),rect:{left:b.left,top:b.top,width:b.width,height:b.height}})}
  window.addEventListener('message',e=>{
   const m=e.data;if(e.source!==parent||!m||m.channel!=='static-preview'||m.token!==token)return;
+  if(m.type==='locale'){if(globalThis.__marginroomLocale?.change(m.locale)){marks.locale();inline.locale();paintAssets()}return}
   if(m.type==='reading-restore'){const p=sanitizeReading(m.position);if(p){readingPosition('restore',p);send({type:'reading-position',position:readingPosition('capture')})}return}
   if(m.type==='sync'){const previous=mode;mode=m.mode;if(previous!==mode&&mode!=='suggest')picker.clear()}
   if(m.type==='targetNavigate'&&m.direction==='parent'&&mode==='suggest'&&!inline.active)picker.navigate(m.direction);

@@ -1,3 +1,4 @@
+import {t} from './i18n.js';
 // Content-hash anchoring — the correctness core of markmyword.
 //
 // Each editable "text-bearing leaf block" gets an anchor that is a hash of its
@@ -311,12 +312,8 @@ export function summarizeUnreachable(items) {
   if (!items.length) return '';
   const svg = items.filter((i) => i.kind === 'svg').length;
   const stray = items.filter((i) => i.kind === 'stray').length;
-  const parts = [];
-  if (svg) parts.push(`${svg} chart/SVG text block${svg > 1 ? 's' : ''}`);
-  if (stray) parts.push(`${stray} stray text run${stray > 1 ? 's' : ''} inside a layout wrapper`);
-  const sample = items.slice(0, 3).map((i) => `“${i.text.slice(0, 40)}”`).join(', ');
-  return `${parts.join(' and ')} can't be edited or suggested here (${sample}${items.length > 3 ? ', …' : ''}). ` +
-    `Text baked into SVG charts isn't editable; move stray text into its own paragraph to make it editable.`;
+  const sample=items.slice(0,3).map(i=>i.text.slice(0,40)).join(', ');
+  return t('asset.unreachable',{svg,stray,sample});
 }
 
 // Assign content-hash anchors to every editable leaf under `container`.

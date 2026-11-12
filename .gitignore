@@ -27,3 +27,8 @@ review-artifacts/
 !docs/screenshots/
 docs/screenshots/*
 !docs/screenshots/alpha-synthetic.png
+
+# Public English documentation and synthetic application capture only.
+!docs/user-guide.md
+!docs/localization.md
+!docs/screenshots/english-review.png

@@ -13,6 +13,7 @@ export function createLocale(storage){
 }
 let storage;try{storage=globalThis.localStorage}catch{}
 export const locale=createLocale(storage),t=locale.t;
+globalThis.__marginroomLocale=locale;
 export const onLocaleChange=fn=>{locale.engine.on('languageChanged',fn);return ()=>locale.engine.off('languageChanged',fn)};
 export const date=(value,options={month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})=>new Intl.DateTimeFormat(locale.language,options).format(new Date(value));
 export const number=value=>new Intl.NumberFormat(locale.language).format(value);

@@ -41,7 +41,7 @@ For collaboration, give reviewers a URL routed to this instance through a privat
 
 For HTTPS, set `NODE_ENV=production` in the environment passed to the app so it uses Secure cookies. Use the deployed address consistently: a browser identity established on `localhost` is not automatically available on another hostname. If necessary, recover administrator access on the deployed address using your saved key, then return to a plain URL before sharing.
 
-Open the document through that reachable address, choose **分享**, select the link access level and copy the link. The permission applies to every holder of that document link. Test the URL in a separate guest browser before inviting reviewers. Share the plain document URL, never `?key=...` or the recovery key itself.
+Open the document through that reachable address, choose **Share**, select **Read only**, **Read and suggest** or **Edit directly**, then choose **Copy link**. The permission applies to every holder of that document link. Test the URL in a separate guest browser before inviting reviewers. Share the plain document URL, never `?key=...` or the recovery key itself.
 
 ## Runtime and configuration
 

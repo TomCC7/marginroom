@@ -1,3 +1,4 @@
+import {t,bind,bindShell,unbind,languageSelect} from './i18n.js';
 /**
  * In-app feedback / help widget — a small floating button (bottom-LEFT so it
  * never sits over the editor toolbar, the suggestions panel, or the download
@@ -112,25 +113,25 @@ function mount() {
   const launch = document.createElement('button');
   launch.type = 'button';
   launch.className = 'fb-launch';
-  launch.setAttribute('aria-label', 'Report an issue or send feedback');
+  bind(launch,'feedback.launch',{},'aria-label');
   launch.innerHTML = `
     <span class="fb-launch-icon">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
     </span>
-    <span class="fb-launch-label">Feedback</span>`;
+    <span class="fb-launch-label" data-i18n="feedback.label">Feedback</span>`;
 
   const overlay = document.createElement('div');
   overlay.className = 'fb-overlay';
   overlay.innerHTML = `
-    <div class="fb-panel" role="dialog" aria-label="Report an issue or send feedback">
-      <h3>Something off? Tell us.</h3>
-      <p class="fb-sub">A bug, a confusing bit, or a missing feature — it opens an issue for the team. It won't touch your document.</p>
-      <textarea class="fb-text" placeholder="What happened, or what's not working?"></textarea>
-      <input class="fb-hp" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" placeholder="Leave this empty" />
+    <div class="fb-panel" role="dialog" aria-label="Report an issue or send feedback" data-i18n-aria-label="feedback.launch">
+      <h3 data-i18n="feedback.title">Something off? Tell us.</h3>
+      <p class="fb-sub" data-i18n="feedback.help">A bug, a confusing bit, or a missing feature — it opens an issue for the team. It won’t touch your document.</p>
+      <textarea class="fb-text" placeholder="What happened, or what is not working?" data-i18n-placeholder="feedback.placeholder"></textarea>
+      <input class="fb-hp" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" placeholder="Leave this empty" data-i18n-placeholder="feedback.emptyField" />
       <div class="fb-where"></div>
       <div class="fb-actions">
-        <button type="button" class="fb-btn fb-btn-secondary fb-cancel">Cancel</button>
-        <button type="button" class="fb-btn fb-btn-primary fb-send">Send</button>
+        <button type="button" class="fb-btn fb-btn-secondary fb-cancel" data-i18n="feedback.cancel">Cancel</button>
+        <button type="button" class="fb-btn fb-btn-primary fb-send" data-i18n="feedback.send">Send</button>
       </div>
       <div class="fb-status" role="status"></div>
     </div>`;
@@ -138,6 +139,7 @@ function mount() {
   document.body.appendChild(launch);
   document.body.appendChild(overlay);
 
+  bindShell(launch);bindShell(overlay);overlay.querySelector('.fb-panel').prepend(languageSelect());
   const text = overlay.querySelector('.fb-text');
   const hp = overlay.querySelector('.fb-hp');
   const where = overlay.querySelector('.fb-where');
@@ -147,8 +149,8 @@ function mount() {
 
   const open = () => {
     const screen = currentScreen();
-    where.textContent = screen ? `Reporting from: ${screen}` : '';
-    status.textContent = '';
+    if(screen)bind(where,'feedback.where',{screen});else where.textContent='';
+    unbind(status);status.textContent = '';
     status.className = 'fb-status';
     overlay.classList.add('open');
     setTimeout(() => text.focus(), 30);
@@ -162,9 +164,9 @@ function mount() {
 
   async function send() {
     const message = text.value.trim();
-    if (!message) { status.className = 'fb-status err'; status.textContent = 'Please enter some detail first.'; return; }
+    if (!message) { status.className = 'fb-status err'; bind(status,'feedback.detail'); return; }
     sendBtn.disabled = true;
-    status.className = 'fb-status'; status.textContent = 'Sending…';
+    status.className = 'fb-status'; bind(status,'feedback.sending');
     try {
       const resp = await fetch('/api/feedback', {
         method: 'POST',
@@ -176,26 +178,26 @@ function mount() {
         status.className = 'fb-status ok';
         // Build the success line with DOM nodes (never innerHTML), and only
         // trust an http(s) issue URL, so nothing from the response can inject.
-        status.textContent = '';
+        unbind(status);status.textContent = '';
         const safeUrl = typeof data.url === 'string' && /^https?:\/\//.test(data.url) ? data.url : '';
         if (safeUrl) {
-          status.append('Thanks! ');
+
           const a = document.createElement('a');
           a.href = safeUrl; a.target = '_blank'; a.rel = 'noopener';
-          a.textContent = `Issue #${String(data.number ?? '').replace(/[^0-9]/g, '')}`;
-          status.append(a, ' filed.');
+          bind(a,'feedback.issue',{number:String(data.number??'').replace(/[^0-9]/g,'')});
+          status.append(a);
         } else {
-          status.textContent = 'Thanks — your report was sent.';
+          bind(status,'feedback.sent');
         }
         text.value = '';
         setTimeout(close, 2200);
       } else {
         status.className = 'fb-status err';
-        status.textContent = data.error || 'Something went wrong — please try again.';
+        bind(status,'feedback.failed',{reason:typeof data.error==='string'?data.error:'request_failed'});
       }
     } catch {
       status.className = 'fb-status err';
-      status.textContent = 'Network error — please try again.';
+      bind(status,'feedback.network');
     } finally {
       sendBtn.disabled = false;
     }

@@ -1,3 +1,4 @@
+import {t,bind} from './i18n.js';
 // Asset handling for arbitrary deliverable HTML.
 //
 // A deliverable can reference images/stylesheets that won't load on our host:
@@ -95,7 +96,8 @@ function makePlaceholder(doc, img, label) {
   const safe = String(label).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
-  ph.innerHTML = `${icon('warning', { size: 14 })} <span style="margin-left:5px">missing image · ${safe}</span>`;
+  ph.innerHTML = `${icon('warning', { size: 14 })} <span data-product-asset-label style="margin-left:5px"></span>`;
+  const copy=ph.querySelector('[data-product-asset-label]');copy.dataset.assetLabel=label;bind(copy,'asset.missingImage',{label:label||t('asset.noSource')});
   return ph;
 }
 
@@ -133,7 +135,7 @@ export function resolveAssets(root, doc = document) {
     const kind = classifyAssetUrl(img.getAttribute('src'));
     if (!isUnresolved(kind)) continue;
     const url = (img.getAttribute('src') || '').trim();
-    const label = url || img.getAttribute('alt') || 'no source';
+    const label = url || img.getAttribute('alt') || '';
     missing.push({ tag: 'img', url, kind });
     const ph = makePlaceholder(doc, img, label);
     img.replaceWith(ph);
@@ -181,9 +183,6 @@ export function forceRevealContent(doc = document) {
 // Human-readable summary line for the warning banner.
 export function summarizeMissing(missing) {
   if (!missing.length) return '';
-  const labels = missing.map((m) => m.url || `(empty ${m.tag})`);
-  const shown = labels.slice(0, 4).join(', ');
-  const more = labels.length > 4 ? ` +${labels.length - 4} more` : '';
-  return `${missing.length} asset${missing.length > 1 ? 's' : ''} won't load: ${shown}${more}. ` +
-    `These are relative/empty paths — upload the file(s) with the doc, or use an absolute URL. See placeholders in the page.`;
+  const names=missing.map(m=>m.url||m.tag).join(', ');
+  return t('asset.missingAssets',{count:missing.length,names});
 }

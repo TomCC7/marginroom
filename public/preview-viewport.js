@@ -1,3 +1,4 @@
+import {t,bind,unbind,bindShell,onLocaleChange} from './i18n.js';
 // A real iframe viewport is sized first; only its painted content is scaled.
 export const PRESETS = Object.freeze({desktop:[1440,900],laptop:[1366,768],tablet:[768,1024],phone:[390,844]});
 export const MIN_SIZE=240, MAX_SIZE=4096;
@@ -12,9 +13,9 @@ export function initPreview({docId,bridge,staticPreview}){
  const key='marginroom.preview.v1:'+docId;
  let p;try{p=preferences(JSON.parse(localStorage.getItem(key)))}catch{p=preferences()}
  let currentFrame=null,changing=false,again=false,raf=0;
- const controls=document.createElement('div');controls.className='preview-controls';controls.setAttribute('aria-label','预览视口');
- controls.innerHTML='<label class="sr-only" for="preview-mode">预览视口</label><select id="preview-mode"><option value="auto">Auto · 填满可用区</option><option value="desktop">Desktop · 1440 × 900</option><option value="laptop">Laptop · 1366 × 768</option><option value="tablet">Tablet · 768 × 1024</option><option value="phone">Phone · 390 × 844</option><option value="custom">自定义尺寸</option></select><button id="preview-rotate" title="旋转视口" aria-label="旋转视口" type="button">↔</button><label class="sr-only" for="preview-zoom">预览缩放</label><select id="preview-zoom"><option value="fit">适应窗口</option><option value="actual">100%</option></select><output id="preview-percent" aria-live="polite"></output><form id="preview-custom" hidden><label>宽 <input id="preview-width" type="number" min="240" max="4096" step="1" required></label><span>×</span><label>高 <input id="preview-height" type="number" min="240" max="4096" step="1" required></label><button type="submit">应用</button><span id="preview-error" role="alert"></span></form>';
- controls.id='preview-controls';header.append(controls);
+ const controls=document.createElement('div');controls.className='preview-controls';bind(controls,'frame.viewport',{},'aria-label');
+ controls.innerHTML='<label class="sr-only" for="preview-mode" data-i18n="frame.viewport">Preview viewport</label><select id="preview-mode"><option value="auto" data-i18n="frame.auto">Auto · fill available space</option><option value="desktop">Desktop · 1440 × 900</option><option value="laptop">Laptop · 1366 × 768</option><option value="tablet">Tablet · 768 × 1024</option><option value="phone">Phone · 390 × 844</option><option value="custom" data-i18n="frame.custom">Custom size</option></select><button id="preview-rotate" title="Rotate viewport" data-i18n-title="frame.rotate" aria-label="Rotate viewport" data-i18n-aria-label="frame.rotate" type="button">↔</button><label class="sr-only" for="preview-zoom" data-i18n="frame.zoom">Preview zoom</label><select id="preview-zoom"><option value="fit" data-i18n="frame.fit">Fit</option><option value="actual">100%</option></select><output id="preview-percent" aria-live="polite"></output><form id="preview-custom" hidden><label><span data-i18n="frame.width">Width</span> <input id="preview-width" type="number" min="240" max="4096" step="1" required></label><span>×</span><label><span data-i18n="frame.height">Height</span> <input id="preview-height" type="number" min="240" max="4096" step="1" required></label><button type="submit" data-i18n="frame.apply">Apply</button><span id="preview-error" role="alert"></span></form>';
+ controls.id='preview-controls';header.append(controls);bindShell(controls);
  const visibilityKey='marginroom.preview-dock.v1';let dockVisible=false;
  try{dockVisible=localStorage.getItem(visibilityKey)==='visible'}catch{}
  const toggle=document.createElement('button');toggle.id='preview-dock-toggle';toggle.type='button';toggle.setAttribute('aria-controls',controls.id);
@@ -25,7 +26,7 @@ export function initPreview({docId,bridge,staticPreview}){
 
  function showDock(visible,persist=true){
   const focused=document.activeElement===toggle;
-  dockVisible=visible;controls.hidden=!visible;toggle.setAttribute('aria-expanded',String(visible));toggle.title=visible?'收起尺寸栏':'显示尺寸栏';toggle.setAttribute('aria-label',toggle.title);toggle.textContent=visible?'尺寸 ▴':'尺寸 ▾';
+  dockVisible=visible;controls.hidden=!visible;toggle.setAttribute('aria-expanded',String(visible));bind(toggle,visible?'frame.hideSizes':'frame.showSizes',{},'title');bind(toggle,visible?'frame.hideSizes':'frame.showSizes',{},'aria-label');bind(toggle,visible?'frame.sizesOpen':'frame.sizesClosed');
   // The native trigger stays in the first header row; the panel owns its own row.
   if(focused)toggle.focus({preventScroll:true});
   if(persist)try{localStorage.setItem(visibilityKey,visible?'visible':'hidden')}catch{}
@@ -37,10 +38,10 @@ export function initPreview({docId,bridge,staticPreview}){
  // Initialization/validation errors remain visible even outside custom mode.
  controls.append($('#preview-error'));
  // Zoom changes paint only; the output always reports the real layout viewport.
- $('#preview-zoom').title='显示缩放（不改变布局视口尺寸）';
+ bind($('#preview-zoom'),'frame.zoomHint',{},'title');
  for(const zoom of ['50','75'])$('#preview-zoom').add(new Option(zoom+'%',zoom),$('#preview-zoom').querySelector('[value="actual"]'));
  for(const zoom of ['125','150','200'])$('#preview-zoom').add(new Option(zoom+'%',zoom));
- const handle=document.createElement('button');handle.type='button';handle.id='preview-resize';handle.textContent='↘';handle.title='拖动调整视口尺寸；方向键微调，Enter 输入尺寸';handle.setAttribute('aria-label',handle.title);
+ const handle=document.createElement('button');handle.type='button';handle.id='preview-resize';handle.textContent='↘';bind(handle,'frame.resizeHint',{},'title');bind(handle,'frame.resizeHint',{},'aria-label');
  let drag=null;
  function finishDrag(){
   if(!drag)return;const id=drag.id;drag=null;document.body.classList.remove('preview-resizing');
@@ -90,8 +91,7 @@ export function initPreview({docId,bridge,staticPreview}){
   currentFrame.dataset.previewScale=String(scale);root.dataset.previewWidth=String(width);root.dataset.previewHeight=String(height);
   if(!handle.isConnected)root.append(handle);
   $('#preview-percent').value=`${width}×${height} · ${Math.round(scale*100)}%`;$('#preview-percent').textContent=$('#preview-percent').value;
-  $('#preview-percent').title=`布局视口 ${width} × ${height} CSS px；显示缩放 ${Math.round(scale*100)}%`;
-  $('#preview-percent').setAttribute('aria-label',$('#preview-percent').title);
+  bind($('#preview-percent'),'frame.geometry',{width,height,zoom:Math.round(scale*100)},'title');bind($('#preview-percent'),'frame.geometry',{width,height,zoom:Math.round(scale*100)},'aria-label');
   document.dispatchEvent(new Event('preview-geometry'));
  }
  function schedule(){if(!raf)raf=requestAnimationFrame(measure)}
@@ -109,15 +109,15 @@ export function initPreview({docId,bridge,staticPreview}){
    if(!device){article.style.removeProperty('height');root.style.removeProperty('--preview-width');root.style.removeProperty('--preview-height');$('#preview-percent').textContent='—'}
    else{article.scrollTo(0,0);measure()}
    document.dispatchEvent(new CustomEvent('preview-change',{detail:{device}}));
-  }catch(e){$('#preview-error').textContent=e.message;showDock(true,false);paint()}
+  }catch(e){unbind($('#preview-error'));$('#preview-error').textContent=e.message;showDock(true,false);paint()}
   finally{changing=false;if(again){again=false;await update()}}
  }
- $('#preview-mode').onchange=e=>{p.mode=e.target.value;p.rotated=false;$('#preview-error').textContent='';update()};
+ $('#preview-mode').onchange=e=>{p.mode=e.target.value;p.rotated=false;unbind($('#preview-error'));$('#preview-error').textContent='';update()};
  $('#preview-zoom').onchange=e=>{p.zoom=e.target.value;save();measure()};
  $('#preview-rotate').onclick=()=>{p.rotated=!p.rotated;save();paint();measure()};
  // Validate explicitly even where browser number widgets reject invalid text.
  $('#preview-custom').noValidate=true;
- $('#preview-custom').onsubmit=e=>{e.preventDefault();const w=Number($('#preview-width').value),h=Number($('#preview-height').value);if(!validSize(w)||!validSize(h)){$('#preview-error').textContent='宽和高须为 240–4096 的整数';return}p.custom={width:w,height:h};p.rotated=false;$('#preview-error').textContent='';save();paint();measure()};
+ $('#preview-custom').onsubmit=e=>{e.preventDefault();const w=Number($('#preview-width').value),h=Number($('#preview-height').value);if(!validSize(w)||!validSize(h)){bind($('#preview-error'),'frame.sizeError');return}p.custom={width:w,height:h};p.rotated=false;unbind($('#preview-error'));$('#preview-error').textContent='';save();paint();measure()};
  new ResizeObserver(schedule).observe(article);new ResizeObserver(schedule).observe(header);
  new ResizeObserver(schedule).observe(document.querySelector('.dock'));
  const draftActions=document.querySelector('#draft-actions');if(draftActions){new ResizeObserver(schedule).observe(draftActions);new MutationObserver(schedule).observe(draftActions,{attributes:true,attributeFilter:['hidden']})}

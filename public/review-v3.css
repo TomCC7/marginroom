@@ -184,4 +184,8 @@ body[data-review-v3] .draft-actions{bottom:auto;transform:none;height:auto}
 .topbar #preview-dock-toggle{width:58px;padding-inline:4px;order:0}
 .topbar .preview-controls{order:1}
 .preview-controls[hidden]{display:none}
+/* A compact locale control shares the existing header; no new toolbar row. */
+.topbar-row>[data-locale-select]{flex:none;font:inherit;max-width:100px}
+@media(max-width:600px){.topbar-row>[data-locale-select]{width:64px!important;max-width:64px!important;font-size:11px;padding:4px 1px}.topbar #nav-toggle,.topbar #more-btn{width:28px;min-width:28px;padding-inline:0}.topbar .person{min-width:28px}.topbar .person .avatar{width:24px;height:24px}.topbar .share{padding-inline:7px}.topbar-row{gap:2px}.topbar #preview-dock-toggle{min-width:42px;width:44px}}
+.discussion>.filters .total{margin-left:4px}
 @media(max-width:600px){.topbar .brand{font-size:15px;white-space:nowrap}.topbar #preview-dock-toggle{width:54px;font-size:11px}.preview-controls{padding-top:4px}.preview-controls select,.preview-controls input,#preview-custom button,#preview-rotate{min-height:44px}}

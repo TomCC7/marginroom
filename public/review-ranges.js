@@ -1,3 +1,4 @@
+import {t} from './i18n.js';
 // UTF-16 DOM coordinates, matching Selection and the persisted API ranges.
 // Native triple-click can end at the next block's offset 0. Accept only an
 // equivalent DOM boundary, never text (or a whole empty sibling) beyond it.
@@ -38,19 +39,19 @@ export function difference(before,after) {
 }
 export function locateRecord(s,text,decode=x=>x) {
  const base=decode(s.base_text||''), quote=decode(s.quote||'');
- if(s.status==='accepted'&&s.kind==='rewrite')return {fallback:true,reason:'已接受；定位原段落'};
- if(base&&base!==text)return {stale:true,reason:'原段落已变化，未将标记移到其他同名文字'};
+ if(s.status==='accepted'&&s.kind==='rewrite')return {fallback:true,get reason(){return t('notice.acceptedLocation')}};
+ if(base&&base!==text)return {stale:true,get reason(){return t('notice.paragraphChanged')}};
  if(Number.isInteger(s.range_start)&&s.range_start>=0&&Number.isInteger(s.range_end)&&s.range_end>=s.range_start){
-  if(base!==text||text.slice(s.range_start,s.range_end)!==quote)return {stale:true,reason:'精确选区已失效'};
+  if(base!==text||text.slice(s.range_start,s.range_end)!==quote)return {stale:true,get reason(){return t('notice.rangeStale')}};
   return {start:s.range_start,end:s.range_end};
  }
  if(Number(s.span_occ)>=0){
-  if(!quote)return {stale:true,reason:'旧记录没有有效引用'};
-  if(!base&&text.split(quote).length!==2)return {stale:true,reason:'旧引用有多个同名位置，无法安全定位'};
-  let p=-1,from=0;for(let n=0;n<=Number(s.span_occ);n++){p=text.indexOf(quote,from);if(p<0)return {stale:true,reason:'引用文字已不存在'};from=p+quote.length}
+  if(!quote)return {stale:true,get reason(){return t('notice.legacyNoQuote')}};
+  if(!base&&text.split(quote).length!==2)return {stale:true,get reason(){return t('notice.legacyAmbiguous')}};
+  let p=-1,from=0;for(let n=0;n<=Number(s.span_occ);n++){p=text.indexOf(quote,from);if(p<0)return {stale:true,get reason(){return t('notice.quoteMissing')}};from=p+quote.length}
   return {start:p,end:p+quote.length};
  }
  if(!quote||quote===text)return {start:0,end:text.length};
  const p=text.indexOf(quote);if(p>=0&&text.indexOf(quote,p+quote.length)<0)return {start:p,end:p+quote.length};
- return {fallback:true,reason:'旧段落级批注；定位原段落'};
+ return {fallback:true,get reason(){return t('notice.legacyParagraph')}};
 }

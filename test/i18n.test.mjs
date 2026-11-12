@@ -32,3 +32,16 @@ for(const file of ['public/index.js','public/index.html']){
  }
 }
 console.log('PASS locale resources: '+a.size+' keys/locale, placeholders, English fallback, 0/1/2 plurals, missing-key failure, storage corruption/denial, persistence; scoped entry-copy gate.');
+
+// The v3 shell/controller modules own their copy; imported product content such
+// as metal-arm-plan is intentionally NOT in this scope. The legacy viewer is
+// checked only for the active bridge sections; its retired UI is not served.
+const migrated=['review-v3.js','preview-viewport.js','review-ranges.js','annotation-affordances.js','inline-draft.js','static-frame-controller.js','frame-controller.js','static-preview.js','assets.js','feedback.js','viewer.html'];
+for(const name of migrated){
+ const file='public/'+name,source=await readFile(file,'utf8');
+ assert(!/[\u3400-\u9fff]/.test(source),file+' has hardcoded CJK product copy');
+ if(name.endsWith('.js'))for(const re of [/\.textContent\s*=\s*['"]([A-Za-z][^'"]*)/g,/\.setAttribute\(['"](?:aria-label|title|placeholder)['"],\s*['"]([A-Za-z][^'"]*)/g,/\b(?:toast|status)\(\s*['"]([A-Za-z][^'"]*)/g])assert.deepEqual([...source.matchAll(re)].map(m=>m[1]),[],file+' has a hardcoded shell sink');
+ for(const m of source.matchAll(/(?:\b(?:tr|t)\(|data-i18n(?:-[\w-]+)?=)['"]([\w]+\.[\w]+)['"]/g))assert(l.engine.exists(m[1],{count:2}),file+' missing '+m[1]);
+}
+for(const k of ['review.replies','frame.markerComment','frame.pendingRevision','asset.missingAssets','notice.staleEdits','notice.missedEdits'])for(const count of [0,1,2])for(const language of ['en','zh-CN']){await l.change(language);assert(!l.t(k,{count,names:'fixture'}).includes('{{'),k)}
+console.log('PASS migrated viewer/frame scoped copy guard and 0/1/2 counts');

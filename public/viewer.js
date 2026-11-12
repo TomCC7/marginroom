@@ -1,3 +1,5 @@
+import {frameLocaleSource} from './frame-locale.js';
+import {t as tr,locale,bind,onLocaleChange} from './i18n.js';
 // markmyword viewer — edit-in-place + version history (MVP).
 //
 // Flow:
@@ -83,8 +85,13 @@ function getDocId() {
   const m = location.pathname.match(/\/d\/([^/]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 }
-function setStatus(kind, text) { statusEl.className = kind; statusTxt.textContent = text; }
+let bridgeStatus=null;
+function setStatus(kind, text) {bridgeStatus=typeof text==='function'?text:()=>text;statusEl.className=kind;statusTxt.textContent=bridgeStatus();statusEl.dataset.bridgeStatus='true';document.dispatchEvent(new Event('bridge-status'));}
+onLocaleChange(()=>{if(bridgeStatus&&statusEl.dataset.bridgeStatus==='true')statusTxt.textContent=bridgeStatus()});
+onLocaleChange(()=>{if(warningCopy)warnEl.textContent=warningCopy()});
+let warningCopy=null;
 function warn(msg) {
+  warningCopy=typeof msg==='function'?msg:()=>msg;msg=warningCopy();
   if (!msg) { warnEl.className = ''; warnEl.textContent = ''; return; }
   warnEl.textContent = msg; warnEl.className = 'show';
 }
@@ -289,7 +296,7 @@ function setEditable() { applyMode(); }
 
 function scheduleSave(anchor, el) {
   pending.set(anchor, isGroup(el) ? readGroupText(el) : el.textContent);
-  setStatus('dirty', 'Editing…');
+  setStatus('dirty', ()=>tr('notice.editing'));
   if (saveTimers.has(anchor)) clearTimeout(saveTimers.get(anchor));
   saveTimers.set(anchor, setTimeout(() => saveBlock(anchor), 800));
 }
@@ -300,7 +307,7 @@ async function saveBlock(anchor) {
   pending.delete(anchor);
   saveTimers.delete(anchor);
   inflight++;
-  setStatus('dirty', 'Saving…');
+  setStatus('dirty', ()=>tr('notice.saving'));
   try {
     const res = await fetch(`/api/edit/${encodeURIComponent(docId)}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -310,7 +317,7 @@ async function saveBlock(anchor) {
       saveRetries.delete(anchor); // clean success resets the transient-failure count
       // This call still counts toward inflight until the finally below, so "last
       // one out" is inflight === 1 here, not 0.
-      if (inflight === 1 && pending.size === 0) setStatus('saved', 'All changes saved');
+      if (inflight === 1 && pending.size === 0) setStatus('saved', ()=>tr('notice.allSaved'));
       return;
     }
     // A 4xx is a PERMANENT refusal (not permitted, bad request), not a blip:
@@ -1155,6 +1162,7 @@ function onFrameMessage(e) {
     return;
   }
   if (m.type === 'ready') {
+    frame.contentWindow.postMessage({type:'locale',locale:locale.language},'*');
     frameAnchors = new Set(Array.isArray(m.anchors) ? m.anchors : []);
     // Remember each anchor's ORIGINAL rendered text so the download can source-patch
     // the compressed payload (find old text -> replace with the edit).
@@ -1164,7 +1172,7 @@ function onFrameMessage(e) {
     frame.contentWindow.postMessage({ type: 'setMode', mode }, '*');
     frame.style.pointerEvents = '';
     if (frameReadyResolve) { frameReadyResolve(true); frameReadyResolve = null; }
-    setStatus('saved', 'Ready');
+    setStatus('saved', ()=>tr('notice.ready'));
     return;
   }
   if (m.type === 'edit') {
@@ -1181,8 +1189,8 @@ function onFrameMessage(e) {
     const href = typeof m.href === 'string' ? m.href : '';
     const isDead = href === '' || href === '#';
     flashNote(isDead
-      ? 'That link doesn’t go anywhere in this file.'
-      : 'That page isn’t part of this upload — only this document was shared.');
+      ? tr('notice.deadLink')
+      : tr('notice.outsideUpload'));
     return;
   }
   if (m.type === 'suggestTarget') {
@@ -1238,7 +1246,7 @@ let currentOverlay = null; // last overlay fetched, so a late 'ready' can apply 
 // Debounced save of a frame edit (mirrors scheduleSave, but text already in hand).
 function frameEdit(anchor, text) {
   pending.set(anchor, text);
-  setStatus('dirty', 'Editing…');
+  setStatus('dirty', ()=>tr('notice.editing'));
   if (saveTimers.has(anchor)) clearTimeout(saveTimers.get(anchor));
   saveTimers.set(anchor, setTimeout(() => saveBlock(anchor), 800));
 }
@@ -1256,8 +1264,8 @@ async function bootInteractive(data) {
       getFrameControllerSrc(),
     ]);
   } catch {
-    root.innerHTML = '<div id="hs-empty">Failed to load interactive document.</div>';
-    setStatus('error', 'Load failed');
+    root.innerHTML = `<div id="hs-empty">${tr('notice.failedInteractive')}</div>`;
+    setStatus('error', ()=>tr('notice.loadFailed'));
     return false;
   }
 
@@ -1266,7 +1274,7 @@ async function bootInteractive(data) {
   // allow-scripts ONLY. NEVER add allow-same-origin (that would let the frame drop
   // its sandbox and reach our cookies/APIs). No popups/forms/downloads/top-nav.
   f.setAttribute('sandbox', 'allow-scripts');
-  f.setAttribute('title', 'Reviewed document (sandboxed)');
+  bind(f,'frame.sandboxFrame',{},'title');
   f.style.cssText = 'width:100%;height:calc(100vh - var(--hs-bar-h));border:0;display:block;background:#fff;';
   const v3 = document.body.hasAttribute('data-review-v3');
   let readyTimer;
@@ -1275,18 +1283,18 @@ async function bootInteractive(data) {
     readyTimer = setTimeout(() => { frameReadyResolve = null; resolve(false); }, 8000);
   }) : null;
   if (v3) f.style.pointerEvents = 'none';
-  f.srcdoc = buildSrcdoc(raw, controllerSrc, docId);
+  f.srcdoc = buildSrcdoc(raw, (await frameLocaleSource())+controllerSrc, docId);
   root.appendChild(f);
   frame = f;
 
   window.addEventListener('message', onFrameMessage);
   // Standing capability/security guidance lives in README, not document chrome.
   warn('');
-  setStatus('', 'Rendering…');
+  setStatus('', ()=>tr('notice.rendering'));
   if (ready) {
     const ok = await ready;
     clearTimeout(readyTimer);
-    if (!ok) { setStatus('error', '交互文稿初始化超时，请刷新重试'); return false; }
+    if (!ok) { setStatus('error', ()=>tr('notice.initializationTimeout')); return false; }
   }
   return true;
 }
@@ -1296,8 +1304,8 @@ async function boot(overlayOverride) {
   let data;
   if (!overlayOverride) {
     const res = await fetch(`/api/doc/${encodeURIComponent(docId)}`);
-    if (res.status === 404) { root.innerHTML = `<div id="hs-empty">Document <b>${escapeHtml(docId)}</b> not found.</div>`; setStatus('error', 'Not found'); return false; }
-    if (!res.ok) { root.innerHTML = '<div id="hs-empty">Failed to load.</div>'; setStatus('error', 'Load failed'); return false; }
+    if (res.status === 404) { root.innerHTML = `<div id="hs-empty">${escapeHtml(tr('notice.missingDoc',{id:docId}))}</div>`; setStatus('error', ()=>tr('notice.notFound')); return false; }
+    if (!res.ok) { root.innerHTML = `<div id="hs-empty">${tr('notice.failedDoc')}</div>`; setStatus('error', ()=>tr('notice.loadFailed')); return false; }
     data = await res.json();
   } else {
     // Need base html; fetch fresh but use the provided overlay.
@@ -1355,14 +1363,14 @@ async function boot(overlayOverride) {
   // Combine asset + stale + unreachable-text warnings into one banner line.
   const warnings = [];
   if (metalPlanWarning) warnings.push(metalPlanWarning);
-  if (assetReport.count > 0) warnings.push(summarizeMissing(assetReport.missing));
-  if (stale > 0) warnings.push(`${stale} saved edit(s) could not be re-anchored (the base template text changed) and were NOT applied, to avoid corrupting the layout.`);
+  if (assetReport.count > 0) warnings.push(()=>summarizeMissing(assetReport.missing));
+  if (stale > 0) warnings.push(()=>tr('notice.staleEdits',{count:stale}));
   const unreachable = findUnreachableText(root);
-  if (unreachable.length > 0) warnings.push(summarizeUnreachable(unreachable));
-  warn(warnings.join('  •  '));
+  if (unreachable.length > 0) warnings.push(()=>summarizeUnreachable(unreachable));
+  warn(()=>warnings.map(fn=>typeof fn==='function'?fn():fn).join('  •  '));
   // (Block count is asserted in tests, but not shown in the UI — it's noise for
   // the reviewer. See test/anchoring.test.mjs.)
-  setStatus('saved', 'Ready');
+  setStatus('saved', ()=>tr('notice.ready'));
   return true;
 }
 
@@ -1387,7 +1395,7 @@ function saveHtmlFile(out, suffix) {
 // active HTML. Like the original export, this file must be treated as untrusted;
 // neither download inherits the viewer's iframe sandbox.
 async function downloadSnapshot() {
-  setStatus('', 'Preparing snapshot…');
+  setStatus('', ()=>tr('notice.snapshotPreparing'));
   try {
     const liveHtml = await requestFrameSnapshot();      // untrusted (frame ran doc JS)
     const res = await fetch(`/api/snapshot/${encodeURIComponent(docId)}`, {
@@ -1397,9 +1405,9 @@ async function downloadSnapshot() {
     if (!res.ok) throw new Error('snapshot failed');
     const { html } = await res.json();
     saveHtmlFile(html, 'snapshot');
-    setStatus('saved', 'Ready');
+    setStatus('saved', ()=>tr('notice.ready'));
   } catch {
-    setStatus('error', 'Snapshot failed');
+    setStatus('error', ()=>tr('notice.snapshotFailed'));
   }
 }
 
@@ -1418,14 +1426,14 @@ async function downloadHtml() {
 // new text inside the payload. The result runs exactly like the original and shows
 // the edits. Static docs use the DOMParser rebuild path below.
 async function downloadOriginal() {
-  setStatus('', 'Preparing download…');
+  setStatus('', ()=>tr('notice.downloadPreparing'));
   let data;
   try {
     const res = await fetch(`/api/doc/${encodeURIComponent(docId)}`);
     if (!res.ok) throw new Error('fetch failed');
     data = await res.json();
   } catch {
-    setStatus('error', 'Download failed');
+    setStatus('error', ()=>tr('notice.downloadFailed'));
     return;
   }
 
@@ -1450,9 +1458,9 @@ async function downloadOriginal() {
       // Honest status: some edits may not have matched a payload string (e.g. text
       // the doc assembles from fragments). Those aren't in the interactive file.
       const missed = Array.isArray(out.unmatched) ? out.unmatched.length : 0;
-      setStatus('saved', missed ? `Downloaded (${missed} edit(s) not in interactive file — use snapshot)` : 'Ready');
+      setStatus('saved', missed ? tr('notice.missedEdits',{count:missed}) : tr('notice.ready'));
     } catch {
-      setStatus('error', 'Download failed');
+      setStatus('error', ()=>tr('notice.downloadFailed'));
     }
     return;
   }
@@ -1507,7 +1515,7 @@ async function downloadOriginal() {
   }
   const out = '<!doctype html>\n' + doc.documentElement.outerHTML;
   saveHtmlFile(out, 'reviewed');
-  setStatus('saved', 'Ready');
+  setStatus('saved', ()=>tr('notice.ready'));
 }
 
 // Two-choice download menu for interactive docs. A self-unpacking bundle can't be
@@ -1554,7 +1562,7 @@ async function main() {
   docId = getDocId();
   if (!docId) { root.innerHTML = '<div id="hs-empty">No document. Use <code>?doc=&lt;id&gt;</code>.</div>'; setStatus('error', 'No doc'); return; }
   $('#hs-docname').textContent = docId;
-  setStatus('', 'Loading…');
+  setStatus('', ()=>tr('notice.loading'));
 
   // Who are we? Owner (doc author) vs. reviewer (anyone with the link). Drives the
   // display name stamped on suggestions so the owner can see WHO proposed a change.

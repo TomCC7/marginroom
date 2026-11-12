@@ -436,6 +436,7 @@
   window.addEventListener('message', function (e) {
     if (e.source !== PARENT) return;
     var m = e.data || {};
+    if(m.type==='locale'){if(globalThis.__marginroomLocale?.change(m.locale))reviewMarks.locale();return;}
     if (m.type === 'entry-reading-capture') { postReading(); return; }
     if (m.type === 'entry-reading-restore') {
       var p = readingPoint(m.position), el = document.scrollingElement;
