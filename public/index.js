@@ -1,6 +1,10 @@
+import {t,bind,unbind,pruneBindings,bindShell,onLocaleChange,languageSelect,date} from './i18n.js';
 import { referencedImages } from './assets.js';
 import { readHistory, removeRecent, clearRecent, loadHomeState, saveHomeState, HISTORY_KEY } from './entry-history.js';
 
+const copy=(key,params={})=>({key,params,toString(){return t(key,params)}});
+function put(node,value,attribute='textContent'){if(value?.key)bind(node,value.key,value.params,attribute);else{unbind(node,attribute);if(attribute==='textContent')node.textContent=value;else node.setAttribute(attribute,value)}}
+function failure(value){return Object.assign(new Error(String(value)),{copy:value})}
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Bootstrap owner key stays in memory only; never include it in a viewer/share URL.
@@ -24,7 +28,7 @@ const modal = $('#modal');
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
+  if (text !== undefined) put(node,text);
   return node;
 }
 function button(text, run, cls = '') {
@@ -34,7 +38,7 @@ function button(text, run, cls = '') {
   return node;
 }
 function toast(text) {
-  $('#toast').textContent = text;
+  put($('#toast'),text);
   $('#toast').hidden = false;
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => { $('#toast').hidden = true; }, 4000);
@@ -104,20 +108,20 @@ function render() {
   }
   if ($('#search').value !== query) $('#search').value = query;
   $('#clear').hidden = view !== 'recent';
-  $('#mine').textContent = '我的文稿';
-  $('#context').textContent = view === 'recent' ? '此浏览器打开过的文稿' : whoami.isOwner ? '管理员身份创建的文稿；不包含仅可管理的其他文稿' : '由当前签名浏览器身份创建的文稿';
-  $('#rows').replaceChildren();
+  put($('#mine'),copy('home.mine'));
+  put($('#context'),view === 'recent' ? copy('home.recentContext') : whoami.isOwner ? copy('home.adminContext') : copy('home.mineContext'));
+  $('#rows').replaceChildren();pruneBindings();
   $('#rows').setAttribute('aria-busy', String(loading));
-  if (loading) { empty('正在加载文稿…', ''); return; }
+  if (loading) { empty(copy('home.loading'), ''); return; }
   if (loadError) {
-    empty('暂时无法加载文稿', '请检查网络连接后重试。此浏览器的阅读记录不会被清空。', '重试', () => loadDocs());
+    empty(copy('home.loadFailed'), copy('home.loadHelp'), copy('common.retry'), () => loadDocs());
     return;
   }
   const list = docs.filter(doc => doc.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   if (!list.length) {
-    empty(query ? '没有匹配的文稿' : view === 'recent' ? '还没有打开记录' : '这里还没有你的文稿',
-      query ? '换一个标题关键词试试。' : view === 'recent' ? '通过文稿链接打开的页面会出现在这里。打开记录不代表拥有管理权限。' : '这里只显示当前身份创建的文稿，不是账号，也不会跨设备同步。',
-      query ? '清除搜索' : '导入 HTML', () => { if (query) { query = ''; save(); render(); } else showImport(); });
+    empty(query ? copy('home.noMatch') : view === 'recent' ? copy('home.noRecent') : copy('home.noMine'),
+      query ? copy('home.searchHelp') : view === 'recent' ? copy('home.recentHelp') : copy('home.mineHelp'),
+      query ? copy('home.clearSearch') : copy('import.title'), () => { if (query) { query = ''; save(); render(); } else showImport(); });
     return;
   }
   for (const doc of list) {
@@ -127,17 +131,17 @@ function render() {
     icon.innerHTML = '<svg viewBox="0 0 24 30"><path d="M4 1h10l6 6v21H4zM14 1v7h6M8 14h8M8 19h8"/></svg>';
     const body = el('span'), meta = el('span', 'meta');
     body.append(el('span', 'title', doc.title));
-    if (doc.unavailable) meta.append(el('span', '', '文稿不可用或暂时无法读取'));
+    if (doc.unavailable) meta.append(el('span', '', copy('home.unavailable')));
     else {
-      if (doc.pendingCount > 0) meta.append(el('span', 'pending', `${doc.pendingCount} 条未处理批注`));
+      if (doc.pendingCount > 0) meta.append(el('span', 'pending', copy('home.pending',{count:doc.pendingCount})));
       const when = view === 'recent' ? doc.openedAt : doc.activityAt;
-      if (when) meta.append(el('span', '', `${view === 'recent' ? '打开于' : '最近活动'} ${new Date(when).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`));
-      if (whoami.isOwner) meta.append(el('span', '', doc.isOwned ? '管理员身份创建' : '管理员可管理'));
+      if (when) meta.append(el('span', '', copy(view==='recent'?'home.opened':'home.activity',{date:date(when)})));
+      if (whoami.isOwner) meta.append(el('span', '', doc.isOwned ? copy('home.adminCreated') : copy('home.adminManage')));
     }
     body.append(meta); link.append(icon, body);
     link.addEventListener('click', save);
     const more = button('···', () => menu(more, doc), 'more');
-    more.setAttribute('aria-label', `${doc.title}的更多操作`);
+    put(more,copy('home.more',{title:doc.title}),'aria-label');
     more.setAttribute('aria-expanded', 'false'); more.setAttribute('aria-haspopup', 'true');
     li.append(link, more); $('#rows').append(li);
   }
@@ -154,21 +158,22 @@ function menu(trigger, doc) {
   closeMenu();
   const panel = el('div', 'menu');
   const action = (label, run, cls = '') => panel.append(button(label, () => { closeMenu(true); run(); }, cls));
-  action('分享文稿链接', () => share(doc));
-  if (view === 'recent') action('移出最近打开', () => confirmBox('移出最近打开？', '仅移除此浏览器的打开记录，不删除服务器文稿，也不改变链接访问权限。', '移出记录', async () => { removeRecent(doc.id); dismiss(); await loadDocs(); toast('已移出本地记录'); }));
-  if (doc.canDelete && !doc.unavailable) action('删除文稿…', () => confirmBox('删除这篇文稿？', `“${doc.title}”及其全部评审历史将被删除，分享链接也将失效。此操作无法撤销。`, '删除文稿', () => deleteDoc(doc), true), 'danger');
+  action(copy('home.share'), () => share(doc));
+  if (view === 'recent') action(copy('home.remove'), () => confirmBox(copy('home.removeTitle'), copy('home.removeHelp'), copy('home.removeConfirm'), async () => { removeRecent(doc.id); dismiss(); await loadDocs(); toast(copy('home.removed')); }));
+  if (doc.canDelete && !doc.unavailable) action(copy('home.deleteMenu'), () => confirmBox(copy('home.deleteTitle'), copy('home.deleteHelp',{title:doc.title}), copy('home.delete'), () => deleteDoc(doc), true), 'danger');
   trigger.after(panel); trigger.setAttribute('aria-expanded', 'true'); panel.querySelector('button').focus();
 }
 function showDialog(title, body, actions, onClose = null) {
   if (!modal.open) opener = document.activeElement;
   closeAction = onClose;
-  $('#modalbody').innerHTML = `<div class="modalhead"><h2 id="modalTitle">${esc(title)}</h2><button class="close" id="modalClose" aria-label="关闭对话框">×</button></div>${body}`;
+  $('#modalbody').innerHTML = `<div class="modalhead"><h2 id="modalTitle">${esc(title)}</h2><button class="close" id="modalClose" aria-label="Close dialog" data-i18n-aria-label="common.dialogClose">×</button></div>${body}`;
   $('#modalfoot').replaceChildren();
   for (const action of actions) {
     const node = button(action.text, action.run, action.cls || '');
     if (action.id) node.id = action.id;
     $('#modalfoot').append(node);
   }
+  put($('#modalTitle'),title);bindShell($('#modalbody'));$('#modalClose').before(languageSelect());
   $('#modalClose').onclick = dismiss;
   if (!modal.open) modal.showModal();
   $('#modalbody').scrollTop = 0; $('#modalClose').focus();
@@ -185,8 +190,9 @@ function setBusy(value) {
 }
 function confirmBox(title, text, label, run, danger = false) {
   showDialog(title, `<p>${esc(text)}</p><p id="actionError" class="error" role="alert"></p>`, [
-    { text: '取消', run: dismiss }, { text: label, cls: danger ? 'danger' : 'primary', run },
+    { text: copy('common.cancel'), run: dismiss }, { text: label, cls: danger ? 'danger' : 'primary', run },
   ]);
+  put($('#modalbody p'),text);
 }
 async function deleteDoc(doc) {
   setBusy(true);
@@ -196,91 +202,93 @@ async function deleteDoc(doc) {
     if (latest.canDelete !== true) throw Object.assign(new Error('not_your_doc'), { data: { error: 'not_your_doc' } });
     await request(`/api/doc/${encodeURIComponent(doc.id)}`, { method: 'DELETE' });
     // Read back the exact target; do not claim deletion if it still exists.
-    try { await request(`/api/doc-meta/${encodeURIComponent(doc.id)}`); throw new Error('文稿仍存在，请重试。'); }
+    try { await request(`/api/doc-meta/${encodeURIComponent(doc.id)}`); throw failure(copy('home.deleteStillExists')); }
     catch (error) { if (error.status !== 404) throw error; }
-    removeRecent(doc.id); setBusy(false); dismiss(); await loadDocs(); toast('文稿已删除');
+    removeRecent(doc.id); setBusy(false); dismiss(); await loadDocs(); toast(copy('home.deleted'));
   } catch (error) {
-    $('#actionError').textContent = errorMessage(error); setBusy(false);
+    put($('#actionError'),errorMessage(error)); setBusy(false);
     // Do not leave stale deletion authority on the page after a failed check.
     doc.canDelete = false; render();
   }
 }
 function share(doc) {
   const url = new URL(viewerUrl(doc.id), location.origin).href;
-  showDialog('分享文稿链接', '<p class="small">链接直接打开评审页面，不经过首页。这里不改变文稿的访问设置。</p><input class="sharelink" aria-label="文稿链接" readonly>', [
-    { text: '关闭', run: dismiss }, { text: '复制链接', cls: 'primary', run: async () => {
-      try { await navigator.clipboard.writeText(url); toast('链接已复制'); }
-      catch { $('.sharelink').select(); toast('请选择并复制链接'); }
+  showDialog(copy('home.share'), "<p class=\"small\"><span data-i18n=\"home.shareHelp\">This link opens the review directly, bypassing the homepage. Sharing here does not change document access.</span></p><input class=\"sharelink\" aria-label=\"Document link\" data-i18n-aria-label=\"home.documentLink\" readonly>", [
+    { text: copy('common.close'), run: dismiss }, { text: copy('common.copyLink'), cls: 'primary', run: async () => {
+      try { await navigator.clipboard.writeText(url); toast(copy('common.copied')); }
+      catch { $('.sharelink').select(); toast(copy('common.copyManually')); }
     } },
   ]);
   $('.sharelink').value = url;
 }
 function errorMessage(error) {
+  if(error.copy)return error.copy;
   if (error.userMessage) return error.userMessage;
   const code = error.data?.error;
   const errors = {
-    invalid_doc_id: '文稿名称限 128 字符，只能使用英文字母、数字、点、短横线或下划线；不能为单点、双点或以 .raw 结尾。',
-    empty_html: 'HTML 内容为空。', not_html: '没有识别到 HTML 内容，请包含 HTML 标签。',
-    too_large: `文件过大（上限 ${error.data?.maxBytes ? Math.round(error.data.maxBytes / 1024 / 1024) : 2} MB）。`,
-    doc_exists: '同名文稿已存在，请选择保留两份或替换。', write_failed: '服务器无法保存文件，请重试。',
-    guest_doc_limit: `当前浏览器最多可创建 ${whoami.docLimit || 1} 份文稿。请先在「我的文稿」中管理已有文稿。`,
-    not_your_doc: '这份文稿不属于当前浏览器身份，无法执行此操作。', doc_not_found: '文稿已不存在。',
-    capacity_full: '服务存储容量已满，请稍后再试。', rate_limited: '操作过于频繁，请稍后再试。',
-    invalid_asset_name: '图片文件名不符合要求。', empty_asset: '图片内容为空。',
-    invalid_asset_type: '不支持此图片类型。',
+    invalid_doc_id: copy('errors.invalid_doc_id'),
+    empty_html: copy('errors.empty_html'), not_html: copy('errors.not_html'),
+    too_large: copy('errors.too_large',{size:error.data?.maxBytes?Math.round(error.data.maxBytes/1024/1024):2}),
+    doc_exists: copy('errors.doc_exists'), write_failed: copy('errors.write_failed'),
+    guest_doc_limit: copy('errors.guest_doc_limit',{count:whoami.docLimit||1}),
+    not_your_doc: copy('errors.not_your_doc'), doc_not_found: copy('errors.doc_not_found'),
+    capacity_full: copy('errors.capacity_full'), rate_limited: copy('errors.rate_limited'),
+    invalid_asset_name: copy('errors.invalid_asset_name'), empty_asset: copy('errors.empty_asset'),
+    invalid_asset_type: copy('errors.invalid_asset_type'),
   };
-  return errors[code] || (!error.status && error.message === 'Failed to fetch' ? '网络错误，请检查连接后重试。输入和所选文件已保留。' : !error.status ? '操作失败，请检查网络后重试。输入和所选文件已保留。' : `操作失败（${code || error.status}），请重试。`);
+  return errors[code] || (!error.status && error.message === 'Failed to fetch' ? copy('errors.network') : !error.status ? copy('errors.failed') : copy('errors.reason',{reason:code||error.status}));
 }
 
 function showImport() {
   importDraft = null;
-  showDialog('导入 HTML', `<div id="importForm"><label class="upload">选择一份 HTML 文稿<input id="htmlFile" type="file" accept=".html,.htm,text/html"></label><p class="small" id="fileLabel">支持 .html / .htm，最大 2 MB。标题优先取自 HTML 的 &lt;title&gt;。</p><label class="field">本地图片（可选）<input id="images" type="file" accept="image/*" multiple></label><p class="small" id="imageLabel">可同时选择 HTML 中引用的图片；按文件名匹配并上传。</p><details class="paste"><summary>或粘贴 HTML 源码</summary><textarea id="source" aria-label="HTML 源码" placeholder="<!doctype html>\n<html><head><title>文稿标题</title></head>…"></textarea><label class="field" for="paste-id">文稿名称（用于链接）<input id="paste-id" type="text" autocomplete="off" spellcheck="false" placeholder="letters-numbers_dots"></label></details></div><div id="duplicate" hidden><p id="duplicateText"></p><p class="warn">替换会覆盖原文稿源码，但会保留评审历史；原有批注可能不再匹配新内容。建议选择「保留两份」，以保留原文稿及其评审记录。</p></div><p class="error" id="importError" role="alert"></p>`, [
-    { text: '取消', run: dismiss }, { text: '导入并打开', cls: 'primary', id: 'doImport', run: prepareImport },
+  showDialog(copy('import.title'), `<div id="importForm"><label class="upload"><span data-i18n="import.choose">Choose an HTML document</span><input id="htmlFile" type="file" accept=".html,.htm,text/html"></label><p class="small" id="fileLabel"><span data-i18n="import.fileHelp">Supports .html / .htm, up to 2 MB. The HTML &lt;title&gt; supplies the document title.</span></p><label class="field"><span data-i18n="import.imagesOptional">Local images (optional)</span><input id="images" type="file" accept="image/*" multiple></label><p class="small" id="imageLabel"><span data-i18n="import.imagesHelp">Select images referenced by the HTML; uploads are matched by filename.</span></p><details class="paste"><summary><span data-i18n="import.paste">Or paste HTML source</span></summary><textarea id="source" aria-label="HTML source" data-i18n-aria-label="import.source" placeholder="<!doctype html>\n<html><head><title>Document title</title></head>…"></textarea><label class="field" for="paste-id"><span data-i18n="import.id">Document name (used in its link)</span><input id="paste-id" type="text" autocomplete="off" spellcheck="false" placeholder="letters-numbers_dots"></label></details></div><div id="duplicate" hidden><p id="duplicateText"></p><p class="warn"><span data-i18n="import.replacementHelp">Replace overwrites the source but keeps review history; existing annotations may no longer match. Choose Keep both to preserve the original document and review.</span></p></div><p class="error" id="importError" role="alert"></p>`, [
+    { text: copy('common.cancel'), run: dismiss }, { text: copy('import.open'), cls: 'primary', id: 'doImport', run: prepareImport },
   ]);
-  $('#htmlFile').onchange = () => { $('#fileLabel').textContent = $('#htmlFile').files[0]?.name || '支持 .html / .htm，最大 2 MB。'; };
-  $('#images').onchange = () => { $('#imageLabel').textContent = `已选择 ${$('#images').files.length} 张图片；按引用文件名匹配并上传。`; };
+  bind($('#source'),'import.sourcePlaceholder',{},'placeholder');
+  $('#htmlFile').onchange = () => put($('#fileLabel'),$('#htmlFile').files[0]?.name || copy('import.shortFileHelp'));
+  $('#images').onchange=()=>put($('#imageLabel'),copy('import.selected',{count:$('#images').files.length}));
 }
 async function prepareImport() {
-  $('#importError').textContent = '';
+  put($('#importError'),'');
   const file = $('#htmlFile').files[0];
   setBusy(true);
   try {
-    if (file && !/\.html?$/i.test(file.name)) throw new Error('请选择 .html 或 .htm 文件，图片请放在「本地图片」中。');
-    if (file && file.size > MAX_HTML_BYTES) throw new Error('HTML 超过 2 MB，请缩小文件后重新选择。');
+    if (file && !/\.html?$/i.test(file.name)) throw failure(copy('import.htmlOnly'));
+    if (file && file.size > MAX_HTML_BYTES) throw failure(copy('import.fileTooLarge'));
     const html = file ? await file.text() : $('#source').value;
-    if (!html.trim()) throw new Error('请选择 HTML 文件，或展开下方入口粘贴源码。');
-    if (new TextEncoder().encode(html).length > MAX_HTML_BYTES) throw new Error('HTML 超过 2 MB，请缩小内容后重试。');
-    if (!/<[a-z!][\s\S]*>/i.test(html)) throw new Error('没有识别到 HTML 内容，请包含 HTML 标签。');
+    if (!html.trim()) throw failure(copy('import.chooseOrPaste'));
+    if (new TextEncoder().encode(html).length > MAX_HTML_BYTES) throw failure(copy('import.sourceTooLarge'));
+    if (!/<[a-z!][\s\S]*>/i.test(html)) throw failure(copy('errors.not_html'));
     // Retain legacy filename slug behavior; explicit paste IDs are validated as typed.
     const id = file ? file.name.replace(/\.html?$/i, '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') : $('#paste-id').value.trim();
-    if (!validId(id)) throw new Error('文稿名称限 128 字符，只能使用英文字母、数字、点、短横线或下划线；不能为单点、双点或以 .raw 结尾。');
+    if (!validId(id)) throw failure(copy('errors.invalid_doc_id'));
     // Only parse inert metadata; never attach imported nodes or execute a preview.
     const parsed = new DOMParser().parseFromString(html, 'text/html');
     importDraft = { id, base: id, html, title: parsed.title.trim() || file?.name.replace(/\.html?$/i, '') || id, images: [...$('#images').files], overwrite: false };
     setBusy(false);
     if (knownIds.has(id)) showDuplicate();
     else await uploadDocument();
-  } catch (error) { $('#importError').textContent = error.message; setBusy(false); }
+  } catch (error) { put($('#importError'),error.copy||copy('errors.reason',{reason:error.message||'unknown'})); setBusy(false); }
 }
 function importButtons() {
-  $('#modalfoot').replaceChildren(button('取消', dismiss), button('导入并打开', prepareImport, 'primary'));
+  $('#modalfoot').replaceChildren(button(copy('common.cancel'), dismiss), button(copy('import.open'), prepareImport, 'primary'));
 }
 function cancelDuplicate() {
   if (busy) return;
   $('#duplicate').hidden = true; $('#importForm').hidden = false;
-  $('#modalTitle').textContent = '导入 HTML'; $('#importError').textContent = '';
+  put($('#modalTitle'),copy('import.title')); put($('#importError'),'');
   $('#modalClose').onclick = dismiss; closeAction = null; importButtons(); $('#htmlFile').focus();
 }
 function showDuplicate() {
   setBusy(false);
   $('#importForm').hidden = true; $('#duplicate').hidden = false;
-  $('#modalTitle').textContent = '文稿已存在';
-  $('#duplicateText').textContent = `“${importDraft.id}”已存在。`;
-  $('#importError').textContent = '';
+  put($('#modalTitle'),copy('import.duplicate'));
+  put($('#duplicateText'),copy('import.exists',{id:importDraft.id}));
+  put($('#importError'),'');
   $('#modalfoot').replaceChildren(
-    button('取消', cancelDuplicate),
-    button('替换', () => { importDraft.overwrite = true; uploadDocument(); }, 'danger'),
-    button('保留两份', () => {
+    button(copy('common.cancel'), cancelDuplicate),
+    button(copy('import.replace'), () => { importDraft.overwrite = true; uploadDocument(); }, 'danger'),
+    button(copy('import.keepBoth'), () => {
       let n = 2;
       const candidate = value => `${importDraft.base.slice(0, 128 - String(value).length - 1)}-${value}`;
       while (knownIds.has(candidate(n))) n++;
@@ -292,7 +300,7 @@ function showDuplicate() {
 }
 async function uploadDocument() {
   if (busy) return;
-  setBusy(true); $('#importError').textContent = '';
+  setBusy(true); put($('#importError'),'');
   const draft = importDraft;
   try {
     // Check selected assets (including upload races) before saving HTML.
@@ -305,7 +313,7 @@ async function uploadDocument() {
   } catch (error) {
     setBusy(false);
     if (error.status === 409 && error.data?.error === 'doc_exists') { knownIds.add(draft.id); showDuplicate(); }
-    else $('#importError').textContent = errorMessage(error);
+    else put($('#importError'),errorMessage(error));
   }
 }
 function fileToBase64(file) {
@@ -319,13 +327,13 @@ function openImported(draft) { save(); location.assign(viewerUrl(draft.id)); }
 async function verifyImage(name, file) {
   const response = await fetch(withKey(`/docs/assets/${encodeURIComponent(name)}`), { cache: 'no-store' });
   if (!response.ok) throw Object.assign(new Error('asset_verification_failed'), {
-    userMessage: `无法核实图片“${name}”的内容，请检查网络后重试。输入和所选文件已保留。`,
+    copy:copy('import.verifyImage',{name}),
   });
   const stored = new Uint8Array(await response.arrayBuffer());
   const selected = new Uint8Array(await file.arrayBuffer());
   if (stored.length !== selected.length || !stored.every((byte, index) => byte === selected[index])) {
     throw Object.assign(new Error('asset_collision'), {
-      userMessage: `图片“${name}”与服务器已有的全局同名图片内容不同，不能替换或借用。请在本地重命名图片并修改 HTML 中的引用后，重新选择文件再导入。输入和所选文件已保留，未继续保存文稿或打开页面。`,
+      copy:copy('import.collision',{name}),
     });
   }
 }
@@ -354,29 +362,29 @@ async function prepareImages(draft) {
 async function offerImages(draft, needed) {
   if (!needed.length) { openImported(draft); return; }
   // The document is already saved. Asset retries must never upload it again.
-  showDialog('补充本地图片', `<p class="small">文稿已保存。以下图片尚未上传；请选择对应文件，或跳过并直接打开。</p><ul class="image-list">${needed.map(ref => `<li>${esc(ref.name)}</li>`).join('')}</ul><label class="field">本地图片<input id="missingImages" type="file" accept="image/*" multiple></label><p class="small" id="selectedImages"></p><p class="error" id="assetError" role="alert"></p>`, [
-    { text: '跳过并打开', run: () => openImported(draft) },
-    { text: '上传图片并打开', cls: 'primary', run: () => uploadImages(draft, needed) },
+  showDialog(copy('import.missingTitle'), `<p class="small"><span data-i18n="import.missingHelp">The document is saved. Select files for the missing images below, or skip and open it.</span></p><ul class="image-list">${needed.map(ref => `<li>${esc(ref.name)}</li>`).join('')}</ul><label class="field"><span data-i18n="import.images">Local images</span><input id="missingImages" type="file" accept="image/*" multiple></label><p class="small" id="selectedImages"></p><p class="error" id="assetError" role="alert"></p>`, [
+    { text: copy('import.skip'), run: () => openImported(draft) },
+    { text: copy('import.uploadOpen'), cls: 'primary', run: () => uploadImages(draft, needed) },
   ]);
-  $('#selectedImages').textContent = draft.images.length ? `已保留 ${draft.images.length} 张所选图片，可直接上传。` : '按文件名匹配，不会自动读取本地文件夹。';
+  put($('#selectedImages'),draft.images.length?copy('import.retained',{count:draft.images.length}):copy('import.matchHelp'));
   $('#missingImages').onchange = () => {
     const byName = new Map(draft.images.map(file => [file.name.toLowerCase(), file]));
     for (const file of $('#missingImages').files) byName.set(file.name.toLowerCase(), file);
     draft.images = [...byName.values()];
-    $('#selectedImages').textContent = `已选择 ${draft.images.length} 张图片。`;
+    put($('#selectedImages'),copy('import.count',{count:draft.images.length}));
   };
 }
 async function uploadImages(draft, needed) {
-  setBusy(true); $('#assetError').textContent = '';
+  setBusy(true); put($('#assetError'),'');
   try {
     const remaining = await prepareImages(draft);
     needed.splice(0, needed.length, ...remaining);
     setBusy(false);
     if (!needed.length) { openImported(draft); return; }
-    $('#assetError').textContent = `仍需选择匹配文件：${needed.map(ref => ref.name).join('、')}`;
+    put($('#assetError'),copy('import.stillMissing',{names:needed.map(ref=>ref.name).join(', ')}));
   } catch (error) {
     setBusy(false);
-    $('#assetError').textContent = errorMessage(error);
+    put($('#assetError'),errorMessage(error));
   }
 }
 
@@ -387,7 +395,7 @@ modal.addEventListener('cancel', event => {
 });
 modal.addEventListener('keydown', event => {
   if (event.key !== 'Tab') return;
-  const items = [...modal.querySelectorAll('button,input,textarea,summary,a[href]')].filter(node => !node.disabled && node.getClientRects().length);
+  const items = [...modal.querySelectorAll('button,input,textarea,select,summary,a[href]')].filter(node => !node.disabled && node.getClientRects().length);
   const first = items[0], last = items.at(-1);
   if (!first) { event.preventDefault(); return; }
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
@@ -398,9 +406,11 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape' && !m
 $('#import').onclick = showImport;
 for (const name of ['recent', 'mine']) $('#' + name).onclick = () => { if (view !== name) { view = name; save(); loadDocs(); } };
 $('#search').oninput = event => { query = event.target.value; save(); render(); };
-$('#clear').onclick = () => confirmBox('清空最近打开？', '仅清除此浏览器的打开记录，不删除服务器文稿。你仍可通过原来的链接打开文稿。', '清空记录', () => { clearRecent(); dismiss(); loadDocs(); });
+$('#clear').onclick = () => confirmBox(copy('home.clearTitle'), copy('home.clearHelp'), copy('home.clear'), () => { clearRecent(); dismiss(); loadDocs(); });
 window.addEventListener('pagehide', save);
 window.addEventListener('pageshow', event => { if (event.persisted) loadDocs({ restore: true }); });
 window.addEventListener('storage', event => { if (event.key === HISTORY_KEY && view === 'recent') loadDocs(); });
+bindShell(document.documentElement);document.querySelector('.top').insertBefore(languageSelect(),$('#import'));
+onLocaleChange(()=>{render();document.title=t('home.title')});document.title=t('home.title');
 await identity();
 loadDocs({ restore: true });

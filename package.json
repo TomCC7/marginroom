@@ -9,6 +9,7 @@
     "dev": "node --watch server.js",
     "test": "node test/run.mjs",
     "test:unit": "node test/run.mjs unit",
+    "test:i18n": "node test/i18n.test.mjs && node test/i18n-home.browser.mjs",
     "test:api": "node test/run.mjs api",
     "test:browser": "node test/frontend.browser.mjs",
     "test:all": "npm test && npm run test:browser && npm run test:toggle && npm run test:chrome && npm run test:selection && npm run test:preview && npm run test:security && npm run test:acceptance",

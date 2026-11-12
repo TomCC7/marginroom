@@ -1,7 +1,7 @@
 // Explicit suites avoid silently running one-off acceptance scripts or helper files.
 import { spawnSync } from 'node:child_process';
 const suites = {
-  unit: ['anchoring', 'formats', 'group', 'source-patch', 'sha256-fallback', 'frame-controller', 'frame-tabs', 'frame-suggest', 'frame-messages', 'span-select', 'feedback', 'identity', 'viewer-ui', 'anchoring-inline', 'scope-css', 'mode-policy', 'review-ranges', 'revision-diff', 'element-review'],
+  unit: ['i18n', 'anchoring', 'formats', 'group', 'source-patch', 'sha256-fallback', 'frame-controller', 'frame-tabs', 'frame-suggest', 'frame-messages', 'span-select', 'feedback', 'identity', 'viewer-ui', 'anchoring-inline', 'scope-css', 'mode-policy', 'review-ranges', 'revision-diff', 'element-review'],
   api: ['api', 'suggestions', 'upload', 'interactive', 'guardrails', 'access', 'owner-promotion', 'v3-api', 'continuous-revision-api'],
 };
 const selected = process.argv.slice(2);

@@ -47,6 +47,9 @@ test('real browser homepage and import interactions against isolated API fixture
     ];
     page.on('pageerror', error => runtimeErrors.push(error.message));
     await page.addInitScript(() => {
+      // This existing workflow suite deliberately exercises Simplified Chinese.
+      // English/default/persistence are covered by i18n-home.browser.mjs.
+      localStorage.setItem('marginroom.locale.v1','zh-CN');
       if (!localStorage.getItem('marginroom.recent.v1')) localStorage.setItem('marginroom.recent.v1', JSON.stringify({ version: 1, entries: [
         { id: 'owned', title: 'Old title', openedAt: '2026-11-08T00:00:00Z' },
         { id: 'shared', title: 'Shared title', openedAt: '2026-11-07T00:00:00Z' },
