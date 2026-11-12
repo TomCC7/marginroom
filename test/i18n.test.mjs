@@ -45,3 +45,7 @@ for(const name of migrated){
 }
 for(const k of ['review.replies','frame.markerComment','frame.pendingRevision','asset.missingAssets','notice.staleEdits','notice.missedEdits'])for(const count of [0,1,2])for(const language of ['en','zh-CN']){await l.change(language);assert(!l.t(k,{count,names:'fixture'}).includes('{{'),k)}
 console.log('PASS migrated viewer/frame scoped copy guard and 0/1/2 counts');
+
+const bridgeSource=await readFile('public/viewer.js','utf8'),activeBridge=bridgeSource.slice(bridgeSource.indexOf('async function getFrameControllerSrc()'),bridgeSource.indexOf('// Two-choice download menu'));
+assert.deepEqual([...activeBridge.matchAll(/setStatus\([^,]+,\s*['"]([A-Za-z][^'"]*)/g)].map(m=>m[1]),[],'active viewer bridge has hardcoded status copy');
+assert(!/[\u3400-\u9fff]/.test(activeBridge),'active bridge has hardcoded CJK');

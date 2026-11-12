@@ -248,7 +248,7 @@ async function refresh(reload=false){
 }
 function applyMode(){
  const caps=state();bridge.setMode(caps.interactive?(mode==='read'?'use':mode):'view');
- $$('[data-mode]').forEach(b=>{const m=b.dataset.mode;b.disabled=(m==='edit'&&!caps.canEdit)||(m==='suggest'&&!caps.canSuggest);b.classList.toggle('selected',m===mode);b.setAttribute('aria-pressed',String(m===mode));if(b.disabled)b.title=m==='edit'?tr('review.noDirectEdit'):tr('review.noLinkSuggest')});
+ $$('[data-mode]').forEach(b=>{const m=b.dataset.mode;b.disabled=(m==='edit'&&!caps.canEdit)||(m==='suggest'&&!caps.canSuggest);b.classList.toggle('selected',m===mode);b.setAttribute('aria-pressed',String(m===mode));if(b.disabled)bind(b,m==='edit'?'review.noDirectEdit':'review.noLinkSuggest',{},'title')});
  if(!caps.interactive)for(const [a,el] of caps.anchorMap){const locked=records.some(s=>s.anchor===a&&s.status==='open'&&s.kind==='rewrite');const grouped=el.hasAttribute('data-hs-group');el.contentEditable=String(mode==='edit'&&caps.canEdit);if(grouped&&mode==='suggest')el.title=tr('review.groupRevisionHelp')}
  picker?.refresh();staticPreview?.sync();
 }
@@ -464,7 +464,7 @@ async function main(){
  const dock=$('.dock');
  const syncDock=()=>document.documentElement.style.setProperty('--hs-dock-h',dock.getBoundingClientRect().height+'px');
  new ResizeObserver(syncDock).observe(dock);syncDock();
- if(!docId){root.textContent=tr('review.chooseDoc');return}
+ if(!docId){bind(root,'review.chooseDoc');return}
  try{if(!await bridge.init(docId))return;const canonicalId=await loadedIdentity();captureClean();buildToc();paintName();picker=elementReview({root,hash:sha256hex,enabled:()=>mode==='suggest'&&!draft&&!state().interactive&&!staticPreview?.active,onPick:t=>pickTarget(t),onThread:openThreadChoices,onText:captureSelection,onCancel:()=>{if($('#composer').hidden){dismissedSelection=selectionStamp();clearSelection()}}});applyMode();await refresh();staticPreview=state().interactive?null:createStaticPreview({docId,bridge,root,onMessage:staticMessage,getMode:()=>mode});reading=initReading({docId:canonicalId,root,article:$('#article'),main:$('.main'),staticPreview,interactive:state().interactive,frame:state().frame});initPreview({docId,bridge,staticPreview});status(()=>tr('review.connected'))}
  catch(e){status(()=>tr('review.loadFailed',{reason:errorText(e)}),'error');return}
  $('#nav-toggle').onclick=()=>toggleNav();$('#nav-close').onclick=()=>{toggleNav(false);closeNav()};$('#nav-shade').onclick=closeNav;

@@ -85,6 +85,7 @@ function getDocId() {
   const m = location.pathname.match(/\/d\/([^/]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 }
+function emptyDocument(key,params={}){const node=document.createElement('div');node.id='hs-empty';bind(node,key,params);root.replaceChildren(node);}
 let bridgeStatus=null;
 function setStatus(kind, text) {bridgeStatus=typeof text==='function'?text:()=>text;statusEl.className=kind;statusTxt.textContent=bridgeStatus();statusEl.dataset.bridgeStatus='true';document.dispatchEvent(new Event('bridge-status'));}
 onLocaleChange(()=>{if(bridgeStatus&&statusEl.dataset.bridgeStatus==='true')statusTxt.textContent=bridgeStatus()});
@@ -99,8 +100,10 @@ function warn(msg) {
 // Transient toast (bottom-center) for one-off notices that must NOT clobber the
 // real document warnings — e.g. clicking a nav link to a companion file that
 // wasn't uploaded. Auto-dismisses; a repeat message just resets the timer.
-let flashTimer = null;
+let flashTimer = null,flashCopy=null;
+onLocaleChange(()=>{const node=document.getElementById('hs-flash-note');if(node&&flashCopy)node.textContent=flashCopy()});
 function flashNote(msg) {
+  flashCopy=typeof msg==='function'?msg:()=>msg;msg=flashCopy();
   let el = document.getElementById('hs-flash-note');
   if (!el) {
     el = document.createElement('div');
@@ -1188,7 +1191,7 @@ function onFrameMessage(e) {
     // app inside itself. Tell the reviewer plainly instead of showing nothing.
     const href = typeof m.href === 'string' ? m.href : '';
     const isDead = href === '' || href === '#';
-    flashNote(isDead
+    flashNote(()=>isDead
       ? tr('notice.deadLink')
       : tr('notice.outsideUpload'));
     return;
@@ -1264,7 +1267,7 @@ async function bootInteractive(data) {
       getFrameControllerSrc(),
     ]);
   } catch {
-    root.innerHTML = `<div id="hs-empty">${tr('notice.failedInteractive')}</div>`;
+    emptyDocument('notice.failedInteractive');
     setStatus('error', ()=>tr('notice.loadFailed'));
     return false;
   }
@@ -1304,8 +1307,8 @@ async function boot(overlayOverride) {
   let data;
   if (!overlayOverride) {
     const res = await fetch(`/api/doc/${encodeURIComponent(docId)}`);
-    if (res.status === 404) { root.innerHTML = `<div id="hs-empty">${escapeHtml(tr('notice.missingDoc',{id:docId}))}</div>`; setStatus('error', ()=>tr('notice.notFound')); return false; }
-    if (!res.ok) { root.innerHTML = `<div id="hs-empty">${tr('notice.failedDoc')}</div>`; setStatus('error', ()=>tr('notice.loadFailed')); return false; }
+    if (res.status === 404) { emptyDocument('notice.missingDoc',{id:docId}); setStatus('error', ()=>tr('notice.notFound')); return false; }
+    if (!res.ok) { emptyDocument('notice.failedDoc'); setStatus('error', ()=>tr('notice.loadFailed')); return false; }
     data = await res.json();
   } else {
     // Need base html; fetch fresh but use the provided overlay.
