@@ -4,7 +4,7 @@ import {locale,t,bind} from './i18n.js';
 import {elementReview} from './element-review.js';
 import {readingPosition,sanitizeReading} from './entry-reading.js';
 import {sha256hex} from './anchoring.js';
-import {singleBlockRange,difference} from './review-ranges.js';
+import {singleBlockRange,renderedTextRange,difference} from './review-ranges.js';
 import {inlineDraftController,inlineDraftCSS} from './inline-draft.js';
 import {annotationAffordances} from './annotation-affordances.js';
 export function sanitizeStatic(doc) {
@@ -51,7 +51,7 @@ export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'r
   const hashSource=await fetch(new URL('./anchoring.js',import.meta.url)).then(r=>r.text());
   const controller=await fetch(new URL('./static-frame-controller.js',import.meta.url)).then(r=>{if(!r.ok)throw Error('Static preview controller unavailable');return r.text()});
   const revisionSource=await fetch(new URL('./revision-diff.js',import.meta.url)).then(r=>{if(!r.ok)throw Error('Revision primitives unavailable');return r.text()});
-  const script=parsed.createElement('script');script.textContent=(await frameLocaleSource())+`{${hashSource.replace(/^import .*;\n/gm,'').replace(/export /g,'')}\n${revisionSource.replace(/export /g,'')}\nconst readingPosition=${readingPosition.toString()};const sanitizeReading=${sanitizeReading.toString()};const annotationAffordances=${annotationAffordances.toString()};const difference=${difference.toString()};const inlineDraftController=${inlineDraftController.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};\n${controller}\n}`;parsed.body.append(script);
+  const script=parsed.createElement('script');script.textContent=(await frameLocaleSource())+`{${hashSource.replace(/^import .*;\n/gm,'').replace(/export /g,'')}\n${revisionSource.replace(/export /g,'')}\nconst readingPosition=${readingPosition.toString()};const sanitizeReading=${sanitizeReading.toString()};const annotationAffordances=${annotationAffordances.toString()};const difference=${difference.toString()};const inlineDraftController=${inlineDraftController.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};const renderedTextRange=${renderedTextRange.toString()};\n${controller}\n}`;parsed.body.append(script);
   const style=parsed.createElement('style');style.textContent=inlineDraftCSS+'[data-review-mark]{background:#e0f0e5;cursor:pointer}[data-review-del]{background:#ffe3df;color:#92584e}[data-review-ins]{background:#def1e5;color:#285d48}.record-focus{outline:1px solid #76a68b}';parsed.head.append(style);
   frame=document.createElement('iframe');frame.className='hs-static-preview';bind(frame,'frame.staticPreview',{},'title');frame.setAttribute('sandbox','allow-scripts');frame.hidden=true;
   frame.srcdoc='<!doctype html>'+parsed.documentElement.outerHTML;root.append(frame);

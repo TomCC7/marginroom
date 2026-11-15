@@ -47,8 +47,16 @@
   if(m.type==='clear-selection')getSelection().removeAllRanges();
   if(m.type==='measure-selection')selection(m.requestId);
  });
- function selection(requestId){if(inline.active)return;if(sameSelection(pickedSelection,selectionStamp()))return;pickedSelection=null;const empty=reason=>send({type:'selection',selection:null,reason,requestId}),s=getSelection();if(!s.rangeCount||s.isCollapsed){empty('collapsed');return}const block=singleBlockRange(s.getRangeAt(0));if(!block){empty('invalid');return}const {range:r,el}=block,node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;if(node.closest('[data-review-ins]')||r.cloneContents().querySelector('[data-review-ins]')){empty('invalid');return}
-  const pre=document.createRange();pre.selectNodeContents(el);pre.setEnd(r.startContainer,r.startOffset);const quote=text(r.cloneContents(),'[data-review-ins],[data-review-point]'),start=text(pre.cloneContents(),'[data-review-ins],[data-review-point]').length,rect=r.getBoundingClientRect();if(quote.trim())send({type:'selection',requestId,anchor:el.dataset.hsAnchor,selection:{quote,rangeStart:start,rangeEnd:start+quote.length,rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height}}});else empty('invalid');
+ let selectionEpoch=0;
+ async function selection(requestId){const epoch=++selectionEpoch;if(inline.active)return;if(sameSelection(pickedSelection,selectionStamp()))return;pickedSelection=null;const empty=reason=>send({type:'selection',selection:null,reason,requestId}),s=getSelection();if(!s.rangeCount||s.isCollapsed){empty('collapsed');return}const stamp=selectionStamp(),source=s.getRangeAt(0),canonical=singleBlockRange(source),block=canonical||renderedTextRange(source);if(!block){empty('invalid');return}const {range:r,el}=block,node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;if(node.closest('[data-review-ins]')||r.cloneContents().querySelector('[data-review-ins]')){empty('invalid');return}
+  const pre=document.createRange();pre.selectNodeContents(el);pre.setEnd(r.startContainer,r.startOffset);const quote=canonical?text(r.cloneContents(),'[data-review-ins],[data-review-point]'):s.toString(),start=text(pre.cloneContents(),'[data-review-ins],[data-review-point]').length;
+  if(!quote.trim()){empty('invalid');return}
+  const anchor=canonical?el.dataset.hsAnchor:await picker.anchor(el);
+  // Hashing the c3 scope is asynchronous: an older range must not resurrect a
+  // dismissed/replaced selection. Keep correlated pointerdown captures exact.
+  if(!canonical&&(!sameSelection(stamp,selectionStamp())||!el.isConnected||inline.active||sameSelection(pickedSelection,stamp))){if(requestId)empty('invalid');return}
+  if(!canonical&&epoch!==selectionEpoch&&!requestId)return;
+  if(!anchor){empty('invalid');return}const rect=r.getBoundingClientRect();send({type:'selection',requestId,anchor,selection:{quote,...(canonical?{rangeStart:start,rangeEnd:start+quote.length}:{commentOnly:true}),rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height}}});
  }
  document.addEventListener('selectionchange',()=>selection());
  document.addEventListener('pointerup',()=>selection());

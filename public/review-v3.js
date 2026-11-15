@@ -64,9 +64,11 @@ async function startInline(){
 }
 function staticSelection(m){
  const s=m.selection,c=clean.get(m.anchor),r=s?.rect,grouped=getBlock(m.anchor)?.hasAttribute('data-hs-group');
- if(!s||!c||typeof s.quote!=='string'||s.quote.length>100000||!Number.isInteger(s.rangeStart)||!Number.isInteger(s.rangeEnd)||s.rangeStart<0||s.rangeEnd<s.rangeStart||!grouped&&c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote||!r||!['left','top','width','height'].every(k=>Number.isFinite(r[k])&&Math.abs(r[k])<100000))return null;
+ const commentOnly=s?.commentOnly===true&&/^c3:[a-f0-9]{64}:(?:self|[0-9a-z]+(?:\.[0-9a-z]+)*)$/.test(m.anchor);
+ if(!s||typeof s.quote!=='string'||!s.quote.trim()||s.quote.length>100000||!r||!['left','top','width','height'].every(k=>Number.isFinite(r[k])&&Math.abs(r[k])<100000))return null;
+ if(!commentOnly&&(!c||!Number.isInteger(s.rangeStart)||!Number.isInteger(s.rangeEnd)||s.rangeStart<0||s.rangeEnd<s.rangeStart||!grouped&&c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote))return null;
  const frame=staticPreview.frame,box=frame.getBoundingClientRect(),sx=box.width/frame.offsetWidth,sy=box.height/frame.offsetHeight;
- const result={anchor:m.anchor,baseText:c.text,quote:s.quote,rangeStart:s.rangeStart,rangeEnd:s.rangeEnd,rect:{left:box.left+(r.left+frame.clientLeft)*sx,top:box.top+(r.top+frame.clientTop)*sy}};
+ const result={anchor:m.anchor,quote:s.quote,...(commentOnly?{baseText:'',commentOnly:true}:{baseText:c.text,rangeStart:s.rangeStart,rangeEnd:s.rangeEnd}),rect:{left:box.left+(r.left+frame.clientLeft)*sx,top:box.top+(r.top+frame.clientTop)*sy}};
  if(grouped){delete result.rangeStart;delete result.rangeEnd}return result;
 }
 function staticMessage(m){

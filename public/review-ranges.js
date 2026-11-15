@@ -17,6 +17,19 @@ export function singleBlockRange(source,expected=null) {
  }
  return {el,range:r};
 }
+// Comment-only rendered prose. Never rescue an invalid canonical/cross-block
+// range, or manufacture a source anchor for supplementary runtime content.
+export function renderedTextRange(source) {
+ const node=source.startContainer.nodeType===1?source.startContainer:source.startContainer.parentElement;
+ if(!node||node.closest('[data-hs-anchor],input,textarea,select,button,[contenteditable="true"],[data-review-ins],[data-review-del],[data-review-overlay]'))return null;
+ const blocks='p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,figcaption,dt,dd,caption,td,th,div';
+ const el=node.closest(blocks);
+ if(!el||el.querySelector(blocks)||el.querySelector('[data-hs-anchor],input,textarea,select,button,[contenteditable="true"]'))return null;
+ const win=el.ownerDocument.defaultView;
+ for(let n=el;n;n=n.parentElement){const css=win.getComputedStyle(n);if(n.hidden||css.display==='none'||css.visibility==='hidden'||css.visibility==='collapse')return null}
+ const block=singleBlockRange(source,el);
+ return block&&block.range.getClientRects().length?block:null;
+}
 export function textOf(node, exclude='[data-review-del],[data-review-point]') {
  const copy=node.cloneNode(true); copy.querySelectorAll?.(exclude).forEach(n=>n.remove()); return copy.textContent;
 }
