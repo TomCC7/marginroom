@@ -13,7 +13,7 @@ const out=process.env.RUNTIME_ARTIFACTS||path.join(app,'review-artifacts/runtime
 const dir=await mkdtemp(path.join(process.env.TMPDIR||tmpdir(),'runtime-text-'));
 const privateDoc=process.env.PRIVATE_DOC?JSON.parse(await readFile(process.env.PRIVATE_DOC,'utf8')):null;
 const id=privateDoc?'metal-arm-payload-plan-v2':'runtime-text';
-const html=privateDoc?.baseHtml||'<html><head><style>body{font:18px/1.8 sans-serif;padding:24px}p{max-width:620px}#runtime-scope{padding:20px}</style></head><body><h1>Selection fixture</h1><p id="canonical">Canonical same same 😀 paragraph with safe inline <strong>formatting</strong>.</p><section id="runtime-scope"></section></body></html>';
+const html=privateDoc?.baseHtml||'<html><head><style>body{font:18px/1.8 sans-serif;padding:24px}p{max-width:620px}#runtime-scope{padding:20px}</style></head><body><h1>Selection fixture</h1><p id="canonical">Canonical same same 😀 paragraph with safe inline <strong>formatting</strong>.</p><p id="canonical-inline">Independent inline revision control with safe <strong>formatting</strong>, never commented.</p><section id="runtime-scope"></section></body></html>';
 await mkdir(path.join(dir,'docs'));await writeFile(path.join(dir,'docs',id+'.html'),html);
 const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));const base='http://127.0.0.1:'+port;
 let browser,child,lastPage,lastProbe,logs='';const evidence={private:!!privateDoc,before:!!process.env.EXPECT_BROKEN,cases:[]};
@@ -55,7 +55,24 @@ try{
   const canonical=frame.locator('p[data-hs-anchor]').filter({hasText:privateDoc?'':'Canonical'}).first();const canonicalQuote=await nativeDrag(canonical,0,8);await comment.waitFor({state:'visible'});await comment.click();await page.locator('#comment-body').fill('Canonical control '+width);const cr=page.waitForResponse(r=>r.url()===base+'/api/suggest/'+id&&r.request().method()==='POST');await page.locator('#send-comment').click();const canonicalRow=(await (await cr).json()).suggestion;assert.equal(canonicalRow.quote,canonicalQuote);assert(!/^c[23]:/.test(canonicalRow.anchor));assert.equal(canonicalRow.range_start,0);assert.equal(canonicalRow.range_end,canonicalQuote.length);assert(canonicalRow.base_text.includes(canonicalQuote));await page.waitForFunction(()=>document.querySelector('#composer').hidden);
   if(!privateDoc){
    if(width<600&&await page.locator('#discussion .close-drawer').isVisible())await page.locator('#discussion .close-drawer').click();
-   await frame.evaluate(()=>getSelection().removeAllRanges());await canonical.evaluate(n=>n.scrollIntoView({block:'center'}));await page.waitForTimeout(150);const local=await canonical.evaluate(el=>{const r=el.getBoundingClientRect();return {x:r.x+r.width-8,y:r.y+10}}),fb=await page.locator('iframe').boundingBox(),scale=await page.locator('iframe').evaluate(n=>n.getBoundingClientRect().width/n.offsetWidth);await page.mouse.click(fb.x+local.x*scale,fb.y+local.y*scale);await page.waitForTimeout(450);lastProbe={local,frame:fb,scale,label:await page.locator('#target-label').textContent(),tag:await page.locator('#target-tag').textContent(),contextHidden:await page.locator('#selection-context').isHidden(),suggestHidden:await page.locator('#selection-suggest').isHidden(),frameState:await frame.evaluate(({x,y})=>({hit:document.elementFromPoint(x,y)?.outerHTML?.slice(0,300),selection:getSelection().toString()}),local)};await page.locator('#selection-suggest').waitFor({state:'visible'});assert(await page.locator('#selection-suggest').isEnabled());await page.locator('#selection-suggest').click();await frame.locator('[data-inline-editor]').waitFor();await page.keyboard.insertText('Disposable draft');await page.locator('#cancel-draft').click();await page.waitForFunction(()=>document.querySelector('#draft-actions').hidden);
+   // Pick an uncommented canonical control, not the comment marker on #canonical.
+   const inline=frame.locator('#canonical-inline');
+   if(await page.locator('#composer').isVisible()){await page.locator('#close-composer').click();await page.waitForFunction(()=>document.querySelector('#composer').hidden)}
+   if(width<600&&await page.locator('#discussion').isVisible()){await page.locator('#discussion .close-drawer').click();await page.waitForTimeout(200)}
+   await frame.evaluate(()=>getSelection().removeAllRanges());await inline.evaluate(n=>n.scrollIntoView({block:'center'}));await page.waitForTimeout(200);
+   const local=await inline.evaluate(el=>{const r=document.createRange();r.setStart(el.firstChild,2);r.setEnd(el.firstChild,3);const b=r.getBoundingClientRect(),x=b.x+b.width/2,y=b.y+b.height/2;return {x,y,hitId:document.elementFromPoint(x,y)?.closest('p')?.id,anchor:el.dataset.hsAnchor}});
+   assert.equal(local.hitId,'canonical-inline');assert(local.anchor&&!/^c[23]:/.test(local.anchor));assert.notEqual(local.anchor,canonicalRow.anchor);
+   const fb=await page.locator('iframe').boundingBox(),scale=await page.locator('iframe').evaluate(n=>n.getBoundingClientRect().width/n.offsetWidth);
+   const sx=fb.x+local.x*scale,sy=fb.y+local.y*scale;
+   const shellHit=await page.evaluate(({x,y})=>{const n=document.elementFromPoint(x,y);return n?{tag:n.tagName,id:n.id,cls:n.className}:null},{x:sx,y:sy});
+   assert.equal(shellHit?.tag,'IFRAME','click point must be the preview frame, not shell chrome: '+JSON.stringify({local,shellHit,frame:fb,scale}));
+   await page.mouse.click(sx,sy);await page.waitForTimeout(450);
+   lastProbe={local,shellHit,frame:fb,scale,label:await page.locator('#target-label').textContent(),tag:await page.locator('#target-tag').textContent()};
+   assert.match(lastProbe.label,new RegExp('^p #canonical-inline: '));assert.equal(lastProbe.tag,'p');
+   await page.locator('#selection-suggest').waitFor({state:'visible'});assert(await page.locator('#selection-suggest').isEnabled());
+   await page.screenshot({path:out+`/canonical-inline-${width}.png`});
+   evidence.canonicalInline??=[];evidence.canonicalInline.push({width,...lastProbe});
+   await page.locator('#selection-suggest').click();await frame.locator('[data-inline-editor]').waitFor();await page.keyboard.insertText('Disposable draft');await page.locator('#cancel-draft').click();await page.waitForFunction(()=>document.querySelector('#draft-actions').hidden);
    const rewriteRow=(await ctx.request.get(base+'/api/suggestions/'+id+'?status=all').then(r=>r.json())).suggestions.find(r=>r.kind==='rewrite');assert.equal(rewriteRow,undefined,'canceled inline draft stores nothing');
    if(width<600&&await page.locator('#discussion').isVisible())await page.locator('.comment-toggle').click();
    // Genuine cross-block selection is rejected, not enlarged to a container.
