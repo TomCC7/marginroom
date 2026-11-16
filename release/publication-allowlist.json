@@ -179,6 +179,6 @@
     "test/v3-api.test.mjs",
     "test/viewer-ui.test.mjs",
     "test/workspace.browser.mjs",
-    "version-locate.js"
+    "version-navigation.js"
   ]
 }
