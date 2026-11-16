@@ -1,5 +1,13 @@
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
 export const digest = value => createHash('sha256').update(value).digest('hex');
+// Database-bound identity shared by normal hosts, managed runners and host-local pairing.
+export function machineInstance(db, requested) {
+  db.exec('CREATE TABLE IF NOT EXISTS machine_instance(singleton INTEGER PRIMARY KEY CHECK(singleton=1), id TEXT NOT NULL)');
+  db.prepare('INSERT OR IGNORE INTO machine_instance(singleton,id) VALUES(1,?)').run(requested || randomUUID());
+  const {id} = db.prepare('SELECT id FROM machine_instance WHERE singleton=1').get();
+  if (requested && requested !== id) throw new Error('machine_instance_mismatch');
+  return id;
+}
 export function machineAuth(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS machine_credentials(hash TEXT PRIMARY KEY, principal TEXT NOT NULL, doc TEXT, revoked INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS document_grants(doc TEXT, principal TEXT, PRIMARY KEY(doc,principal));

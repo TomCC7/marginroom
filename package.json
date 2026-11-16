@@ -23,6 +23,7 @@
     "test:security": "node test/security-release.test.mjs",
     "test:agent": "node test/agent-workflow.mjs",
     "test:import-recovery": "node test/import-recovery.mjs",
+    "test:existing-host": "node test/existing-host.mjs",
     "test:agent-migration": "node test/agent-migration.mjs"
   },
   "dependencies": {

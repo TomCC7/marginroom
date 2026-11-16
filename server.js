@@ -5,7 +5,7 @@
 // SQLite. Identity is owner-vs-guest (HMAC-signed cookie, OWNER_KEY promotes):
 // anyone may suggest, but editing/restoring/accepting is gated to the doc owner.
 import express from 'express';
-import {machineAuth,digest} from './machine-auth.js';
+import {machineAuth,machineInstance,digest} from './machine-auth.js';
 import {documentImports,validateBundle} from './document-imports.js';
 import {locateAcross} from './version-navigation.js';
 import { parse } from 'parse5';
@@ -228,7 +228,7 @@ export function createApp(db, opts = {}) {
   const { identify, readLimiter, writeLimiter, uploadLimiter } = makeGuardrails({ now: opts.now });
   const machines = machineAuth(db);
   const imports = documentImports(db,DOCS_DIR,{stripActiveContent,checkCapacity(req){if(req.caller.isOwner||req.caller.machine)return;const n=countDocsOwnedBy(db,req.caller.token);if(n>=LIMITS.GUEST_DOC_LIMIT)throw Object.assign(new Error(),{status:403,code:'guest_doc_limit'});if(n===0&&countGuestOwners(db)>=LIMITS.MAX_GUEST_OWNERS)throw Object.assign(new Error(),{status:503,code:'capacity_full'});}});
-  const instanceId = opts.instanceId || randomUUID();
+  const instanceId = machineInstance(db, opts.instanceId);
   app.use((req,res,next)=>req.headers.authorization ? next() : identify(req,res,next));
   app.use(machines.middleware);
   app.get('/api/instance', (_req,res)=>res.json({product:'marginroom',protocolVersion:1,instanceId,ready:true}));

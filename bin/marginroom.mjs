@@ -9,13 +9,27 @@ import {request,instance,reviewURL,serverURL,CliError} from '../lib/cli/client.m
 import {collect} from '../lib/cli/collect.mjs';
 let json=process.argv.includes('--json');
 try{
- const {values:v,positionals:p}=parseArgs({allowPositionals:true,options:{json:{type:'boolean'},browser:{type:'boolean'},help:{type:'boolean'},'data-dir':{type:'string'},server:{type:'string'},'assets-dir':{type:'string'},'include-resource':{type:'string',multiple:true},'new-version-of':{type:'string'},status:{type:'string'},'token-file':{type:'string'},out:{type:'string'}}});
- if(v.help||!p.length){console.log('marginroom open FILE [--assets-dir DIR] [--new-version-of URL] [--browser] [--json]\nmarginroom comments URL [--status open|all|accepted|rejected|stale|withdrawn] --json\nOptions: --data-dir DIR; --server ORIGIN --token-file PRIVATE_JSON\nLocal links are loopback-only. See docs/agent-workflow.md.');process.exit(0);}
+ const {values:v,positionals:p}=parseArgs({allowPositionals:true,options:{json:{type:'boolean'},browser:{type:'boolean'},help:{type:'boolean'},'data-dir':{type:'string'},server:{type:'string'},'assets-dir':{type:'string'},'include-resource':{type:'string',multiple:true},'new-version-of':{type:'string'},status:{type:'string'},'token-file':{type:'string'},'host-db':{type:'string'},out:{type:'string'}}});
+ if(v.help||!p.length){console.log('marginroom open FILE [--assets-dir DIR] [--new-version-of URL] [--browser] [--json]\nmarginroom comments URL [--status open|all|accepted|rejected|stale|withdrawn] --json\nmarginroom pair --out PRIVATE_JSON [--data-dir DIR]\nmarginroom pair --host-db EXISTING_DB --server ORIGIN --out PRIVATE_JSON\nOptions: --data-dir DIR; --server ORIGIN --token-file PRIVATE_JSON\nLocal links are loopback-only. See docs/agent-workflow.md.');process.exit(0);}
  if(p[0]==='pair'){
-  if(p.length!==1||!v.out||v.server)throw new CliError('invalid_arguments','On the service host: marginroom pair --out PRIVATE_JSON [--data-dir DIR]');
-  const dir=await profile(v['data-dir']),service=await localService(dir);const credential=await request(service.origin,'/api/machine/pair',{token:service.token,body:{}});
+  if(p.length!==1||!v.out||Boolean(v.server)!==Boolean(v['host-db']))throw new CliError('invalid_arguments','Managed service: pair --out FILE [--data-dir DIR]; existing host: pair --host-db DB --server ORIGIN --out FILE');
+  let service,credential;
+  if(v['host-db']){
+   // Explicit host filesystem authority only. Never start a service or borrow cookies.
+   const origin=serverURL(v.server);if(origin.pathname!=='/'||origin.search)throw new CliError('invalid_server','Server must be an origin');
+   const info=await instance(origin.origin);
+   const {default:Database}=await import('better-sqlite3');const db=new Database(path.resolve(v['host-db']),{fileMustExist:true});
+   try{
+    const stored=db.prepare('SELECT id FROM machine_instance WHERE singleton=1').get();
+    if(stored?.id!==info.instanceId)throw new CliError('incompatible_instance','Host database does not belong to the running server',6);
+    const {machineAuth}=await import('../machine-auth.js');credential=machineAuth(db).issue();service={origin:origin.origin,instanceId:stored.id};
+   }finally{db.close();}
+  }else{
+   const dir=await profile(v['data-dir']);service=await localService(dir);credential=await request(service.origin,'/api/machine/pair',{token:service.token,body:{}});
+  }
   const {writeFile}=await import('node:fs/promises');await writeFile(path.resolve(v.out),JSON.stringify({token:credential.token,origin:service.origin,instanceId:service.instanceId}),{mode:0o600,flag:'wx'});console.log(json?JSON.stringify({schemaVersion:1,paired:true}):'Credential written to private file. Transfer it securely; never share it as a review link.');process.exit(0);
  }
+ if(v['host-db'])throw new CliError('invalid_arguments','--host-db is only supported by pair');
  if(!['open','comments'].includes(p[0])||p.length!==2)throw new CliError('invalid_arguments','Expected open FILE or comments URL');
  if(v.browser&&v.json)throw new CliError('invalid_arguments','--browser and --json are mutually exclusive');
  const dir=await profile(v['data-dir']);let service;

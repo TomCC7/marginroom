@@ -3,6 +3,7 @@
 ## Installed agent workflow
 
 - `npm run test:agent`: actual npm pack + isolated install + normal CLI subprocesses, native comment/reply exact-ID readback and restart; bundle/font/module errors, scope/revocation/pairing, preserved versions/locate, browser management/guest quota/deletion, preferred-port occupation and real launcher SIGKILL/lease adoption. Set `AGENT_ARTIFACTS` for retained synthetic reports/captures, `FONT_FIXTURE` for a valid installed TTF (default `/usr/share/fonts/carlito/Carlito-Regular.ttf`).
+- `npm run test:existing-host`: review130 narrow regression. Fresh tarball/isolated install; normal `createApp(db)` HTTP host (no managed runner identity injection); host-local `pair --host-db DB --server ORIGIN` → installed open → close/reopen DB + same-port host → original credential/review/source/owner readback; anonymous/owner/invalid-Bearer HTTP bootstrap denied, wrong DB rejected, revocation fails closed and no managed service created. `HOST_ARTIFACTS` retains a secret-free receipt.
 - `npm run test:import-recovery`: real abrupt exits at publication boundaries.
 - `npm run test:agent-migration`: baseline archive → synthetic HTTP rows/replies → stopped-writer complete backup → additive migration → independently installed baseline rollback/readback. Requires local baseline Git object and npm dependency access; no production state.
 - `npm run test:i18n`, `npm run test:api`: relevant existing contracts. Chromium screenshots/keyboard and synthetic composition events do not certify physical Safari or OS IME.
