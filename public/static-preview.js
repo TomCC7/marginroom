@@ -41,6 +41,10 @@ export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'r
  async function create(){
   source??=fetch(`/api/doc/${encodeURIComponent(docId)}`).then(async r=>{if(!r.ok)throw Error('Static preview source unavailable');return (await r.json()).baseHtml});
   const parsed=sanitizeStatic(new DOMParser().parseFromString(await source,'text/html'));
+  // Article strips global author sheets to protect shell chrome. Preserve the
+  // original body sheets here, in source order, inside the opaque preview only.
+  const bodySheets=[...parsed.body.querySelectorAll('style,link[rel~="stylesheet" i]')];
+  parsed.head.append(...bodySheets);
   parsed.body.replaceChildren(...[...root.childNodes].filter(n=>n!==frame).map(n=>n.cloneNode(true)));
   sanitizeStatic(parsed);
   // The source's unscoped head CSS and body attributes run at the real viewport.

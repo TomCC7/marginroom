@@ -231,7 +231,7 @@ function renderBaseHtml(baseHtml) {
   }
   // Preserve the deliverable's own styling (doc HTML is trusted) — but SCOPE it to
   // #hs-doc-root so it can't leak onto the viewer chrome (see DOC_SCOPE note above).
-  const headBits = parsed.querySelectorAll('style, link[rel="stylesheet"]');
+  const headBits = parsed.querySelectorAll('style, link[rel~="stylesheet" i]');
   headBits.forEach((n) => {
     if (n.tagName === 'STYLE') {
       const scoped = document.createElement('style');
