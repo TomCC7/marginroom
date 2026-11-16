@@ -10,8 +10,8 @@
 //   • every other selector gets the container as a required ancestor
 // The deliverable renders identically inside its column; it just can't reach out
 // and restyle the toolbar. Parsing is done with the browser CSSOM (no hand-rolled
-// CSS parser); anything we can't parse is passed through untouched rather than
-// dropped, so a doc never loses styling.
+// CSS parser); unparseable sheets are omitted in Article mode rather than
+// injected globally. The opaque full preview preserves source styling.
 
 export const DOC_SCOPE = '#hs-doc-root';
 
@@ -67,12 +67,13 @@ export function scopeSelector(selectorText, scope = DOC_SCOPE) {
 }
 
 // Recursively scope the rules of a stylesheet or grouping rule (@media/@supports).
-// Rules that don't select page elements (@keyframes, @font-face, @import) pass
-// through unchanged. Returns scoped CSS text.
+// @keyframes and @font-face remain; unscopable @import is dropped.
+// Returns scoped CSS text.
 export function scopeCssRules(rules, scope = DOC_SCOPE) {
   let out = '';
   for (const rule of rules) {
     try {
+      if (rule.type === CSSRule.IMPORT_RULE) continue; // Cannot scope fetched rules.
       if (rule.type === CSSRule.STYLE_RULE) {
         out += `${scopeSelector(rule.selectorText, scope)} { ${rule.style.cssText} }\n`;
       } else if (rule.type === CSSRule.MEDIA_RULE) {
@@ -102,15 +103,20 @@ export function scopeCssRules(rules, scope = DOC_SCOPE) {
 // The probe is attached (needed for .sheet to populate) but disabled via
 // media="not all" so it never affects layout, and removed immediately after.
 export function scopeCssText(rawCss, doc = document, scope = DOC_SCOPE) {
+  // Constructed sheets discard @import without fetching it. Keep the CSSOM
+  // fallback for engines without constructable stylesheets.
+  if (typeof CSSStyleSheet !== 'undefined' && 'replaceSync' in CSSStyleSheet.prototype) {
+    try { const sheet = new CSSStyleSheet(); sheet.replaceSync(rawCss); return scopeCssRules(sheet.cssRules, scope); } catch { return ''; }
+  }
   const probe = doc.createElement('style');
   probe.textContent = rawCss;
   probe.media = 'not all';
   doc.head.appendChild(probe);
   let scoped;
   try {
-    scoped = probe.sheet ? scopeCssRules(probe.sheet.cssRules, scope) : rawCss;
+    scoped = probe.sheet ? scopeCssRules(probe.sheet.cssRules, scope) : '';
   } catch {
-    scoped = rawCss;
+    scoped = '';
   } finally {
     probe.remove();
   }

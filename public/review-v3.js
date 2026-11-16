@@ -135,7 +135,7 @@ function scrollThread(id){
  if(box.top<view.top||box.bottom>view.bottom)viewport.scrollTop+=box.top-view.top;
 }
 function openDiscussion(id){dismissTarget();clearSelection();if(draft)return toast(()=>tr('review.finishDraft'));setView('article');if(id){active=id;filter='all';$$('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===filter))}document.body.classList.remove('drawer-closed');document.body.classList.add('drawer-open');syncDiscussion();renderThreads();if(id){marks.focus(id);staticPreview?.send({type:'tag-focus',id});if(state().interactive)state().frame?.contentWindow?.postMessage({type:'tag-focus',id},'*');requestAnimationFrame(()=>scrollThread(id))}}
-function openThreadChoices(ids){ids=[...new Set(ids)].filter(id=>records.some(r=>r.id===id));if(!ids.length)return;if(ids.length===1)return openDiscussion(ids[0]);openDiscussion();pop(()=>'<h3>'+tr('review.choicesHeading',{count:ids.length})+'</h3>'+ids.map(id=>{const r=records.find(s=>s.id===id);return `<button data-choose-thread="${esc(id)}">${r.kind==='rewrite'?tr('review.revision'):tr('review.annotation')} · ${esc(decode(r.author))} · ${esc(decode(r.body||r.quote).slice(0,75))}</button>`}).join(''));$('#popover').onclick=e=>{const id=e.target.closest('[data-choose-thread]')?.dataset.chooseThread;if(id){$('#popover').hidden=true;openDiscussion(id)}}}
+function openThreadChoices(ids){ids=[...new Set(ids)].filter(id=>records.some(r=>r.id===id));if(!ids.length)return;if(ids.length===1)return openDiscussion(ids[0]);openDiscussion();pop(()=>'<h3>'+tr('review.choicesHeading',{count:ids.length})+'</h3>'+ids.map(id=>{const r=records.find(s=>s.id===id);return `<button data-choose-thread="${esc(id)}">${r.kind==='rewrite'?tr('review.revision'):tr('review.annotation')} · ${esc(decode(r.author))} · ${esc(decode(r.body||r.quote).slice(0,75))}</button>`}).join(''));$('#popover').onclick=e=>{const id=e.target.closest('[data-choose-thread]')?.dataset.chooseThread;if(id){closePop();openDiscussion(id)}}}
 const marks=annotationAffordances({doc:document,onOpen:openThreadChoices,resolveTarget:a=>a.match(/^c[23]:/)?picker?.resolve(a):null});
 function commentGroups(){const groups=new Map();for(const r of records){if(r.status!=='open'||staleReason(r)||!['comment','rewrite'].includes(r.kind))continue;const key=r.anchor+':'+r.kind;if(!groups.has(key))groups.set(key,{anchor:r.anchor,kind:r.kind,ids:[]});groups.get(key).ids.push(r.id)}return [...groups.values()]}
 function locate(id,open=true){
@@ -283,7 +283,7 @@ function selectionUI(s){
  $('#selection-suggest').hidden=!available||!scope;
  const reason=scope?rewriteReason(scope):null,overlap=reason?.id;
  $('#selection-suggest').disabled=!!reason&&!overlap;
- $('#selection-suggest').innerHTML=icon('edit',{size:16})+'<span></span>';bind($('#selection-suggest span'),overlap?'review.viewRevision':'review.inlineEdit');
+ if(!$('#selection-suggest svg'))$('#selection-suggest').innerHTML=icon('edit',{size:16})+'<span></span>';bind($('#selection-suggest span'),overlap?'review.viewRevision':'review.inlineEdit');
  $('#selection-suggest').title=reason?.text||reason||tr('review.inlineHint');
  let note=$('#rewrite-reason');if(!note){note=document.createElement('span');note.id='rewrite-reason';note.setAttribute('role','status');$('#selection-context').append(note)}note.textContent=reason?.text||reason||'';note.hidden=!reason;
  $('#target-label').textContent=s?.element?s.quote:'';$('#target-label').title=s?.element?(scope?.quote||s.context||s.quote):'';$('#target-tag').textContent=s?.tag||s?.quote?.split(/[ :]/)[0]||'';$('#target-heading').hidden=!available||!s.element;
@@ -330,7 +330,7 @@ async function showComposer(id,kind='comment'){
  if(!id){selected=selectionPress||(selected?.element?selected:selectionInfo()||selected);if(!selected||(!state().interactive&&selected.rangeStart!=null&&!getBlock(selected.anchor)))return}
  if(kind==='rewrite'){if(!selected?.element)return;clearTimeout(selectionPressTimer);selectionPress=null;startInline();return}
  composeKind=kind;clearTimeout(selectionPressTimer);selectionPress=null;replyTo=id||null;showComposer.requestId=crypto.randomUUID?.()||'r'+Date.now();
- selectionUI(null);bind($('#composer-title'),id?'review.replyTitle':kind==='rewrite'?'review.suggestTitle':'review.writeComment');$('#selected-quote').textContent=id?decode(records.find(s=>s.id===id)?.quote):selected.quote;$('#comment-body').value='';bind($('#send-comment'),id?'review.reply':kind==='rewrite'?'review.submitRevision':'review.writeComment');$('#composer').hidden=false;$('#shade').hidden=false;$('#comment-body').focus({preventScroll:true});$('#comment-body').scrollTop=0;
+ selectionUI(null);bind($('#composer-title'),id?'review.replyTitle':kind==='rewrite'?'review.suggestTitle':'review.writeComment');$('#selected-quote').textContent=id?decode(records.find(s=>s.id===id)?.quote):selected.quote;$('#comment-body').value='';bind($('#send-comment'),id?'review.reply':kind==='rewrite'?'review.submitRevision':'review.writeComment');$('#composer').hidden=false;$('#composer').showModal();$('#comment-body').focus({preventScroll:true});$('#comment-body').scrollTop=0;
 }
 function unsavedEdits(){return editTimers.size>0||editInflight>0||[...editBuffers.values()].some(b=>b.seq>b.saved)}
 function typedComment(){return !$('#composer').hidden&&$('#comment-body').value.length>0}
@@ -364,7 +364,7 @@ async function finishLeave(save){
   else{if(draft)cancelDraft();closeComposer(true)}
  }finally{leaving=false;for(const b of $('#leave-dialog').querySelectorAll('button'))b.disabled=false}
 }
-function closeComposer(force=false){if(busy)return;if(force!==true&&typedComment()){requestLeave('composer');return}$('#composer').hidden=true;$('#comment-body').value='';$('#shade').hidden=true;replyTo=null;clearSelection(true)}
+function closeComposer(force=false){if(busy)return;if(force!==true&&typedComment()){requestLeave('composer');return}$('#composer').close();$('#composer').hidden=true;$('#comment-body').value='';$('#shade').hidden=true;replyTo=null;clearSelection(true)}
 async function sendComment(){
  const body=$('#comment-body').value.trim();if((!body&&composeKind!=='rewrite')||busy)return;busy=true;$('#send-comment').disabled=true;
  try{let id=replyTo;
@@ -421,17 +421,22 @@ async function decide(id,action){
  try{await api(`/api/suggest/${encodeURIComponent(docId)}/${encodeURIComponent(id)}/${action}`,undefined);await refresh(true);status(()=>action==='accept'?tr('review.revisionAccepted'):tr('review.annotationHandled'))}
  catch(e){toast(()=>errorText(e));if(e.suggestion?.id===id&&e.suggestion.doc_id===docId){commentVersion++;updateComment(e.suggestion)}else await refresh(false);status(()=>errorText(e),e.code===409?'saved':'error')}finally{busy=false}
 }
-function pop(html){popCopy=typeof html==='function'?html:()=>html;html=popCopy();$('#popover').innerHTML=html;$('#popover').hidden=false}
+let popTrigger=null;
+function closePop(restore=false){$('#popover').hidden=true;popTrigger?.setAttribute('aria-expanded','false');if(restore)popTrigger?.focus({preventScroll:true})}
+function sizePop(){const panel=$('#popover');if(panel.hidden)return;const vv=window.visualViewport,top=Math.max(80,(vv?.offsetTop||0)+8),bottom=(vv?.offsetTop||0)+(vv?.height||innerHeight);panel.style.top=top+'px';panel.style.maxHeight=Math.max(0,bottom-top-8)+'px'}
+function pop(html){closePop();popTrigger=document.activeElement; if(!['name-btn','share-btn','more-btn'].includes(popTrigger?.id))popTrigger=null;popTrigger?.setAttribute('aria-controls','popover');popTrigger?.setAttribute('aria-expanded','true');popCopy=typeof html==='function'?html:()=>html;html=popCopy();$('#popover').innerHTML=html;$('#popover').hidden=false;sizePop();$('#popover').querySelector('input,button,select')?.focus({preventScroll:true})}
 function paintName(){$$('.my-avatar').forEach(n=>n.textContent=[...myName][0]);$('.person-name').textContent=myName}
-function nameMenu(){pop(()=>`<h3>${tr('review.nameTitle')}</h3><p>${tr('review.nameHelp')}</p><input id="review-name" aria-label="${tr('review.reviewName')}" maxlength="80" value="${esc(myName)}"><button id="save-name" class="primary" style="margin-top:12px">${tr('review.confirm')}</button>`);$('#save-name').onclick=()=>{myName=setReviewerName($('#review-name').value);paintName();$('#popover').hidden=true}}
+function nameMenu(){pop(()=>`<h3>${tr('review.nameTitle')}</h3><p>${tr('review.nameHelp')}</p><input id="review-name" aria-label="${tr('review.reviewName')}" maxlength="80" value="${esc(myName)}"><button id="save-name" class="primary" style="margin-top:12px">${tr('review.confirm')}</button>`);$('#save-name').onclick=()=>{myName=setReviewerName($('#review-name').value);paintName();closePop()}}
 function shareMenu(){const url=new URL(location.href);url.searchParams.delete('key');pop(()=>`<h3>${tr('review.shareTitle')}</h3><input aria-label="${tr('review.publicLink')}" readonly value="${esc(url.href)}"><button id="copy-link" class="primary" style="margin-top:12px">${tr('review.copyLink')}</button>${state().isDocOwner?`<label>${tr('review.linkAccess')}<select id="access-level"><option value="view">${tr('review.accessView')}</option><option value="suggest">${tr('review.accessSuggest')}</option><option value="edit">${tr('review.accessEdit')}</option></select></label>`:''}<p id="share-note">${state().canEdit?tr('review.canEditHelp'):state().canSuggest?tr('review.canSuggestHelp'):tr('review.viewOnlyHelp')}</p>`);$('#copy-link').onclick=async()=>{try{await navigator.clipboard.writeText(url.href);toast(()=>tr('review.copied'))}catch{$('#popover input').select();toast(()=>tr('review.copyManually'))}};if($('#access-level')){fetch(`/api/doc/${encodeURIComponent(docId)}`).then(r=>r.json()).then(d=>{$('#access-level')&&($('#access-level').value=d.access)});$('#access-level').onchange=async e=>{try{await api(`/api/access/${encodeURIComponent(docId)}`,{level:e.target.value},'PUT');await refresh(true);toast(()=>tr('review.accessUpdated'))}catch(err){toast(()=>errorText(err))}}}}
 async function showHistory(){
- $('#popover').hidden=true;const panel=$('#hs-versions');panel.classList.add('open');panel.innerHTML=`<button id="close-history" style="float:right">×</button><h3 data-i18n="review.history">${tr('review.history')}</h3><div id="history-records"><span data-i18n="review.loading">${tr('review.loading')}</span></div>`;bindShell(panel);$('#close-history').onclick=()=>panel.classList.remove('open');
+ closePop();const panel=$('#hs-versions');panel.classList.add('open');panel.innerHTML=`<button id="close-history" style="float:right">×</button><h3 data-i18n="review.history">${tr('review.history')}</h3><div id="history-records"><span data-i18n="review.loading">${tr('review.loading')}</span></div>`;bindShell(panel);$('#close-history').onclick=()=>panel.classList.remove('open');
  try{const data=await fetch(`/api/versions/${encodeURIComponent(docId)}`).then(r=>r.json());$('#history-records').innerHTML=(data.versions||[]).map(v=>`<div class="thread"><p class="version-time" data-ts="${esc(v.ts)}">${esc(date(v.ts))}</p><p${v.label?'':' data-i18n="review.sourceEdit"'}>${esc(v.label||tr('review.sourceEdit'))}</p><button data-i18n="review.viewVersion" data-preview-version="${v.id}">${tr('review.viewVersion')}</button>${state().isDocOwner?`<button data-i18n="review.restoreVersion" data-restore-version="${v.id}">${tr('review.restoreVersion')}</button>`:''}<pre id="version-${v.id}" style="white-space:pre-wrap;font-size:12px"></pre></div>`).join('')||`<p data-i18n="review.noHistory">${tr('review.noHistory')}</p>`;bindShell($('#history-records'))}catch{bind($('#history-records'),'review.historyFailed')}
 }
+let polling=false;
 async function poll(){
- if(localEditing()||selectionPress||selectionInfo()||busy||composing||editTimers.size||editInflight||root.contains(document.activeElement)&&['edit','suggest'].includes(mode))return;
- try{const r=await fetch(`/api/doc/${encodeURIComponent(docId)}`);if(!r.ok)return;const d=await r.json();if(localEditing()||root.contains(document.activeElement)&&mode==='suggest')return;const changed=JSON.stringify(d.overlay||{})!==overlaySignature||d.canEdit!==state().canEdit||d.canSuggest!==state().canSuggest;await refresh(changed)}catch{}
+ if(document.hidden||polling||localEditing()||selectionPress||selectionInfo()||busy||composing||editTimers.size||editInflight||root.contains(document.activeElement)&&['edit','suggest'].includes(mode))return;
+ polling=true;
+ try{const r=await fetch(`/api/doc/${encodeURIComponent(docId)}`);if(!r.ok)return;const d=await r.json();if(document.hidden||localEditing()||root.contains(document.activeElement)&&mode==='suggest')return;const changed=JSON.stringify(d.overlay||{})!==overlaySignature||d.canEdit!==state().canEdit||d.canSuggest!==state().canSuggest;await refresh(changed)}catch{}finally{polling=false}
 }
 async function loadedIdentity(){
  let id=state().docId||docId,title=(typeof state().baseHtml==='string'?new DOMParser().parseFromString(state().baseHtml,'text/html').title:'')||root.querySelector('h1')?.textContent?.trim()||id;
@@ -442,6 +447,11 @@ async function loadedIdentity(){
 async function main(){
  $('#viewer-home').onclick=e=>{e.preventDefault();requestLeave('home')};
  $('#leave-stay').onclick=stayHere;$('#leave-discard').onclick=()=>finishLeave(false);$('#leave-save').onclick=()=>finishLeave(true);
+ $('#composer').addEventListener('cancel',e=>{e.preventDefault();closeComposer()});
+ let composerOutside=false;
+ const outsideComposer=e=>{const r=$('#composer').getBoundingClientRect();return e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom};
+ $('#composer').addEventListener('pointerdown',e=>{composerOutside=outsideComposer(e)});
+ $('#composer').addEventListener('pointerup',e=>{if(composerOutside&&outsideComposer(e))closeComposer();composerOutside=false});
  $('#leave-dialog').addEventListener('cancel',e=>{e.preventDefault();stayHere()});
  // Standing help belongs in the existing help menu, not the discussion viewport.
  $('.discussion>.discussion-note')?.remove();
@@ -462,7 +472,7 @@ async function main(){
  new ResizeObserver(syncHeader).observe(topbar);
  new ResizeObserver(syncNavInset).observe(warning);syncHeader();
  const syncSelectionViewport=()=>document.documentElement.style.setProperty('--hs-vv-top',(window.visualViewport?.offsetTop||0)+'px');
- window.visualViewport?.addEventListener('resize',syncSelectionViewport);window.visualViewport?.addEventListener('scroll',syncSelectionViewport);syncSelectionViewport();
+ window.addEventListener('resize',sizePop);window.visualViewport?.addEventListener('resize',sizePop);window.visualViewport?.addEventListener('scroll',sizePop);window.visualViewport?.addEventListener('resize',syncSelectionViewport);window.visualViewport?.addEventListener('scroll',syncSelectionViewport);syncSelectionViewport();
  const dock=$('.dock');
  const syncDock=()=>document.documentElement.style.setProperty('--hs-dock-h',dock.getBoundingClientRect().height+'px');
  new ResizeObserver(syncDock).observe(dock);syncDock();
@@ -503,13 +513,13 @@ async function main(){
  // In edit mode decorate() already restores accepted HTML; never reset a live edit buffer on refocus.
  root.addEventListener('focusout',e=>{const el=e.target.closest('[data-hs-anchor]'),b=el&&editBuffers.get(el.dataset.hsAnchor);if(mode==='edit'&&el&&b&&b.seq>b.saved)saveEdit(el)});
  $('#submit-draft').onclick=submitDraft;$('#cancel-draft').onclick=cancelDraft;
- $('#name-btn').onclick=nameMenu;$('#share-btn').onclick=shareMenu;$('#more-btn').onclick=()=>{pop(()=>`<h3>${tr('review.options')}</h3>`+ (state().canEdit?'<button id="direct-edit-menu">'+(mode==='edit'?tr('review.exitEdit'):tr('review.editSource'))+'</button>':'')+`<button id="history-menu">${tr('review.history')}</button><button id="export-menu">${tr('review.export')}</button><button id="help-menu">${tr('review.help')}</button>`);if($('#direct-edit-menu'))$('#direct-edit-menu').onclick=()=>{changeMode(mode==='edit'?'read':'edit');$('#popover').hidden=true;status(()=>mode==='edit'?tr('review.editStatus'):tr('review.backBrowse'))};$('#history-menu').onclick=showHistory;$('#export-menu').onclick=async()=>{if(draft||editTimers.size||editInflight)return toast(()=>tr('review.finishExport'));$('#popover').hidden=true;await bridge.exportHtml()};$('#help-menu').onclick=()=>{toast(()=>tr('review.helpText'));$('#popover').hidden=true}};
+ $('#name-btn').onclick=nameMenu;$('#share-btn').onclick=shareMenu;$('#more-btn').onclick=()=>{pop(()=>`<h3>${tr('review.options')}</h3>`+ (state().canEdit?'<button id="direct-edit-menu">'+(mode==='edit'?tr('review.exitEdit'):tr('review.editSource'))+'</button>':'')+`<button id="history-menu">${tr('review.history')}</button><button id="export-menu">${tr('review.export')}</button><button id="help-menu">${tr('review.help')}</button>`);if($('#direct-edit-menu'))$('#direct-edit-menu').onclick=()=>{changeMode(mode==='edit'?'read':'edit');closePop();status(()=>mode==='edit'?tr('review.editStatus'):tr('review.backBrowse'))};$('#history-menu').onclick=showHistory;$('#export-menu').onclick=async()=>{if(draft||editTimers.size||editInflight)return toast(()=>tr('review.finishExport'));closePop();await bridge.exportHtml()};$('#help-menu').onclick=()=>{toast(()=>tr('review.helpText'));closePop()}};
  $('#hs-versions').onclick=async e=>{const b=e.target.closest('button');if(b?.dataset.previewVersion){const r=await fetch(`/api/version/${encodeURIComponent(docId)}/${b.dataset.previewVersion}`).then(r=>r.json());$('#version-'+b.dataset.previewVersion).textContent=JSON.stringify(r.overlay,null,2)}if(b?.dataset.restoreVersion){if(draft||!confirm(tr('review.restoreConfirm')))return;try{await api(`/api/restore/${encodeURIComponent(docId)}`,{versionId:Number(b.dataset.restoreVersion)});await refresh(true);showHistory()}catch(err){toast(()=>errorText(err))}}};
- document.addEventListener('pointerdown',e=>{if(e.target.closest('[data-locale-select]'))return;if(!e.target.closest('#popover,#name-btn,#share-btn,#more-btn'))$('#popover').hidden=true});
- document.addEventListener('keydown',e=>{if($('#leave-dialog').open){if(e.key==='Escape'){e.preventDefault();stayHere()}return}if(e.key==='Escape'){if(!$('#selection-context').hidden&&dismissTarget(true)){e.preventDefault();return}picker?.clear();staticPreview?.send({type:'clearTarget'});state().frame?.contentWindow?.postMessage({type:'clearTarget'},'*');if(draft)cancelDraft();else{closeComposer();closeDiscussion();closeNav();$('#popover').hidden=true;$('#hs-versions').classList.remove('open')}}if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&draft){e.preventDefault();submitDraft()}});
+ document.addEventListener('pointerdown',e=>{if(e.target.closest('[data-locale-select]'))return;if(!e.target.closest('#popover,#name-btn,#share-btn,#more-btn'))closePop()});
+ document.addEventListener('keydown',e=>{if($('#leave-dialog').open){if(e.key==='Escape'){e.preventDefault();stayHere()}return}if(!$('#composer').hidden)return;if(e.key==='Escape'){if(!$('#popover').hidden){e.preventDefault();closePop(true);return}if(!$('#selection-context').hidden&&dismissTarget(true)){e.preventDefault();return}picker?.clear();staticPreview?.send({type:'clearTarget'});state().frame?.contentWindow?.postMessage({type:'clearTarget'},'*');if(draft)cancelDraft();else{closeComposer();closeDiscussion();closeNav();closePop();$('#hs-versions').classList.remove('open')}}if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&draft){e.preventDefault();submitDraft()}});
  window.addEventListener('beforeunload',e=>{if(unsavedDrafts()){e.preventDefault();e.returnValue=tr('review.unsaved')}});
  syncDiscussion();matchMedia('(max-width:1100px)').addEventListener('change',syncDiscussion);
- if(innerWidth<=1100)$('#nav-toggle').setAttribute('aria-expanded','false');setInterval(poll,5000);
+ if(innerWidth<=1100)$('#nav-toggle').setAttribute('aria-expanded','false');setInterval(poll,5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
 }
 
 // Reconcile ONLY explicitly owned review-card/popover chrome. No imported tree,

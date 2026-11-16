@@ -13,6 +13,8 @@ export function sanitizeStatic(doc) {
   const n=a.localName.toLowerCase(),v=a.value.replace(/[\u0000-\u0020\u007f]/g,'');
   if(n.startsWith('on')||n==='srcdoc'||(['href','src','action','formaction','data','xlink:href'].includes(n)&&/^(javascript|vbscript|data:text\/html):/i.test(v)))el.removeAttributeNode(a);
  }
+ for(const el of doc.querySelectorAll('[referrerpolicy]'))el.setAttribute('referrerpolicy','no-referrer');
+ const policy=doc.createElement('meta');policy.name='referrer';policy.content='no-referrer';doc.head.prepend(policy);
  return doc;
 }
 export function createStaticPreview({docId,bridge,root,onMessage,getMode=()=> 'read'}) {

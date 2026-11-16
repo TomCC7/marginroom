@@ -9,6 +9,20 @@
 
 // A comment/text anchor the parent will hand to /api/suggest (which itself caps
 // anchors at 200). Must be a non-empty, bounded string.
+export function parseFrameReady(m) {
+  if (!Array.isArray(m?.anchors) || m.anchors.length > 20000 || !m.anchors.every(validAnchor)) return null;
+  if (!m.origText || typeof m.origText !== 'object' || Array.isArray(m.origText)) return null;
+  const anchors = new Set(m.anchors), entries = Object.entries(m.origText);
+  if (anchors.size !== m.anchors.length || entries.length > 20000) return null;
+  let total = 0;
+  for (const [key, value] of entries) {
+    if (!anchors.has(key) || typeof value !== 'string' || value.length > 1000000) return null;
+    total += value.length;
+    if (total > 16000000) return null;
+  }
+  return {anchors, origText:Object.fromEntries(entries)};
+}
+
 export function validAnchor(a) {
   return typeof a === 'string' && a.length > 0 && a.length <= 200;
 }

@@ -14,7 +14,7 @@ import { assignAnchors, assignCommentAnchors, normalizeText, GROUP_ATTR, groupSh
 import { diffWords, renderDiffHtml } from './diff.js';
 import { resolveAssets, forceRevealContent, summarizeMissing, healImageAssets } from './assets.js';
 import { icon } from './icons.js';
-import { parseSuggestTarget, validRect } from './frame-messages.js';
+import { parseSuggestTarget, validRect, parseFrameReady } from './frame-messages.js';
 import {annotationAffordances} from './annotation-affordances.js';
 import {elementReview} from './element-review.js';
 import {singleBlockRange} from './review-ranges.js';
@@ -219,6 +219,8 @@ function renderBaseHtml(baseHtml) {
   // importing any nodes (also protects legacy/seed files without a raw copy).
   parsed.querySelectorAll('script, iframe, frame, frameset, object, embed, base, meta, template, animate, animateMotion, animateTransform, set').forEach(n => n.remove());
   for (const el of parsed.querySelectorAll('*')) {
+    // Author resource policies must not expose the review URL's query capability.
+    if (['IMG','LINK','A','AREA','VIDEO','AUDIO','SOURCE'].includes(el.tagName)) el.setAttribute('referrerpolicy','no-referrer');
     for (const attr of [...el.attributes]) {
       const name = attr.localName.toLowerCase();
       const value = attr.value.replace(/[\u0000-\u0020\u007f]/g, '');
@@ -229,20 +231,16 @@ function renderBaseHtml(baseHtml) {
   }
   // Preserve the deliverable's own styling (doc HTML is trusted) — but SCOPE it to
   // #hs-doc-root so it can't leak onto the viewer chrome (see DOC_SCOPE note above).
-  const headBits = parsed.head
-    ? parsed.head.querySelectorAll('style, link[rel="stylesheet"]')
-    : [];
+  const headBits = parsed.querySelectorAll('style, link[rel="stylesheet"]');
   headBits.forEach((n) => {
     if (n.tagName === 'STYLE') {
       const scoped = document.createElement('style');
       scoped.textContent = scopeCssText(n.textContent || '');
       document.head.appendChild(scoped);
-    } else {
-      // External stylesheet: we can't rewrite its rules synchronously, so we
-      // can't scope it. Leave it as-is — deliverables are self-contained inline
-      // CSS in practice; a linked sheet is rare and still trusted doc content.
-      document.head.appendChild(n.cloneNode(true));
     }
+    // Unscopable external sheets remain in the opaque full preview only.
+    // Remove body styles too, so their original global rules are never imported.
+    n.remove();
   });
   root.innerHTML = '';
   const kids = parsed.body ? Array.from(parsed.body.childNodes) : [];
@@ -1165,11 +1163,13 @@ function onFrameMessage(e) {
     return;
   }
   if (m.type === 'ready') {
+    // The producer legitimately resends ready after DOM rescans (scan(false)).
+    // Validate each complete snapshot; never turn that lifecycle into one-shot init.
+    const ready = parseFrameReady(m);
+    if (!ready) return;
     frame.contentWindow.postMessage({type:'locale',locale:locale.language},'*');
-    frameAnchors = new Set(Array.isArray(m.anchors) ? m.anchors : []);
-    // Remember each anchor's ORIGINAL rendered text so the download can source-patch
-    // the compressed payload (find old text -> replace with the edit).
-    frameOrigText = (m.origText && typeof m.origText === 'object') ? m.origText : {};
+    frameAnchors = ready.anchors;
+    frameOrigText = ready.origText;
     // Push any existing overlay into the frame so saved edits show on load.
     if (currentOverlay) frame.contentWindow.postMessage({ type: 'applyOverlay', overlay: currentOverlay }, '*');
     frame.contentWindow.postMessage({ type: 'setMode', mode }, '*');
@@ -1181,7 +1181,7 @@ function onFrameMessage(e) {
   if (m.type === 'edit') {
     if (mode !== 'edit' || !canEdit) return;
     if (typeof m.anchor !== 'string' || !frameAnchors.has(m.anchor)) return; // reject unknown anchor
-    if (typeof m.text !== 'string') return;
+    if (typeof m.text !== 'string' || m.text.length > 1000000) return;
     frameEdit(m.anchor, m.text);
     return;
   }
