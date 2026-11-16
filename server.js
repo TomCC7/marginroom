@@ -262,7 +262,7 @@ export function createApp(db, opts = {}) {
     const {record:recordId,target}=req.body||{};const record=getSuggestion(db,recordId);if(!record||!machines.manages(req,record.doc_id)||!machines.manages(req,target))return res.status(403).json({error:'not_your_doc'});
     const from=imports.get(record.doc_id),to=imports.get(target);if(!from||!to||from.series!==to.series)return res.status(400).json({error:'unrelated_versions'});
     const source=await readDocHtml(record.doc_id),html=await readDocHtml(target);
-    res.json({sourceVersion:record.doc_id,targetVersion:target,record:record.id,...locateAcross(db,record,source,{doc:target,html})});
+    res.json({sourceVersion:record.doc_id,targetVersion:target,record:record.id,...await locateAcross(db,record,source,{doc:target,html})});
   });
   // Imports are visible only after their synchronous SQLite publication commit.
   app.use((req,res,next)=>{const id=/^\/api\/(?:doc|raw|doc-meta|suggestions)\/(review-[a-f0-9-]+)$/.exec(req.path)?.[1];if(id&&!imports.get(id))return res.status(404).json({error:'doc_not_found'});next();});

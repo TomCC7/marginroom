@@ -21,12 +21,14 @@
     "browser:install": "playwright-core install chromium",
     "test:acceptance": "node test/release-acceptance.mjs",
     "test:security": "node test/security-release.test.mjs",
-    "test:agent": "node test/agent-workflow.mjs"
+    "test:agent": "node test/agent-workflow.mjs",
+    "test:import-recovery": "node test/import-recovery.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "cookie": "^0.7.2",
     "express": "^5.2.1",
+    "linkedom": "0.18.15",
     "parse5": "8.0.1"
   },
   "devDependencies": {

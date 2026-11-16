@@ -563,4 +563,4 @@ main().then(()=>installVersionNavigation({document:state().docId,locate(anchor){
  if(state().interactive)state().frame?.contentWindow?.postMessage({type:'flashComment',anchor,highlight:false},'*');
  else if(staticPreview?.active)staticPreview.send({type:'locate',anchor,id:'',highlight:false});
  else getBlock(anchor)?.scrollIntoView({block:'center'});
-}})).catch(()=>{});
+}}).catch(()=>{}));

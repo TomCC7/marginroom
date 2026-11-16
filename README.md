@@ -4,6 +4,10 @@ Review imported HTML in place: discuss page elements, propose text revisions, an
 
 ![English review of a synthetic document with a comment, reply and inline revision](docs/screenshots/english-review.png)
 
+## Agent / CLI entry
+
+The same package now includes `marginroom open FILE --json` and read-only `marginroom comments REVIEW_URL --status open --json`. See [installed CLI, pairing, resource limits and cutover](docs/agent-workflow.md) and [agent skill](skills/marginroom/SKILL.md). Local auto-service is Linux-verified on the existing Node 22 runtime; no registry publication or production deployment is performed.
+
 ## Run locally
 
 Requires Git and Docker with Compose v2:
