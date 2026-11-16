@@ -241,11 +241,14 @@ function errorMessage(error) {
 
 function showImport() {
   importDraft = null;
-  showDialog(copy('import.title'), `<div id="importForm"><label class="upload"><span data-i18n="import.choose">Choose an HTML document</span><input id="htmlFile" type="file" accept=".html,.htm,text/html"></label><p class="small" id="fileLabel"><span data-i18n="import.fileHelp">Supports .html / .htm, up to 2 MB. The HTML &lt;title&gt; supplies the document title.</span></p><label class="field"><span data-i18n="import.imagesOptional">Local images (optional)</span><input id="images" type="file" accept="image/*" multiple></label><label class="field"><span data-i18n="agent.resourceFolder"></span><input id="resourceFolder" type="file" webkitdirectory multiple></label><label class="field"><span data-i18n="agent.previous"></span><input id="previousReview" type="url"></label><p class="small" id="imageLabel"><span data-i18n="import.imagesHelp">Select images referenced by the HTML; uploads are matched by filename.</span></p><details class="paste"><summary><span data-i18n="import.paste">Or paste HTML source</span></summary><textarea id="source" aria-label="HTML source" data-i18n-aria-label="import.source" placeholder="<!doctype html>\n<html><head><title>Document title</title></head>…"></textarea><label class="field" for="paste-id"><span data-i18n="import.id">Document name (used in its link)</span><input id="paste-id" type="text" autocomplete="off" spellcheck="false" placeholder="letters-numbers_dots"></label></details></div><div id="duplicate" hidden><p id="duplicateText"></p><p class="warn"><span data-i18n="import.replacementHelp">Replace overwrites the source but keeps review history; existing annotations may no longer match. Choose Keep both to preserve the original document and review.</span></p></div><p class="error" id="importError" role="alert"></p>`, [
+  showDialog(copy('import.title'), `<div id="importForm"><label class="upload"><span data-i18n="import.choose">Choose an HTML document</span><input id="htmlFile" type="file" accept=".html,.htm,text/html"></label><p class="small" id="fileLabel"><span data-i18n="import.fileHelp">Supports .html / .htm, up to 2 MB. The HTML &lt;title&gt; supplies the document title.</span></p><label class="field"><span data-i18n="import.imagesOptional">Local images (optional)</span><input id="images" type="file" accept="image/*" multiple></label><label class="field"><span data-i18n="agent.resourceFolder"></span><input id="resourceFolder" type="file" webkitdirectory multiple></label><label class="field"><span data-i18n="agent.previous"></span><input id="previousReview" type="url"></label><label class="field"><span><input id="independentReview" type="checkbox"> <span data-i18n="agent.independent"></span></span></label><p class="small" id="importSummary" role="status"></p><p class="small" id="imageLabel"><span data-i18n="import.imagesHelp">Select images referenced by the HTML; uploads are matched by filename.</span></p><details class="paste"><summary><span data-i18n="import.paste">Or paste HTML source</span></summary><textarea id="source" aria-label="HTML source" data-i18n-aria-label="import.source" placeholder="<!doctype html>\n<html><head><title>Document title</title></head>…"></textarea><label class="field" for="paste-id"><span data-i18n="import.id">Document name (used in its link)</span><input id="paste-id" type="text" autocomplete="off" spellcheck="false" placeholder="letters-numbers_dots"></label></details></div><div id="duplicate" hidden><p id="duplicateText"></p><p class="warn"><span data-i18n="import.replacementHelp">Replace overwrites the source but keeps review history; existing annotations may no longer match. Choose Keep both to preserve the original document and review.</span></p></div><p class="error" id="importError" role="alert"></p>`, [
     { text: copy('common.cancel'), run: dismiss }, { text: copy('import.open'), cls: 'primary', id: 'doImport', run: prepareImport },
   ]);
   bind($('#source'),'import.sourcePlaceholder',{},'placeholder');
-  $('#htmlFile').onchange = () => put($('#fileLabel'),$('#htmlFile').files[0]?.name || copy('import.shortFileHelp'));
+  let previewGeneration=0;
+  const summarize=async()=>{const generation=++previewGeneration;const file=$('#htmlFile').files[0];const html=file?await file.text():$('#source').value;if(generation!==previewGeneration||!$('#importSummary'))return;const title=new DOMParser().parseFromString(html,'text/html').title||file?.name||$('#paste-id').value||'HTML';bind($('#importSummary'),'agent.summary',{title,count:$('#resourceFolder').files.length+$('#images').files.length});};
+  $('#htmlFile').onchange = () => {put($('#fileLabel'),$('#htmlFile').files[0]?.name || copy('import.shortFileHelp'));summarize();};
+  $('#source').addEventListener('input',summarize);$('#resourceFolder').addEventListener('change',summarize);$('#images').addEventListener('change',summarize);
   $('#images').onchange=()=>put($('#imageLabel'),copy('import.selected',{count:$('#images').files.length}));
 }
 async function prepareImport() {
@@ -264,7 +267,7 @@ async function prepareImport() {
     if (!validId(id)) throw failure(copy('errors.invalid_doc_id'));
     // Only parse inert metadata; never attach imported nodes or execute a preview.
     const parsed = new DOMParser().parseFromString(html, 'text/html');
-    importDraft = { id, base: id, html, title: parsed.title.trim() || file?.name.replace(/\.html?$/i, '') || id, images: [...$('#images').files], overwrite: false, resources: [...$('#resourceFolder').files], previous: $('#previousReview').value.trim() };
+    importDraft = { id, base: id, html, title: parsed.title.trim() || file?.name.replace(/\.html?$/i, '') || id, images: [...$('#images').files], overwrite: false, resources: [...$('#resourceFolder').files], previous: $('#previousReview').value.trim(), independent:$('#independentReview').checked };
     setBusy(false);
     await uploadDocument();
   } catch (error) { put($('#importError'),error.copy||copy('errors.reason',{reason:error.message||'unknown'})); setBusy(false); }
@@ -309,13 +312,13 @@ async function uploadDocument() {
     let entry=$('#htmlFile').files[0]?.name||'document.html';
     const matches=[...selected.keys()].filter(n=>n.split('/').pop()===entry);
     if(matches.length>1)throw new Error('ambiguous_entry_path');if(matches.length===1)entry=matches[0];
-    selected.set(entry,new Blob([draft.html],{type:'text/html'}));
+    selected.set(entry,$('#htmlFile').files[0]||new Blob([draft.html],{type:'text/html'}));
     if(selected.size>256)throw new Error('too_many_resources');let total=0;const files=[];
     for(const [name,f]of selected){total+=f.size;if(f.size>2000000||total>16000000)throw new Error('bundle_too_large');const bytes=await f.arrayBuffer();files.push({path:name,data:await fileToBase64(f),sha256:await hash(bytes)});}
     const fingerprint=await hash(new TextEncoder().encode(JSON.stringify(files.map(f=>[f.path,f.sha256]).sort())));
     let previous=null;
     if(draft.previous){const u=new URL(draft.previous,location.origin);if(u.origin!==location.origin||u.pathname!=='/viewer.html'||!validId(u.searchParams.get('doc')))throw new Error('invalid_version_parent');previous=u.searchParams.get('doc');}
-    const result=await request('/api/imports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entry,files,source:fingerprint,previous})});
+    const result=await request('/api/imports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entry,files,source:draft.independent?crypto.randomUUID():fingerprint,previous})});
     setBusy(false);location.href='/viewer.html?doc='+encodeURIComponent(result.document);
 
   } catch (error) {

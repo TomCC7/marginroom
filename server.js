@@ -212,6 +212,7 @@ export function createApp(db, opts = {}) {
   // Body limit tracks the file-size cap plus headroom for JSON overhead, so a
   // paste up to MAX_DOC_BYTES isn't rejected by the parser before our own check.
   app.use(express.json({ limit: 24 * 1024 * 1024 }));
+  app.use((error,req,res,next)=>{if(error?.type==='entity.too.large')return res.status(413).json({error:'bundle_too_large'});if(error instanceof SyntaxError&&error.status===400)return res.status(400).json({error:'invalid_json'});next(error);});
 
   const noStore = (res) => res.setHeader('Cache-Control', 'no-store');
 
@@ -226,7 +227,7 @@ export function createApp(db, opts = {}) {
   // access) 403s. So: json → identify → static.
   const { identify, readLimiter, writeLimiter, uploadLimiter } = makeGuardrails({ now: opts.now });
   const machines = machineAuth(db);
-  const imports = documentImports(db,DOCS_DIR,{stripActiveContent});
+  const imports = documentImports(db,DOCS_DIR,{stripActiveContent,checkCapacity(req){if(req.caller.isOwner||req.caller.machine)return;const n=countDocsOwnedBy(db,req.caller.token);if(n>=LIMITS.GUEST_DOC_LIMIT)throw Object.assign(new Error(),{status:403,code:'guest_doc_limit'});if(n===0&&countGuestOwners(db)>=LIMITS.MAX_GUEST_OWNERS)throw Object.assign(new Error(),{status:503,code:'capacity_full'});}});
   const instanceId = opts.instanceId || randomUUID();
   app.use((req,res,next)=>req.headers.authorization ? next() : identify(req,res,next));
   app.use(machines.middleware);
@@ -343,6 +344,7 @@ export function createApp(db, opts = {}) {
       // Unlike the legacy discovery list, seeds and admin-accessible documents
       // are not implicitly owned. Select only this token's persisted owner rows.
       const owned = new Set(db.prepare('SELECT doc_id FROM doc_owners WHERE owner_token = ?').all(token).map(row => row.doc_id));
+      for(const row of db.prepare('SELECT doc FROM document_grants WHERE principal=?').all(token))owned.add(row.doc);
       const metadata = [];
       for (const id of all.filter(id => owned.has(id))) {
         const html = await readDocHtml(id);
@@ -396,6 +398,7 @@ export function createApp(db, opts = {}) {
       canDelete: ownsDoc(req, id),
       // Admins can manage every document, but own only their actual owner rows.
       isOwned: getDocOwner(db, id) === req.caller.token,
+      isManaged: machines.manages(req,id),
       isAdmin: !!req.caller.isOwner,
       pendingCount: maySeeSuggestions ? pendingQuery.get(id).count : null,
       activityAt: Number.isFinite(time) ? new Date(time).toISOString() : null,
@@ -447,6 +450,19 @@ export function createApp(db, opts = {}) {
       }
     }
 
+    // Safe legacy single-file creation delegates the exact same bundle validator,
+    // publication transaction and ownership path. Preserve caller-selected legacy ID.
+    if(!existsBefore){
+      try {const bytes=Buffer.from(html);req.canManage=doc=>machines.manages(req,doc);
+        imports.import(req,{entry:'document.html',files:[{path:'document.html',data:bytes.toString('base64'),sha256:digest(bytes)}],source:'legacy_'+digest(id)},{id,raw:hasActiveContent(html)});
+        return res.json({ok:true,id,interactive:hasActiveContent(html)});
+      }catch(e){return res.status(e.status||500).json({error:e.code||'import_failed'});}
+    }
+    // Legacy explicit overwrite remains a compatibility operation, never used by
+    // web/CLI bundle workflows. Do not allow it to destroy a versioned review.
+    if(imports.get(id)&&!imports.get(id).source.startsWith('legacy_'))return res.status(409).json({error:'source_changed_use_new_version'});
+    if(imports.get(id))imports.forget(id);
+
     // Interactive doc? Keep the un-stripped ORIGINAL alongside the inert copy.
     // docs/<id>.html is always the scrubbed, safe-to-inline version (fallback +
     // anchoring base); docs/<id>.raw.html is the original with its JS intact,
@@ -487,6 +503,7 @@ export function createApp(db, opts = {}) {
     await rm(file, { force: true }).catch(() => {});
     await rm(path.join(DOCS_DIR, `${id}.raw.html`), { force: true }).catch(() => {});
     await rm(path.join(DOCS_DIR, `${id}.config.json`), { force: true }).catch(() => {});
+    imports.forget(id);
     deleteDocData(db)(id);
     noStore(res);
     res.json({ ok: true, id });

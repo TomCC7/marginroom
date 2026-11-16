@@ -1,12 +1,14 @@
 # Using Marginroom
 
+For an installed agent CLI, start with [the CLI workflow](agent-workflow.md): `marginroom open article.html --json`, then `marginroom comments REVIEW_URL --status open --json`. No MCP or automatic polling is required.
+
 [Install and run locally](operations.md#docker-installation), then open the instance in your browser. The interface starts in English; the compact language control also offers Simplified Chinese. Your explicit choice is stored in this browser and shared between the homepage and viewer. Switching language changes product controls, not document text, authors or comments.
 
 ## Import and resume a document
 
 1. On the homepage, choose **Import HTML**. Select an HTML file and its local images, or paste HTML source, then import and open it.
-2. If the document name already exists, choose keep both, replace or cancel. Replacement updates the source and keeps its review history, so existing anchors may become invalid. Keep both to review the new copy independently.
-3. Use **Recent** to find documents opened in this browser, including shared links. Search by title or remove local entries without deleting the server document. **My documents** lists documents created by the current signed browser identity. Deleting a document is a separate, permission-checked action.
+2. Select a published resource folder when needed. The dialog shows the title and selected-resource count; missing declared dependencies fail before publication. Identical selected content resumes the same review for this identity. Check **Start an independent review** for a separate copy. For a revision, enter the previous review URL: the new version preserves every old URL and its feedback, without applying pending old rewrites. Filenames are not browser source identities.
+3. Use **Recent** to find documents opened in this browser, including shared links. Search by title or remove local entries without deleting the server document. **My documents** lists documents created by or explicitly granted to the current signed browser identity; management is not authorship. Deleting a document is a separate, permission-checked action.
 
 Click **Marginroom** in the viewer to return home. Before leaving with unsaved work, choose to keep editing, submit/save, or discard it. Reading coordinates and viewport preferences are browser-local. Static previews restore reading position; interactive documents retain numeric scroll coordinates, not their forms or application state.
 

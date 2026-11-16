@@ -22,7 +22,8 @@
     "test:acceptance": "node test/release-acceptance.mjs",
     "test:security": "node test/security-release.test.mjs",
     "test:agent": "node test/agent-workflow.mjs",
-    "test:import-recovery": "node test/import-recovery.mjs"
+    "test:import-recovery": "node test/import-recovery.mjs",
+    "test:agent-migration": "node test/agent-migration.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
@@ -52,6 +53,10 @@
     "skills/",
     "docs/agent-workflow.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/user-guide.md",
+    "docs/operations.md",
+    "!public/metal-arm-plan.js",
+    "!public/metal-arm-plan-content.json"
   ]
 }

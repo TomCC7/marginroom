@@ -2,6 +2,12 @@
 
 Installation, configuration, ownership recovery, and backups for a self-hosted instance.
 
+## Installed CLI and coordinated backend upgrade
+
+See [agent workflow](agent-workflow.md) for isolated npm-tarball installation, Linux loopback service ownership, explicit pairing, private credential files and scope limitations. CLI identity is separate from human cookies and OWNER_KEY. Ordinary JSON/share links never contain management handoffs. Machine import is host-authorized; browser imports retain guest capacity limits.
+
+`npm run test:agent-migration` rehearses baseline → additive migration → complete code/DB/docs/identity rollback on synthetic data, including independent locked rollback dependencies and old HTTP rows/replies. It does not touch a live deployment. A new backend must be installed as a coordinated candidate with matching DB/docs/bundles/identity backup, not a static-asset hot swap. Existing externally maintained metal-arm files must be retained from CURRENT.
+
 ## Docker installation
 
 Requires Docker Engine with Compose v2 and a free local port. Run commands from the release repository. The Docker build installs locked dependencies using `npm ci --omit=dev`, including the native SQLite module; no host Node installation is needed.
