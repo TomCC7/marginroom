@@ -241,7 +241,7 @@ function errorMessage(error) {
 
 function showImport() {
   importDraft = null;
-  showDialog(copy('import.title'), `<div id="importForm"><label class="upload"><span data-i18n="import.choose">Choose an HTML document</span><input id="htmlFile" type="file" accept=".html,.htm,text/html"></label><p class="small" id="fileLabel"><span data-i18n="import.fileHelp">Supports .html / .htm, up to 2 MB. The HTML &lt;title&gt; supplies the document title.</span></p><label class="field"><span data-i18n="import.imagesOptional">Local images (optional)</span><input id="images" type="file" accept="image/*" multiple></label><p class="small" id="imageLabel"><span data-i18n="import.imagesHelp">Select images referenced by the HTML; uploads are matched by filename.</span></p><details class="paste"><summary><span data-i18n="import.paste">Or paste HTML source</span></summary><textarea id="source" aria-label="HTML source" data-i18n-aria-label="import.source" placeholder="<!doctype html>\n<html><head><title>Document title</title></head>…"></textarea><label class="field" for="paste-id"><span data-i18n="import.id">Document name (used in its link)</span><input id="paste-id" type="text" autocomplete="off" spellcheck="false" placeholder="letters-numbers_dots"></label></details></div><div id="duplicate" hidden><p id="duplicateText"></p><p class="warn"><span data-i18n="import.replacementHelp">Replace overwrites the source but keeps review history; existing annotations may no longer match. Choose Keep both to preserve the original document and review.</span></p></div><p class="error" id="importError" role="alert"></p>`, [
+  showDialog(copy('import.title'), `<div id="importForm"><label class="upload"><span data-i18n="import.choose">Choose an HTML document</span><input id="htmlFile" type="file" accept=".html,.htm,text/html"></label><p class="small" id="fileLabel"><span data-i18n="import.fileHelp">Supports .html / .htm, up to 2 MB. The HTML &lt;title&gt; supplies the document title.</span></p><label class="field"><span data-i18n="import.imagesOptional">Local images (optional)</span><input id="images" type="file" accept="image/*" multiple></label><label class="field"><span data-i18n="agent.resourceFolder"></span><input id="resourceFolder" type="file" webkitdirectory multiple></label><label class="field"><span data-i18n="agent.previous"></span><input id="previousReview" type="url"></label><p class="small" id="imageLabel"><span data-i18n="import.imagesHelp">Select images referenced by the HTML; uploads are matched by filename.</span></p><details class="paste"><summary><span data-i18n="import.paste">Or paste HTML source</span></summary><textarea id="source" aria-label="HTML source" data-i18n-aria-label="import.source" placeholder="<!doctype html>\n<html><head><title>Document title</title></head>…"></textarea><label class="field" for="paste-id"><span data-i18n="import.id">Document name (used in its link)</span><input id="paste-id" type="text" autocomplete="off" spellcheck="false" placeholder="letters-numbers_dots"></label></details></div><div id="duplicate" hidden><p id="duplicateText"></p><p class="warn"><span data-i18n="import.replacementHelp">Replace overwrites the source but keeps review history; existing annotations may no longer match. Choose Keep both to preserve the original document and review.</span></p></div><p class="error" id="importError" role="alert"></p>`, [
     { text: copy('common.cancel'), run: dismiss }, { text: copy('import.open'), cls: 'primary', id: 'doImport', run: prepareImport },
   ]);
   bind($('#source'),'import.sourcePlaceholder',{},'placeholder');
@@ -264,10 +264,9 @@ async function prepareImport() {
     if (!validId(id)) throw failure(copy('errors.invalid_doc_id'));
     // Only parse inert metadata; never attach imported nodes or execute a preview.
     const parsed = new DOMParser().parseFromString(html, 'text/html');
-    importDraft = { id, base: id, html, title: parsed.title.trim() || file?.name.replace(/\.html?$/i, '') || id, images: [...$('#images').files], overwrite: false };
+    importDraft = { id, base: id, html, title: parsed.title.trim() || file?.name.replace(/\.html?$/i, '') || id, images: [...$('#images').files], overwrite: false, resources: [...$('#resourceFolder').files], previous: $('#previousReview').value.trim() };
     setBusy(false);
-    if (knownIds.has(id)) showDuplicate();
-    else await uploadDocument();
+    await uploadDocument();
   } catch (error) { put($('#importError'),error.copy||copy('errors.reason',{reason:error.message||'unknown'})); setBusy(false); }
 }
 function importButtons() {
@@ -303,13 +302,22 @@ async function uploadDocument() {
   setBusy(true); put($('#importError'),'');
   const draft = importDraft;
   try {
-    // Check selected assets (including upload races) before saving HTML.
-    const needed = await prepareImages(draft);
-    await request('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: draft.id, html: draft.html, overwrite: draft.overwrite }) });
-    knownIds.add(draft.id); draft.saved = true;
+    // The same manifest contract as the installed CLI. Only explicitly selected files.
+    const hash=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+    const selected=new Map();
+    for(const f of [...draft.images,...draft.resources]){const name=f.webkitRelativePath ? f.webkitRelativePath.split('/').slice(1).join('/') : f.name;if(selected.has(name))throw new Error('duplicate_resource_path');selected.set(name,f);}
+    let entry=$('#htmlFile').files[0]?.name||'document.html';
+    const matches=[...selected.keys()].filter(n=>n.split('/').pop()===entry);
+    if(matches.length>1)throw new Error('ambiguous_entry_path');if(matches.length===1)entry=matches[0];
+    selected.set(entry,new Blob([draft.html],{type:'text/html'}));
+    if(selected.size>256)throw new Error('too_many_resources');let total=0;const files=[];
+    for(const [name,f]of selected){total+=f.size;if(f.size>2000000||total>16000000)throw new Error('bundle_too_large');const bytes=await f.arrayBuffer();files.push({path:name,data:await fileToBase64(f),sha256:await hash(bytes)});}
+    const fingerprint=await hash(new TextEncoder().encode(JSON.stringify(files.map(f=>[f.path,f.sha256]).sort())));
+    let previous=null;
+    if(draft.previous){const u=new URL(draft.previous,location.origin);if(u.origin!==location.origin||u.pathname!=='/viewer.html'||!validId(u.searchParams.get('doc')))throw new Error('invalid_version_parent');previous=u.searchParams.get('doc');}
+    const result=await request('/api/imports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entry,files,source:fingerprint,previous})});
+    setBusy(false);location.href='/viewer.html?doc='+encodeURIComponent(result.document);
 
-    setBusy(false);
-    await offerImages(draft, needed);
   } catch (error) {
     setBusy(false);
     if (error.status === 409 && error.data?.error === 'doc_exists') { knownIds.add(draft.id); showDuplicate(); }

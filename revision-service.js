@@ -24,6 +24,10 @@ function facade(node,parent=null){
   namespace:node.namespaceURI};
  el.childNodes=(node.childNodes||[]).map(c=>facade(c,el));el.children=el.childNodes.filter(c=>c.tagName);return el;
 }
+export function sourceParagraphs(html){
+ const root=facade(parse(html)),body=root.children.find(c=>c.tagName==='HTML')?.children.find(c=>c.tagName==='BODY');
+ if(!body)return [];const seen=new Map();return collectLeaves(body).map(el=>{const norm=el.hasAttribute(GROUP_ATTR)?groupText(el):normalizeText(el.textContent),digest=hash(norm),occ=seen.get(digest)||0;seen.set(digest,occ+1);return {anchor:occ?`${digest}#${occ}`:digest,text:el.textContent,norm};}).filter(p=>p.norm);
+}
 export function resolveParagraph(html,anchor,config={}){
  if(typeof anchor!=='string'||!/^[a-f0-9]{64}(?:#[1-9][0-9]*)?$/.test(anchor))fail(422,'unsupported_anchor');
  // Selector-configured sections require browser CSS matching; do not guess.

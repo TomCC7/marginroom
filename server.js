@@ -5,6 +5,9 @@
 // SQLite. Identity is owner-vs-guest (HMAC-signed cookie, OWNER_KEY promotes):
 // anyone may suggest, but editing/restoring/accepting is gated to the doc owner.
 import express from 'express';
+import {machineAuth,digest} from './machine-auth.js';
+import {documentImports,validateBundle} from './document-imports.js';
+import {locateAcross} from './version-navigation.js';
 import { parse } from 'parse5';
 import { readFile, writeFile, readdir, access, mkdir } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
@@ -208,7 +211,7 @@ export function createApp(db, opts = {}) {
   app.set('trust proxy', true); // behind Fly's proxy; needed for correct client IP
   // Body limit tracks the file-size cap plus headroom for JSON overhead, so a
   // paste up to MAX_DOC_BYTES isn't rejected by the parser before our own check.
-  app.use(express.json({ limit: MAX_DOC_BYTES + 256 * 1024 }));
+  app.use(express.json({ limit: 24 * 1024 * 1024 }));
 
   const noStore = (res) => res.setHeader('Cache-Control', 'no-store');
 
@@ -222,7 +225,52 @@ export function createApp(db, opts = {}) {
   // the visitor stays a guest and every owner-only action (e.g. changing link
   // access) 403s. So: json → identify → static.
   const { identify, readLimiter, writeLimiter, uploadLimiter } = makeGuardrails({ now: opts.now });
-  app.use(identify);
+  const machines = machineAuth(db);
+  const imports = documentImports(db,DOCS_DIR,{stripActiveContent});
+  const instanceId = opts.instanceId || randomUUID();
+  app.use((req,res,next)=>req.headers.authorization ? next() : identify(req,res,next));
+  app.use(machines.middleware);
+  app.get('/api/instance', (_req,res)=>res.json({product:'marginroom',protocolVersion:1,instanceId,ready:true}));
+  app.post('/api/imports', uploadLimiter, (req,res)=>{
+    try {req.canManage=id=>machines.manages(req,id);const result=imports.import(req,req.body);res.json({schemaVersion:1,document:result.doc,series:result.series,previous:result.previous,hash:result.hash,reused:result.reused,external:result.external});}
+    catch(e){res.status(e.status||500).json({error:e.code||'import_failed'});}
+  });
+  app.post('/api/machine/pair',(req,res)=>{if(!req.caller.machine||req.caller.doc)return res.status(403).json({error:'machine_pairing_required'});res.json(machines.issue());});
+  app.post('/api/machine/delegate',(req,res)=>{
+    const doc=req.body?.doc;if(!doc||!machines.manages(req,doc))return res.status(403).json({error:'not_your_doc'});
+    res.json(machines.issue(req.caller.token,doc));
+  });
+  app.post('/api/machine/revoke',(req,res)=>{
+    const hash=digest(String(req.body?.token||''));
+    db.prepare('UPDATE machine_credentials SET revoked=1 WHERE hash=? AND principal=?').run(hash,req.caller.token);res.json({ok:true});
+  });
+  app.post('/api/management/handoff',(req,res)=>{
+    const doc=req.body?.doc;if(!doc||!machines.manages(req,doc))return res.status(403).json({error:'not_your_doc'});
+    const token=randomUUID()+randomUUID();db.prepare('INSERT INTO management_handoffs VALUES(?,?,?)').run(digest(token),doc,Date.now()+60000);res.json({token});
+  });
+  app.post('/api/management/claim',(req,res)=>{
+    if(req.caller.machine)return res.status(403).json({error:'browser_required'});
+    const claim=db.transaction(()=>{const hash=digest(String(req.body?.token||''));const row=db.prepare('SELECT * FROM management_handoffs WHERE hash=? AND expires>?').get(hash,Date.now());if(!row)return null;
+      db.prepare('DELETE FROM management_handoffs WHERE hash=?').run(hash);db.prepare('INSERT OR IGNORE INTO document_grants VALUES(?,?)').run(row.doc,req.caller.token);return row.doc;}).immediate();
+    if(!claim)return res.status(403).json({error:'handoff_expired_or_used'});res.json({document:claim});
+  });
+  app.get('/api/document-series/:id',(req,res)=>{
+    const current=imports.get(req.params.id);if(!current||!machines.manages(req,current.doc))return res.status(403).json({error:'not_your_doc'});
+    res.json({series:current.series,versions:db.prepare('SELECT doc,previous,created FROM imported_documents WHERE series=? ORDER BY rowid').all(current.series).filter(v=>machines.manages(req,v.doc))});
+  });
+  app.post('/api/versions-locate',async(req,res)=>{
+    const {record:recordId,target}=req.body||{};const record=getSuggestion(db,recordId);if(!record||!machines.manages(req,record.doc_id)||!machines.manages(req,target))return res.status(403).json({error:'not_your_doc'});
+    const from=imports.get(record.doc_id),to=imports.get(target);if(!from||!to||from.series!==to.series)return res.status(400).json({error:'unrelated_versions'});
+    const source=await readDocHtml(record.doc_id),html=await readDocHtml(target);
+    res.json({sourceVersion:record.doc_id,targetVersion:target,record:record.id,...locateAcross(db,record,source,{doc:target,html})});
+  });
+  // Imports are visible only after their synchronous SQLite publication commit.
+  app.use((req,res,next)=>{const id=/^\/api\/(?:doc|raw|doc-meta|suggestions)\/(review-[a-f0-9-]+)$/.exec(req.path)?.[1];if(id&&!imports.get(id))return res.status(404).json({error:'doc_not_found'});next();});
+  app.use('/bundles/:doc' , (req,res,next)=>{
+    if(!imports.get(req.params.doc))return res.sendStatus(404);
+    res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'; style-src 'unsafe-inline'");res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Access-Control-Allow-Origin','*');
+    express.static(path.join(imports.root,req.params.doc),{dotfiles:'deny',index:false,redirect:false})(req,res,next);
+  });
   app.use(express.static(PUBLIC_DIR));
   app.get('/api/whoami', (req, res) => {
     noStore(res);
@@ -289,7 +337,7 @@ export function createApp(db, opts = {}) {
   // aren't visible to other guests, and the owner's work isn't listed publicly.
   app.get('/api/docs', readLimiter, async (req, res) => {
     noStore(res);
-    const all = await listDocs();
+    const all = (await listDocs()).filter(id=>!/^review-[a-f0-9-]+$/.test(id)||imports.get(id));
     const { token, isOwner } = req.caller;
     if (req.query.scope === 'mine') {
       // Unlike the legacy discovery list, seeds and admin-accessible documents
@@ -435,7 +483,7 @@ export function createApp(db, opts = {}) {
     const owner = getDocOwner(db, id);
     const exists = await access(file, fsConstants.F_OK).then(() => true).catch(() => false);
     if (!exists && owner == null) return res.status(404).json({ error: 'doc_not_found' });
-    if (!isOwner && owner !== token) return res.status(403).json({ error: 'not_your_doc' });
+    if (!ownsDoc(req,id)) return res.status(403).json({ error: 'not_your_doc' });
     await rm(file, { force: true }).catch(() => {});
     await rm(path.join(DOCS_DIR, `${id}.raw.html`), { force: true }).catch(() => {});
     await rm(path.join(DOCS_DIR, `${id}.config.json`), { force: true }).catch(() => {});
@@ -511,7 +559,9 @@ export function createApp(db, opts = {}) {
     noStore(res);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', 'sandbox allow-scripts');
-    res.json({ id, rawHtml });
+    const imported=imports.get(id);
+    const resourceBase=imported ? `/bundles/${id}/${imported.entry.split('/').slice(0,-1).join('/')}${imported.entry.includes('/')?'/':''}` : null;
+    res.json({ id, rawHtml, resourceBase });
   });
 
   // POST /api/snapshot/:id { html } -> { ok, html }
@@ -576,8 +626,7 @@ export function createApp(db, opts = {}) {
   // check already used by DELETE /api/doc/:id.
   function ownsDoc(req, id) {
     if (req.caller?.isOwner) return true;
-    const owner = getDocOwner(db, id);
-    return owner != null && owner === req.caller?.token;
+    return machines.manages(req,id);
   }
 
   // May THIS caller directly edit the doc's text? The owner/doc-owner always may;
@@ -589,6 +638,7 @@ export function createApp(db, opts = {}) {
   // May THIS caller propose suggestions? Everyone except a guest on a 'view'-only
   // doc (the owner/doc-owner is never blocked).
   function canSuggestDoc(req, id) {
+    if(req.caller?.machine && req.caller.doc===id)return true;
     return ownsDoc(req, id) || getDocAccess(db, id) !== 'view';
   }
 

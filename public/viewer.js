@@ -1263,7 +1263,7 @@ async function bootInteractive(data) {
   let raw, controllerSrc;
   try {
     [raw, controllerSrc] = await Promise.all([
-      fetch(`/api/raw/${encodeURIComponent(docId)}`).then((r) => { if (!r.ok) throw new Error(); return r.json(); }).then((j) => j.rawHtml),
+      fetch(`/api/raw/${encodeURIComponent(docId)}`).then((r) => { if (!r.ok) throw new Error(); return r.json(); }).then((j) => j.resourceBase ? j.rawHtml.replace(/<head([^>]*)>/i,`<head$1><base href="${new URL(j.resourceBase,location.origin).href}">`) : j.rawHtml),
       getFrameControllerSrc(),
     ]);
   } catch {

@@ -4,6 +4,7 @@ import {elementReview} from './element-review.js';
 import {sha256hex} from './anchoring.js';
 import {reviewBridge as bridge} from './viewer.js';
 import {reviewerName,setReviewerName} from './identity.js';
+import {installVersionNavigation} from './version-navigation.js';
 import {textOf,rangeAt,difference,locateRecord,singleBlockRange} from './review-ranges.js';
 import {createStaticPreview} from './static-preview.js';
 import {initPreview} from './preview-viewport.js';
@@ -557,4 +558,9 @@ $('#composer').insertBefore(languageSelect(),$('#composer-title'));
 $('#leave-dialog').prepend(languageSelect());
 onLocaleChange(paintViewerLocale);
 
-main();
+main().then(()=>installVersionNavigation({document:state().docId,locate(anchor){
+ if(draft||!$('#composer').hidden)return;
+ if(state().interactive)state().frame?.contentWindow?.postMessage({type:'flashComment',anchor,highlight:false},'*');
+ else if(staticPreview?.active)staticPreview.send({type:'locate',anchor,id:'',highlight:false});
+ else getBlock(anchor)?.scrollIntoView({block:'center'});
+}})).catch(()=>{});

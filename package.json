@@ -20,7 +20,8 @@
     "test:preview": "node test/static-preview.browser.mjs && node test/preview-viewport.browser.mjs && node test/preview-viewport-storage.mjs && node test/workspace.browser.mjs && node test/preview-resize.browser.mjs",
     "browser:install": "playwright-core install chromium",
     "test:acceptance": "node test/release-acceptance.mjs",
-    "test:security": "node test/security-release.test.mjs"
+    "test:security": "node test/security-release.test.mjs",
+    "test:agent": "node test/agent-workflow.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
@@ -37,5 +38,18 @@
   },
   "engines": {
     "node": ">=22.23.4 <23"
-  }
+  },
+  "bin": {
+    "marginroom": "bin/marginroom.mjs"
+  },
+  "files": [
+    "*.js",
+    "bin/",
+    "lib/",
+    "public/",
+    "skills/",
+    "docs/agent-workflow.md",
+    "README.md",
+    "LICENSE"
+  ]
 }
