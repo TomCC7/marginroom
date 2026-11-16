@@ -1,44 +1,63 @@
 # Marginroom
 
-Review imported HTML in place: discuss page elements, propose text revisions, and export the accepted result without moving the page into a document editor.
+Review generated HTML in place. Comment on text or elements, propose revisions, and let an agent read the feedback as JSON.
 
-![English review of a synthetic document with a comment, reply and inline revision](docs/screenshots/english-review.png)
+![English review with a comment, reply and inline revision](docs/screenshots/english-review.png)
 
-## Agent / CLI entry
+## Try the CLI
 
-The same package now includes `marginroom open FILE --json` and read-only `marginroom comments REVIEW_URL --status open --json`. See [installed CLI, pairing, resource limits and cutover](docs/agent-workflow.md) and [agent skill](skills/marginroom/SKILL.md). Local auto-service is Linux-verified on the existing Node 22 runtime; no registry publication or production deployment is performed.
+Requires **Linux and Node >=22.23.4 <23** for local auto-start. The CLI is not published on npm or included in GitHub `main` yet. Use the supplied `marginroom-cli-d7e9f1c.tgz` test archive.
 
-## Run locally
-
-Requires Git and Docker with Compose v2:
+Install into a separate directory without sudo. Use a desktop session for `--browser`; headless agents use `--json` instead:
 
 ```sh
-git clone https://github.com/TomCC7/marginroom.git
-cd marginroom
+npm install --prefix ./marginroom-test ./marginroom-cli-d7e9f1c.tgz --omit=dev
+CLI="$PWD/marginroom-test/node_modules/.bin/marginroom"
+STATE="$PWD/marginroom-test/state"
+
+"$CLI" open /absolute/path/to/article.html --data-dir "$STATE" --browser
+```
+
+The CLI starts or reuses its service, prints the review URL, and opens your browser with document-management permission. Add `--assets-dir /path/to/site` when dependencies need a wider root. Your original files stay unchanged.
+
+## Test the review loop
+
+1. In **Annotate**, select text and choose **Add comment**. Submit a comment and add a reply to its thread.
+2. Read that thread through the CLI. Replace `REVIEW_URL` with the printed URL:
+
+```sh
+"$CLI" comments 'REVIEW_URL' --data-dir "$STATE" --status open --json
+```
+
+Check the record ID, quote, body and replies. This command only reads feedback.
+
+3. Repeat the original `open` command. It should reuse the same review and retain the thread.
+4. Change the HTML, then explicitly create a new version:
+
+```sh
+"$CLI" open /absolute/path/to/article.html --data-dir "$STATE" \
+  --new-version-of 'REVIEW_URL' --browser
+```
+
+The old review remains intact. Version navigation locates an old target only when it can verify it; otherwise it reports why it cannot.
+
+`--json` suppresses browser launch and prompts. It cannot be combined with `--browser`. State persists in `$STATE`; closing the terminal does not stop the service.
+
+## Sharing and other setups
+
+Loopback URLs work only on the service host. For another device, use a reachable, explicitly paired instance with `--server` and `--token-file`. See [CLI setup and pairing](docs/agent-workflow.md). Anyone who can reach a document URL can read it; repository privacy does not protect the running site.
+
+For the web-only Docker setup, run these commands from a source checkout:
+
+```sh
 cp .env.example .env
 docker compose up --build -d
 ```
 
-Open **http://localhost:3939**. The default instance is reachable only on your machine. Documents, review history and identity keys persist in a Docker volume; `docker compose down -v` deletes them.
+Open http://localhost:3939. Data persists in a Docker volume; `docker compose down -v` deletes it.
 
-**Access:** anyone who can reach a document URL can read it. A private GitHub repository does not protect the running instance. See [sharing and access](docs/operations.md#sharing-an-instance) before inviting reviewers.
+## More
 
-## Start a review
+[User guide](docs/user-guide.md) · [Operations and backups](docs/operations.md) · [Agent skill](skills/marginroom/SKILL.md) · [Development and tests](test/README.md) · [Localization](docs/localization.md)
 
-1. Choose **Import HTML** and select a file with its local images, or paste HTML source.
-2. Use **Browse** to interact with the page, or **Annotate** to select elements and **Add comment**. Select a supported text block and choose **Revise inline** to propose changes.
-3. Continue your saved proposal by revising the same block again. Owners can resolve comments and accept or reject revisions in **Discussion**.
-4. Open **More actions (⋯)** → **Export accepted HTML** to download the result. Pending proposals and discussion controls are not exported.
-
-English is the default interface language; the compact language control also offers Simplified Chinese. Document text, comments and author names are never translated.
-
-## Learn more
-
-- [User guide](docs/user-guide.md): importing, drafts, reading position, viewport sizes, review decisions, exports and current limits.
-- [Operations](docs/operations.md): configuration, identity and recovery, remote sharing, persistent storage and backups.
-- [Development and tests](test/README.md): Node setup and focused test suites.
-- [Localization](docs/localization.md): resources, self-hosted runtime and frame compatibility.
-
-## License and credit
-
-[MIT](LICENSE). Based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith; original copyright and license notices are preserved.
+[MIT](LICENSE). Based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith. Original notices are preserved.
