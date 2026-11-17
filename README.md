@@ -1,0 +1,61 @@
+# Marginroom
+
+English · [简体中文](README.zh-CN.md)
+
+Review HTML in the browser. Bring the feedback back to your agent.
+
+Open a generated page, leave comments and revision suggestions beside the content, then read the discussion from your terminal or as JSON. Your original HTML stays unchanged.
+
+![An HTML document with comments, replies and an inline revision in Marginroom](docs/screenshots/english-review.png)
+
+## Install
+
+macOS Apple Silicon / Intel, or Linux x64 with glibc. No Node, Bun or sudo required.
+
+```sh
+curl -fsSL https://github.com/TomCC7/marginroom/releases/latest/download/install.sh | sh
+```
+
+This installs the latest release to `~/.local/bin`. Follow the PATH instruction if prompted. See [installation and macOS security notes](docs/installation.md) for platform limitations.
+
+## Review a page
+
+```sh
+marginroom open ./article.html --browser
+```
+
+Marginroom starts its local service and opens your page. Switch to **Annotate** to comment on text or elements, propose revisions, and reply to feedback.
+
+## Read the feedback
+
+Copy the review URL from your browser. Read the threads in your terminal:
+
+```sh
+marginroom comments 'REVIEW_URL'
+```
+
+Or give your agent structured records, including IDs, quotes and replies:
+
+```sh
+marginroom comments 'REVIEW_URL' --json
+```
+
+Keep URLs quoted. Use `--status all` to include handled feedback, or `marginroom comments --help` for more options.
+
+## Keep reviewing
+
+Opening an unchanged file resumes its review. After changing the HTML, create a new version:
+
+```sh
+marginroom open ./article.html --new-version-of 'REVIEW_URL' --browser
+```
+
+Earlier versions and their feedback remain available.
+
+Local review links work only on the service host. To review from another device, [connect to a reachable instance](docs/agent-workflow.md). Anyone who can reach a document URL can read it.
+
+## Documentation
+
+[User guide](docs/user-guide.md) · [Agent workflow](skills/marginroom/SKILL.md) · [Build from source](docs/installation.md#source-builds) · [Hosting and backups](docs/operations.md)
+
+[MIT](LICENSE). Based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith.

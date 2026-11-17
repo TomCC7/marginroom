@@ -1,0 +1,70 @@
+{
+  "name": "marginroom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Imported HTML review with comments and paragraph suggestions",
+  "type": "module",
+  "scripts": {
+    "start": "bun server.js",
+    "dev": "bun --watch server.js",
+    "test": "bun test/run.mjs",
+    "test:unit": "bun test/run.mjs unit",
+    "test:i18n": "bun test/i18n.test.mjs && bun test/i18n-home.browser.mjs",
+    "test:api": "bun test/run.mjs api",
+    "test:browser": "bun test/frontend.browser.mjs",
+    "test:all": "bun run test && bun run test:browser && bun run test:toggle && bun run test:chrome && bun run test:selection && bun run test:preview && bun run test:security && bun run test:acceptance",
+    "test:chrome": "bun test/review-chrome.browser.mjs",
+    "test:runtime-text": "bun test/runtime-text-storage.mjs",
+    "test:selection": "bun test/triple-selection.browser.mjs && bun test/mobile-selection.browser.mjs && bun test/mobile-selection-storage.mjs && bun test/element-review.browser.mjs && bun test/element-review-storage.mjs && bun test/list-suggest.browser.mjs && bun test/list-selection-storage.mjs",
+    "test:toggle": "bun test/discussion-toggle.browser.mjs",
+    "test:preview": "bun test/static-preview.browser.mjs && bun test/preview-viewport.browser.mjs && bun test/preview-viewport-storage.mjs && bun test/workspace.browser.mjs && bun test/preview-resize.browser.mjs",
+    "browser:install": "bun node_modules/playwright-core/cli.js install chromium",
+    "test:acceptance": "bun test/release-acceptance.mjs",
+    "test:security": "bun test/security-release.test.mjs",
+    "test:agent": "bun test/agent-workflow.mjs",
+    "test:import-recovery": "bun test/import-recovery.mjs",
+    "test:existing-host": "bun test/existing-host.mjs",
+    "test:agent-migration": "bun test/agent-migration.mjs",
+    "build": "bun scripts/build.mjs",
+    "check:sqlite": "bun check-sqlite.mjs",
+    "test:storage": "bun test/bun-storage.mjs"
+  },
+  "dependencies": {
+    "commander": "15.1.0",
+    "cookie": "^0.7.2",
+    "express": "^5.2.1",
+    "linkedom": "0.18.15",
+    "parse5": "8.0.1"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "playwright-core": "^1.62.1"
+  },
+  "engines": {
+    "bun": "1.4.4"
+  },
+  "bin": {
+    "marginroom": "bin/marginroom.mjs"
+  },
+  "files": [
+    "*.js",
+    "bin/",
+    "lib/",
+    "public/",
+    "skills/",
+    "docs/agent-workflow.md",
+    "docs/operations.md",
+    "docs/user-guide.md",
+    "README.md",
+    "LICENSE",
+    "!public/metal-arm-plan*",
+    "bun.lock",
+    ".bun-version",
+    "docs/installation.md",
+    "docs/localization.md",
+    "test/README.md",
+    "scripts/backup.mjs",
+    "scripts/restore.mjs"
+  ],
+  "packageManager": "bun@1.4.4"
+}

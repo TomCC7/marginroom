@@ -1,0 +1,6 @@
+// Inclusive insertion boundaries conflict: two insertions at one caret, or an
+// insertion exactly on a replacement edge, are not silently ordered.
+export function rangesConflict(a,b){if(a.start===a.end||b.start===b.end)return a.start<=b.end&&b.start<=a.end;return a.start<b.end&&b.start<a.end}
+// All patch coordinates are relative to the immediately preceding canonical text.
+export function applyTextPatches(text,patches){for(const p of patches){if(p.base!==text||text.slice(p.start,p.end)!==p.old)throw Error('stale_patch');text=text.slice(0,p.start)+p.body+text.slice(p.end)}return text}
+export function applyDOMPatches(el,patches){const copy=el.cloneNode(true),doc=el.ownerDocument;for(const p of patches){if(copy.textContent!==p.base||copy.textContent.slice(p.start,p.end)!==p.old)return false;const w=doc.createTreeWalker(copy,4);let n,pos=0,a,b,ao,bo;while(n=w.nextNode()){if(!a&&pos+n.length>p.start){a=n;ao=p.start-pos}if(pos+n.length>=p.end){b=n;bo=p.end-pos;if(!a&&p.start===p.end){a=n;ao=bo}break}pos+=n.length}if(!a||!b)return false;const r=doc.createRange();r.setStart(a,ao);r.setEnd(b,bo);r.deleteContents();r.insertNode(doc.createTextNode(p.body))}el.replaceChildren(...copy.childNodes);return true}

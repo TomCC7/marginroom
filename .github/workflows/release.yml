@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Build/test only version (e.g. 0.1.1 or 0.1.1-alpha.1); never publishes a release
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && format('dry-run-{0}', inputs.version) || github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  BUN_VERSION: '1.4.4'
+  TARGETS: linux-x64 darwin-arm64 darwin-x64
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    env:
+      # Do not shell-interpolate this into any command; tools read env directly.
+      MARGINROOM_BUILD_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+      GITHUB_REF: ${{ github.ref }}
+      GITHUB_SHA: ${{ github.sha }}
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - id: resolve
+        name: Resolve and validate release version
+        run: |
+          version=$(bun scripts/release-version.mjs)
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Enforce immutable tag/ref on release trigger
+        if: github.event_name == 'push'
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          if ! git ls-remote --exit-code origin "refs/tags/${tag}" "refs/tags/${tag}^{}" | grep -Fq "${GITHUB_SHA}"; then
+            echo "::error title=Immutable tag violation::Release tag '${tag}' does not already point at this commit; refusing to publish or clobber existing history/assets" >&2
+            exit 1
+          fi
+      - run: bun install --frozen-lockfile
+      - run: bun test/release-contract.mjs
+      - name: Build all release targets outside source tree
+        run: bun scripts/build.mjs "${RUNNER_TEMP:?}/marginroom-release"
+      - name: Verify artifact mapping and provenance
+        run: |
+          cd "${RUNNER_TEMP:?}/marginroom-release"
+          shasum -a 256 -c SHA256SUMS
+          manifest_version=$(jq -r '.version' manifest.json)
+          test "$manifest_version" = '${{ steps.resolve.outputs.version }}'
+          test "$(jq -r '.sourceCommit' manifest.json)" = "${{ github.sha }}"
+          test "$(jq -r '.sourceDirty' manifest.json)" = false
+          test "$(jq -r '.bun' manifest-linux-x64.json)" = '${{ env.BUN_VERSION }}'
+          test "$(jq -r '.bun' manifest-darwin-arm64.json)" = '${{ env.BUN_VERSION }}'
+          test "$(jq -r '.bun' manifest-darwin-x64.json)" = '${{ env.BUN_VERSION }}'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-dist
+          path: ${{ runner.temp }}/marginroom-release
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+
+  smoke:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    name: smoke ${{ matrix.target }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-24.04
+          - target: darwin-arm64
+            os: macos-15
+          - target: darwin-x64
+            os: macos-15-intel
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-dist
+          path: ${{ runner.temp }}/marginroom-release
+      - name: Verify downloaded artifact hashes and provenance
+        run: |
+          cd "${RUNNER_TEMP:?}/marginroom-release"
+          shasum -a 256 -c SHA256SUMS
+          test "$(jq -r '.sourceCommit' manifest.json)" = "${{ github.sha }}"
+          test "$(jq -r '.version' manifest.json)" = '${{ needs.build.outputs.version }}'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Run native installed CLI/service smoke
+        run: |
+          target='${{ matrix.target }}'
+          if [ "$target" = linux-x64 ]; then
+            python3 test/release-installer.py "${RUNNER_TEMP:?}/marginroom-release"
+          fi
+          TMPDIR="${RUNNER_TEMP:?}" bun test/release-native-installed.mjs "${RUNNER_TEMP:?}/marginroom-release" "$target"
+
+  publish:
+    if: github.event_name == 'push'
+    needs: [build, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-dist
+          path: ${{ runner.temp }}/marginroom-release
+      - name: Recheck hashes before publish
+        id: verify
+        run: |
+          cd "${RUNNER_TEMP:?}/marginroom-release"
+          shasum -a 256 -c SHA256SUMS
+          test "$(jq -r '.version' manifest.json)" = "${{ env.RELEASE_VERSION }}"
+          test "$(jq -r '.sourceCommit' manifest.json)" = "${{ github.sha }}"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Publish immutable release (revalidate remote tag, refuse non-404/existing release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/publish-release.mjs "${RUNNER_TEMP:?}/marginroom-release"
