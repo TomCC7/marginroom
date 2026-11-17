@@ -21,7 +21,7 @@ const root=await mkdtemp(path.join(base,'marginroom-native-release-'));
 const home=path.join(root,'home with spaces');
 await mkdir(home,{recursive:true});
 const sha256=async p=>createHash('sha256').update(await readFile(p)).digest('hex');
-const run=async(file,args,options={})=>{const p=await exec(file,args,{env:{...process.env,...options.env},cwd:options.cwd,timeout:60000});return p;};
+const run=async(file,args,options={})=>{const p=await exec(file,args,{env:{...process.env,...options.env},cwd:options.cwd??root,timeout:60000});return p;};
 const cleanup=[];
 const server=http.createServer((req,res)=>{
  const url=new URL(req.url,'http://127.0.0.1');
