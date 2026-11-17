@@ -8,14 +8,16 @@ import {BUNDLE_LIMITS,importLimits} from './import-limits.js';
 export {BUNDLE_LIMITS};
 export function moduleImports(text){try{return lex(text)[0].filter(i=>typeof i.n==='string');}catch{throw new ImportError('invalid_javascript');}}
 export class ImportError extends Error {constructor(code,status=400){super(code);this.code=code;this.status=status;}}
+// URL-token phase of the HTML srcset algorithm: commas inside data URLs are not separators.
+export function srcsetReferences(text){const out=[];let p=0;while(p<text.length){while(/[\s,]/.test(text[p]||'')&&p<text.length)p++;const s=p;while(p<text.length&&!/\s/.test(text[p]))p++;let e=p;while(e>s&&text[e-1]===',')e--;if(e>s)out.push({s,e,url:text.slice(s,e)});if(e<p)continue;let parens=0;while(p<text.length){const c=text[p++];if(c==='(')parens++;if(c===')')parens=Math.max(0,parens-1);if(c===','&&!parens)break;}}return out;}
 export function safePath(value){return typeof value==='string' && value.length<=512 && !value.includes('\\') && !value.includes('\0') && !value.startsWith('/') && value.split('/').every(p=>p && p!=='.' && p!=='..') && !/%(?:2e|2f|5c)/i.test(value);}
 // Static declared dependencies only; no script execution, network requests or workspace scans.
 export function dependencies(text,name,{rootRelative=true}={}){
  const refs=[];
  if(/\.html?$/i.test(name)){
-  const walk=n=>{for(const a of n.attrs||[]) if(['src','poster'].includes(a.name)|| (a.name==='href' && ['link','image','use'].includes(n.tagName)))refs.push(a.value);else if(a.name==='style')css(a.value);else if(a.name==='srcset')for(const s of a.value.split(','))refs.push(s.trim().split(/\s+/)[0]);
+  const walk=n=>{for(const a of n.attrs||[]) if(['src','poster'].includes(a.name)|| (a.name==='href' && ['link','image','use'].includes(n.tagName)))refs.push(a.value);else if(a.name==='style')css(a.value);else if(a.name==='srcset')for(const s of srcsetReferences(a.value))refs.push(s.url);
    if(n.tagName==='base')throw new ImportError('base_element_not_supported');
-   if((n.attrs||[]).some(a=>a.name==='srcdoc'))throw new ImportError('srcdoc_not_supported');
+   for(const a of n.attrs||[])if(a.name==='srcdoc')walk(parse(a.value));
    if(n.tagName==='script'&&!(n.attrs||[]).some(a=>a.name==='type'&&!/^(?:module|(?:text|application)\/(?:java|ecma)script)$/i.test(a.value)))modules((n.childNodes||[]).map(n=>n.value||'').join(''));
    if(n.tagName==='style')css((n.childNodes||[]).map(n=>n.value||'').join(''));
    for(const c of n.childNodes||[])walk(c);if(n.content)walk(n.content);};walk(parse(text));

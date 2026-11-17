@@ -345,5 +345,6 @@ export async function assignAnchors(container) {
     const oldAnchor=oldOcc?`${oldBase}#${oldOcc}`:oldBase;
     if(oldAnchor!==anchor){legacy.set(oldAnchor,el);el.setAttribute('data-hs-legacy-anchor',oldAnchor);}
   }
+  for(const [a,el] of legacy)if(map.has(a)&&map.get(a)!==el){legacy.set(a,null);el.removeAttribute('data-hs-legacy-anchor');}
   return map;
 }

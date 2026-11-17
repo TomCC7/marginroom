@@ -112,7 +112,7 @@ async function api(path,body,method='POST'){
  const data=await r.json().catch(()=>({}));if(!r.ok){const err=new Error(typeof data.error==='string'?data.error:'request_failed');err.reason=typeof data.error==='string'?data.error:'';err.code=r.status;err.suggestion=data.suggestion;err.existingId=data.existingId;throw err}return data;
 }
 function state(){return bridge.state}
-function getBlock(anchor){return state().anchorMap.get(anchor)||state().anchorMap.legacy?.get(anchor)||state().commentMap.get(anchor)}
+function getBlock(anchor){const map=state().anchorMap;return map.legacy?.has(anchor)?map.legacy.get(anchor):map.get(anchor)||state().commentMap.get(anchor)}
 function setView(next){
  if(draft){toast(()=>tr('review.finishParagraph'));return}
  const list=next==='list';$('#annotation-list').hidden=!list;$('#threads').hidden=list;$('.discussion>.filters').hidden=list;
