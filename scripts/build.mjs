@@ -10,7 +10,11 @@ const repo=path.resolve(import.meta.dir,'..'),out=path.resolve(process.argv[2]||
 const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8'}).trim();
 const sourceCommit=git('rev-parse','HEAD'),sourceDirty=!!git('status','--porcelain');
 assert(!sourceDirty,'Commit the source tree before building a versioned distribution');
-const pkg=JSON.parse(await readFile(path.join(repo,'package.json'))),version='0.1.0-alpha.2';
+const pkg=JSON.parse(await readFile(path.join(repo,'package.json')));
+const {releaseVersion}=await import('./release-version.mjs');
+const version=releaseVersion();
+assert(!out.startsWith(repo+path.sep)&&out!==repo,'Build output must be outside source tree');
+try { await lstat(out); throw new Error('Output already exists; refusing to overwrite'); } catch(e) { if(e.code!=='ENOENT') throw e; }
 const allow=JSON.parse(await readFile(path.join(repo,'release/publication-allowlist.json'))).paths;
 const publicFiles=allow.filter(p=>p.startsWith('public/')&&!p.startsWith('public/metal-arm-plan'));
 const stage=await mkdtemp(path.join(tmpdir(),'marginroom-build-'));
@@ -29,14 +33,14 @@ try{
   await cp(path.join(repo,'LICENSE'),path.join(dir,'LICENSE'));
   const file=`marginroom-${version}-${target}.tar.gz`;
   execFileSync('tar',['-czf',path.join(out,file),'-C',dir,'marginroom','LICENSE']);
-  const manifest={version,sourceCommit,sourceDirty,bun:Bun.version,target,libc:target==='linux-x64'?'glibc':null,file,sha256:await digest(path.join(out,file)),binarySha256:await digest(binary),assets,dependencies:pkg.dependencies,runtimeVerified:target==='linux-x64'?'see bounded Linux verification':'NOT EXECUTED; cross-built only; no Developer ID/notarization'};
+  const manifest={version,sourceCommit,sourceDirty,bun:Bun.version,target,libc:target==='linux-x64'?'glibc':null,file,sha256:await digest(path.join(out,file)),binarySha256:await digest(binary),assets,dependencies:pkg.dependencies,runtimeVerified:'Build only; native execution evidence is in the matching release workflow smoke job; no Developer ID/notarization'};
   manifests.push(manifest);await writeFile(path.join(out,`manifest-${target}.json`),JSON.stringify(manifest,null,2)+'\n');
  }
  let template=await readFile(path.join(repo,'scripts/install.sh'),'utf8');
  for(const [k,v] of Object.entries({VERSION:version,LINUX_SHA:manifests[0].sha256,ARM_SHA:manifests[1].sha256,X64_SHA:manifests[2].sha256}))template=template.replaceAll(`@${k}@`,v);
  await writeFile(path.join(out,'install.sh'),template,{mode:0o755});
  await cp(path.join(repo,'LICENSE'),path.join(out,'LICENSE'));
- await cp(path.join(repo,'release/RELEASE-NOTES.md'),path.join(out,'RELEASE-NOTES.md'));
+ await writeFile(path.join(out,'RELEASE-NOTES.md'),(await readFile(path.join(repo,'release/RELEASE-NOTES.md'),'utf8')).replaceAll('@VERSION@',version).replaceAll('@SOURCE_COMMIT@',sourceCommit));
  await writeFile(path.join(out,'manifest.json'),JSON.stringify({version,sourceCommit,sourceDirty,targets:manifests},null,2)+'\n');
  const files=[...manifests.map(m=>m.file),...manifests.map(m=>`manifest-${m.target}.json`),'manifest.json','install.sh','LICENSE','RELEASE-NOTES.md'];
  await writeFile(path.join(out,'SHA256SUMS'),(await Promise.all(files.map(async f=>`${await digest(path.join(out,f))}  ${f}`))).join('\n')+'\n');

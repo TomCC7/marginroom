@@ -34,3 +34,5 @@ docs/screenshots/*
 !docs/screenshots/english-review.png
 
 !docs/installation.md
+
+!docs/releasing.md
