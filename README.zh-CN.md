@@ -4,7 +4,7 @@
 
 在浏览器里审阅 HTML，把反馈交给你的 agent。
 
-打开生成好的页面，在原文旁添加批注、提出修订或回复讨论，再从终端读取反馈。原始 HTML 文件不会被改写。
+打开生成好的页面，在原文旁添加批注或提出修订，再从终端读取讨论或输出 JSON。原始 HTML 文件不会被改写。
 
 ![Marginroom 审稿界面，展示批注、回复和原位修订](docs/screenshots/english-review.png)
 
@@ -16,7 +16,7 @@
 curl -fsSL https://github.com/TomCC7/marginroom/releases/latest/download/install.sh | sh
 ```
 
-命令会安装最新发布版到 `~/.local/bin`。如果提示该目录不在 PATH 中，按提示配置即可。平台限制与 macOS 安全提示见[安装说明](docs/installation.md)。
+命令将最新发布版安装到 `~/.local/bin`。如果提示该目录不在 PATH 中，按提示配置。平台限制与 macOS 安全提示见[安装说明](docs/installation.md)。
 
 ## 审阅页面
 
@@ -50,7 +50,7 @@ URL 请保留引号。加上 `--status all` 可查看所有状态的反馈，更
 marginroom open ./article.html --new-version-of '原审稿页面URL' --browser
 ```
 
-旧版本及其反馈会保留，方便回看。
+旧版本保留各自的反馈。
 
 本地审稿链接只能在运行服务的电脑上访问。需要跨设备审稿时，请[连接可访问的实例](docs/agent-workflow.md)。任何能访问文稿 URL 的人都能阅读文稿。
 

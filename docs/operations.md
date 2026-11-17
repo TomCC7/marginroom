@@ -4,9 +4,9 @@ Installation, configuration, ownership recovery, and backups for a self-hosted i
 
 ## Installed CLI and coordinated backend upgrade
 
-See [agent workflow](agent-workflow.md) for verified standalone installation, Linux loopback service ownership, explicit pairing, private credential files and scope limitations. CLI identity is separate from human cookies and OWNER_KEY. Ordinary JSON/share links never contain management handoffs. Machine import is host-authorized; browser imports retain guest capacity limits.
+See the [agent workflow](agent-workflow.md) for standalone installation, local service state and pairing. CLI identity is separate from human cookies and `OWNER_KEY`. Ordinary JSON/share links contain no management handoff. Machine imports require host authorization; browser imports retain guest capacity limits.
 
-`bun test/agent-migration.mjs ORIGINAL_NODE_FIXTURE_DIR` verifies migration and rollback on copied synthetic original-driver data. It does not touch a live deployment. A new backend must be installed as a coordinated candidate with matching DB/docs/bundles/identity backup, not a static-asset hot swap. Existing externally maintained metal-arm files must be retained from CURRENT.
+Before a backend upgrade, run `bun test/agent-migration.mjs ORIGINAL_NODE_FIXTURE_DIR` on copied synthetic original-driver data to check migration and rollback. Install the backend as a coordinated candidate with matching database, documents, bundles and identity backups. A static-asset swap is insufficient. Preserve CURRENT externally maintained metal-arm files.
 
 ## Docker installation
 
@@ -19,9 +19,9 @@ docker compose ps
 # Open http://localhost:3939/
 ```
 
-The default binding is **127.0.0.1 only**. Do not change it to a public binding without an appropriate HTTPS/authentication deployment review. To change the local port, set `MMW_PORT` in `.env`.
+Compose binds to 127.0.0.1 by default. Review HTTPS and authentication before changing to a public binding. To change the local port, set `MMW_PORT` in `.env`.
 
-On first boot the image creates `/data/identity.json` with random, persistent `SESSION_SECRET` and `OWNER_KEY` values before loading the app. `/data` is a named volume containing the database, imported documents/assets, and identity secrets. Fresh data has no real imported documents; an optional synthetic `example` seed is included only if present in this source copy. Rebuilds and `docker compose down` keep the volume. **`docker compose down -v` destroys it.**
+On first boot the image creates `/data/identity.json` with random, persistent `SESSION_SECRET` and `OWNER_KEY` values before loading the app. The `/data` named volume holds the database, imported documents/assets and identity secrets. A fresh volume contains an optional synthetic `example` seed only if this source copy includes it. Rebuilds and `docker compose down` keep the volume. `docker compose down -v` destroys it.
 
 Retrieve your owner recovery key on your own terminal (it is a secret):
 
@@ -33,11 +33,13 @@ Open `http://localhost:3939/?key=YOUR_KEY` once in your owner browser. Then use 
 
 ### Identity, ownership, and cookie recovery
 
-The key grants **global owner** privileges, including actions on any document. An anonymous browser also has its own signed guest cookie and may own documents it uploaded, subject to limits. Someone typing the same display name does not become that browser or owner. Guest documents may be absent from other guests' home listings, but listing visibility is not document authentication.
+The key grants global owner privileges over every document. An anonymous browser has a signed guest cookie and may own its uploads, subject to limits. Display names do not establish identity or ownership. Guest documents may be absent from other guests' home listings; anyone with a reachable document URL can still read them.
 
-If the owner's browser cookie is cleared or expires, present the saved `OWNER_KEY` again to regain owner privileges. If a guest loses its cookie, its identity is not recoverable by typing its old name; ask the global owner to manage the document. Restoring a backup with the same `SESSION_SECRET` preserves the validity of existing signed cookies **if those cookies are still present in the browser**. It does not recreate deleted browser cookies. Losing both the key and all copies of `identity.json` is not a supported recovery path.
+If the owner's cookie is cleared or expires, present the saved `OWNER_KEY` to regain privileges. A guest that loses its cookie must ask the global owner to manage the document; typing the old name cannot recover its identity.
 
-The image refuses to start if explicit environment secrets conflict with persisted identity; it does not silently rotate them. Changing `SESSION_SECRET` invalidates existing signatures. Changing just `OWNER_KEY` does **not** revoke existing signed owner cookies: rotate the session secret too when revocation is needed. Back up first and perform such manual changes only while stopped.
+Restoring the same `SESSION_SECRET` preserves signed cookies that remain in the browser. It cannot recreate deleted cookies. Recovery requires the key or a saved copy of `identity.json`.
+
+The image refuses to start if explicit environment secrets conflict with persisted identity. Changing `SESSION_SECRET` invalidates existing signatures. Changing only `OWNER_KEY` leaves signed owner cookies valid. To revoke them, rotate the session secret too. Back up first and make these changes only while stopped.
 
 ## Sharing an instance
 
@@ -59,20 +61,22 @@ The runtime and dependency manager are **Bun 1.4.4**. The lockfile is `bun.lock`
 | `HS_DOCS_DIR` | Docker: `/data/docs`; native default: repository `docs/` |
 | `HOST`, `PORT` | Docker: `0.0.0.0:3939` internally; Compose publishes loopback only |
 | `SESSION_SECRET`, `OWNER_KEY` | Docker initializes/persists in `/data/identity.json`; plain `bun server.js` does **not** do this |
-| `NODE_ENV` | Compose defaults to `development` for local HTTP cookie support. Use `production` with HTTPS to set Secure cookies. This flag is cookie behavior, not a security guarantee. |
+| `NODE_ENV` | Compose defaults to `development` for local HTTP cookies. Use `production` with HTTPS to set Secure cookies; configure network access and authentication separately. |
 | `MMW_GUEST_DOC_LIMIT`, `MMW_MAX_GUEST_OWNERS` | App defaults: 1 document per guest; 15 distinct guest owners |
 | `MMW_MAX_DOC_BYTES` | App default: 2,000,000 bytes per uploaded file |
 | `MMW_READ_PER_MIN`, `MMW_WRITE_PER_MIN`, `MMW_UPLOAD_PER_HOUR` | Defaults: 300 reads/min, 60 writes/min, 10 uploads/hour per IP; global owner exempt |
 
-Compose deliberately passes only the settings shown in `compose.yaml`. Add limit overrides explicitly to its `environment` section; placing arbitrary variables in `.env` alone does not pass them to the container. Feedback-to-GitHub is not configured or required: leave `GITHUB_TOKEN` unset. This packaging does not upload your documents to a hosted service, though imported remote URLs can cause browser network requests.
+Compose passes only settings listed in `compose.yaml`. Add limit overrides to its `environment` section; `.env` alone does not pass arbitrary variables to the container. Leave `GITHUB_TOKEN` unset; feedback-to-GitHub is not configured. Documents stay on the instance, but imported remote URLs can cause browser network requests.
 
 For native development, run `bun install --frozen-lockfile` with Bun 1.4.4. Explicitly export stable `SESSION_SECRET`, `OWNER_KEY`, an absolute `HS_DB_PATH`, and an absolute `HS_DOCS_DIR` pointing to a **fresh disposable directory** before `bun run start`. The server does not load `.env` automatically. With no session secret native runs use a per-boot random secret; with no owner key owner-key recovery is disabled. Native operators must securely create `identity.json` matching the two exported secrets in their data directory to use the backup tools. The image's automatic initialization is the recommended quickstart.
 
 ## Backup and restore
 
-A backup must include **all three**: SQLite review state/history/ownership, the entire document tree (including raw interactive HTML/config/assets), and persistent identity secrets. Copying only `app.db` is insufficient, particularly in SQLite WAL mode.
+A backup must include SQLite review state/history/ownership, the entire document tree including raw interactive HTML/config/assets, and persistent identity secrets. Copying only `app.db` omits files and identity and can miss SQLite WAL data.
 
-The tools use SQLite's consistent `VACUUM INTO` snapshot and check integrity. **Stop the application and every other writer for the entire operation**: SQLite consistency alone cannot coordinate file uploads/deletions with database changes. `--writes-stopped` is your assertion, not an automatic lock. Do not run another app against the same volume. Backups are unencrypted directories containing content and owner credentials; store privately, encrypt at rest/off-host as appropriate, and never commit or publicly upload them. SHA-256 inventory checks detect accidental corruption, not maliciously replaced manifests.
+Stop the application and every other writer for the entire backup or restore. The tools use SQLite's `VACUUM INTO` snapshot and check integrity, but cannot coordinate file uploads/deletions with database changes while writers run. `--writes-stopped` records your assertion; it does not lock the volume. Do not run another app against that volume during the operation.
+
+Backups are unencrypted directories containing content and owner credentials. Store them privately, encrypt at rest/off-host as appropriate, and never commit or publicly upload them. SHA-256 inventory checks detect accidental corruption, not maliciously replaced manifests.
 
 ### Back up the Compose instance
 
@@ -86,7 +90,7 @@ docker compose run --rm --no-deps -v "$PWD/backups:/backups" app \
 docker compose start app
 ```
 
-The image runs as UID/GID 1000 (`bun`). On Linux the backup directory must be writable by that user; if your host UID differs, grant that user access to **only that directory** before running the command. Do not make backups world-readable. Check the command's exit status before considering a backup successful. A failed run can leave an incomplete directory; never restore it. Keep a separate private copy outside the application disk.
+The image runs as UID/GID 1000 (`bun`). On Linux the backup directory must be writable by that user. If your host UID differs, grant access to that directory only. Keep backups inaccessible to other users. Check the command's exit status; a failed run can leave an incomplete directory that must not be restored. Keep a separate private copy outside the application disk.
 
 ### Restore rehearsal or recovery into a new volume
 

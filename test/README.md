@@ -1,15 +1,26 @@
 # Portable regression tests
 
+Run tests from the repository root with Bun 1.4.4. Suites use synthetic content,
+disposable databases and loopback listeners or route-isolated browser fixtures.
+Never point them at production data. Browser checks use Chromium viewport and
+keyboard simulations. Physical iPhone/Safari selection, touch, keyboard and OS
+IME behavior require device trials.
+
 ## Installed agent workflow
 
-- `bun run test:agent`: actual standalone build + HTTP installer + normal CLI subprocesses, native comment/reply exact-ID readback and restart; bundle/font/module errors, scope/revocation/pairing, preserved versions/locate, browser management/guest quota/deletion, preferred-port occupation and real launcher SIGKILL/lease adoption. Set `AGENT_ARTIFACTS` for retained synthetic reports/captures, `FONT_FIXTURE` for a valid installed TTF (default `/usr/share/fonts/TTF/OpenSans-Regular.ttf`).
-- `bun run test:existing-host`: review130 narrow regression. Fresh binary/isolated install; normal `createApp(db)` HTTP host (no managed runner identity injection); host-local `pair --host-db DB --server ORIGIN` → installed open → close/reopen DB + same-port host → original credential/review/source/owner readback; anonymous/owner/invalid-Bearer HTTP bootstrap denied, wrong DB rejected, revocation fails closed and no managed service created. `HOST_ARTIFACTS` retains a secret-free receipt.
-- `bun run test:import-recovery`: real abrupt exits at publication boundaries.
-- `bun test/agent-migration.mjs ORIGINAL_NODE_FIXTURE_DIR`: copies a pre-migration synthetic original-driver fixture and verifies all rows, columns, schema, HTTP source/feedback, cookie/token identity, transaction rollback, backup/integrity and copied rollback. The fixture must include app.db, before.db, docs, identity.json, credential.json and snapshot.json captured before driver replacement; never point this at production.
-- `bun run test:i18n`, `bun run test:api`: relevant existing contracts. Chromium screenshots/keyboard and synthetic composition events do not certify physical Safari or OS IME.
+- `bun run test:agent` installs the standalone binary through an HTTP installer, then checks CLI subprocesses, comment/reply exact-ID readback and restart. It covers bundle/font/module errors, scope/revocation/pairing, versions/locate, browser management, guest quota/deletion, occupied ports and launcher SIGKILL/lease adoption. Set `AGENT_ARTIFACTS` to retain synthetic reports/captures and `FONT_FIXTURE` to select a licensed installed TTF. The default font is `/usr/share/fonts/TTF/OpenSans-Regular.ttf`.
+- `bun run test:existing-host` installs a fresh binary and starts a normal `createApp(db)` HTTP host without managed-runner identity injection. It pairs through `pair --host-db DB --server ORIGIN`, imports with the installed CLI, closes/reopens the database and same-port host, then reads back the original credential, review, source and owner. It checks denial of anonymous, owner and invalid-Bearer HTTP bootstrap, wrong-database rejection, revocation and absence of a managed service. `HOST_ARTIFACTS` retains a secret-free receipt.
+- `bun run test:import-recovery` checks abrupt exits at publication boundaries.
+- `bun test/agent-migration.mjs ORIGINAL_NODE_FIXTURE_DIR` copies a pre-migration synthetic original-driver fixture and checks all rows, columns, schema, HTTP source/feedback, cookie/token identity, transaction rollback, backup/integrity and copied rollback. Capture `app.db`, `before.db`, `docs`, `identity.json`, `credential.json` and `snapshot.json` before driver replacement and include them in the fixture.
+- `bun run test:i18n` and `bun run test:api` check localization and API contracts.
 
+## Run the suites
 
-Build the standalone distribution with `bun run build` before installed-workflow tests. Run from the repository root with Bun 1.4.4:
+Install dependencies first, then Chromium before browser suites. Before installed
+agent or existing-host tests, [build a standalone distribution](../docs/installation.md#source-builds)
+from a clean committed tree into the default `../deliverables` directory. The
+destination must not exist. To test an existing distribution elsewhere, set
+`MARGINROOM_DELIVERABLES` to its absolute directory.
 
 ```sh
 bun install --frozen-lockfile
@@ -43,9 +54,8 @@ permissions, real reply persistence, migration and database reopen.
 `frontend.browser.mjs` uses `helpers/browser.mjs` to generate an article,
 comments and a long reply thread entirely in memory. Every request is fulfilled
 from local public assets or synthetic data; unexpected hosts, API endpoints and
-non-GET requests fail the test. There are no live URLs, source snapshots,
-private article fixtures, report files or screenshots. No existing data directory
-or running app is needed.
+non-GET requests fail the test. The suite needs no existing data directory or
+running app and saves no report files or screenshots.
 
 The browser suite checks desktop/mobile header breakpoints, long titles,
 capability-gated modes and owner-only sharing, menus and list filters, sticky and
@@ -65,19 +75,14 @@ then independently parses the viewer's downloaded HTML. It never uses live data.
 `LIST_ARTIFACTS`, `TRIPLE_ARTIFACTS`, `STORAGE_ARTIFACTS` optionally save evidence;
 normal tests leave the tree clean. `FRONTEND_PUBLIC` can select isolated candidate
 assets for fixture tests (the disposable server always serves this checkout).
-Accepted leaf overlays retain existing text-only semantics; untouched sibling
-inline markup and original source HTML must remain unchanged. These tests do not
-claim a new rich-text accept/export feature or physical Safari validation.
+These tests cover text-only accepted leaf overlays. Untouched sibling inline
+markup and original source HTML must remain unchanged.
 
-Browser checks use headless Chromium viewport simulation, not physical iOS,
-Safari, or a real software keyboard. They intentionally do not submit writes;
-the disposable API tests cover persistence. The separate release acceptance
-harness is not implicitly discovered by this runner. The two mobile-selection
-harnesses are also explicit commands, not part of `test:all`. Optional
+Route-isolated browser fixtures deny writes; disposable storage/API tests cover
+persistence. `test:all` invokes the separate release acceptance harness explicitly.
+It also includes both mobile-selection harnesses through `test:selection`. Optional
 `SELECTION_SCREENSHOTS=/absolute/output` saves synthetic viewport screenshots;
-normal runs do not modify tracked assets. Neither harness reproduces iOS native
-selection menus: a physical iPhone/Safari selection-menu and keyboard trial is
-still required.
+normal runs do not modify tracked assets.
 
 The preview suite uses synthetic static and interactive dashboards with media
 queries, viewport units, a sticky header, fixed footer, modal, nested scroll,
@@ -99,12 +104,15 @@ Scaled cross-origin iframe clicks use real mouse coordinates transformed from
 frame-local rectangles because locator clicks in the tested Chromium/Playwright
 combination do not compensate for the iframe CSS transform reliably.
 
-Fresh document preferences now default to **Auto · fill available space**. It
-sizes the real iframe viewport to the stage, so responsive breakpoints naturally
-change as rails open/close. Saved explicit device/custom choices remain valid; legacy Article migrates to
-Auto and is no longer exposed. The zoom menu is paint-only (Fit, 50/75/100/125/150/200%); the output shows
-layout CSS-pixel dimensions separately from the painted percentage. Use Auto to
-reset a custom/device layout. All normal paragraph tests now exercise the unified iframe.
+Fresh documents default to **Auto · fill available space**. Auto sizes the iframe
+viewport to the stage, so opening or closing rails can change responsive
+breakpoints. Saved device/custom choices remain valid. Legacy Article preferences
+migrate to Auto, and Article is no longer offered.
+
+The zoom menu changes painting scale only, with Fit and 50/75/100/125/150/200%
+choices. Output reports layout CSS-pixel dimensions separately from painted
+percentage. Use Auto to reset a custom/device layout. Normal paragraph tests use
+the unified iframe.
 
 `workspace.browser.mjs` asserts full-width rail edges (240px left, 320px right;
 zero external gutter), full column release, neutral device stage, exact scaled
@@ -118,35 +126,33 @@ release/cancel/loss, selection/form/JS retention and exact single iframe load,
 keyboard arrows/Shift/Enter and custom size input. The visible 28px corner handle
 changes real viewport dimensions, not imported content or application/browser
 zoom. Optional `RESIZE_ARTIFACTS=/absolute/output` saves Auto and custom states.
-Physical Safari touch/selection/keyboard behavior still needs a device trial.
-
 
 `review-chrome.browser.mjs` checks dock pointer/Enter/Space toggling, saved hidden
 state and visible restore entry, recovered Auto height, invariant explicit sizes,
 source borders, rail list/filter/jump, iframe identity/input/state and unsent drafts
 at 1440/1024/1700/360/390. It also tests legacy/corrupt/denied storage and simulated
 keyboard geometry. `CHROME_ARTIFACTS=/absolute/output` saves native viewport
-captures and measured metrics; no real device/OS keyboard fidelity is implied.
+captures and measured metrics.
 
+## Browse, annotate and revise
 
-Browse/Annotate contract: `bun run test:selection` now runs native triple-click,
-mobile press-snapshot, real mobile SQLite, element/static dashboard and real
-element SQLite suites. `element-review.test.mjs` covers the ordinary authority
+`bun run test:selection` runs native triple-click, mobile press-snapshot, mobile
+SQLite, element/static dashboard and element SQLite suites.
+`element-review.test.mjs` covers the ordinary authority
 picker, identity/fingerprint ambiguity and no detached-node retargeting.
-The list-suggest/list-selection-storage scripts are migrated to explicit context
-submission too: UTF16 offsets, native double/triple quotes, actual-hunk overlap,
-rich source/cross-block refusal, sibling/inline-shell integrity and actual export
-assertions remain exercised. Explicit 原位修改 opens a temporary native editable
-projection; Annotate alone never grants contenteditable or mutates source.
+The list-suggest/list-selection-storage scripts use explicit context submission.
+They check UTF-16 offsets, native double/triple quotes, hunk overlap, rich
+source/cross-block refusal, sibling/inline-shell integrity and exported HTML.
+Choosing **Revise inline** opens a temporary native editable projection.
+**Annotate** alone does not grant contenteditable or mutate source.
 
 Continuous revision: `bun test/revision-diff.test.mjs && bun test/continuous-revision-api.test.mjs`
 checks deterministic grapheme hunks, bidirectional UTF-16 maps, atomic reconciliation,
 caller ownership, immutable retries, paragraph-scoped ABA versions, populated legacy
 records, split/merge discussion history and both acceptance orders with real SQLite/HTTP.
 `bun test/continuous-revision.browser.mjs` exercises ordinary/static 1440/390
-save → reenter → distant edit → save/reload, stable IDs/replies, withdrawal/cancel,
+save, reentry, distant editing and save/reload, stable IDs/replies, withdrawal/cancel,
 foreign overlap and stale draft retention. `bun test/draft-diff.browser.mjs`
 checks native undo/redo/IME and inline deletion flow, including long cross-line runs.
 `REVISION_RUNTIME` selects an independent CURRENT-derived candidate; optional
-`REVISION_ARTIFACTS` selects native screenshot/evidence output. Physical Safari
-keyboard/selection remains unverified.
+`REVISION_ARTIFACTS` selects native screenshot/evidence output.

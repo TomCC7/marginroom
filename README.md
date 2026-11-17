@@ -2,9 +2,9 @@
 
 English · [简体中文](README.zh-CN.md)
 
-Review HTML in the browser. Bring the feedback back to your agent.
+Review HTML in the browser and send feedback to your agent.
 
-Open a generated page, leave comments and revision suggestions beside the content, then read the discussion from your terminal or as JSON. Your original HTML stays unchanged.
+Open a generated page, comment or suggest revisions beside the content, then read the discussion in your terminal or as JSON. Your original HTML stays unchanged.
 
 ![An HTML document with comments, replies and an inline revision in Marginroom](docs/screenshots/english-review.png)
 
@@ -24,7 +24,7 @@ This installs the latest release to `~/.local/bin`. Follow the PATH instruction 
 marginroom open ./article.html --browser
 ```
 
-Marginroom starts its local service and opens your page. Switch to **Annotate** to comment on text or elements, propose revisions, and reply to feedback.
+Marginroom starts its local service and opens your page. Switch to **Annotate** to comment on text or elements, propose revisions, and reply to feedback. The interface offers English and Simplified Chinese.
 
 ## Read the feedback
 
@@ -50,7 +50,7 @@ Opening an unchanged file resumes its review. After changing the HTML, create a 
 marginroom open ./article.html --new-version-of 'REVIEW_URL' --browser
 ```
 
-Earlier versions and their feedback remain available.
+Earlier versions keep their feedback.
 
 Local review links work only on the service host. To review from another device, [connect to a reachable instance](docs/agent-workflow.md). Anyone who can reach a document URL can read it.
 

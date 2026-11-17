@@ -1,14 +1,16 @@
 # Using Marginroom
 
-For an installed agent CLI, start with [the CLI workflow](agent-workflow.md): `marginroom open article.html --json`, then `marginroom comments REVIEW_URL --status open --json`. No MCP or automatic polling is required.
+For terminal or agent use, follow [the CLI workflow](agent-workflow.md). This guide covers browser review.
 
-[Install and run locally](operations.md#docker-installation), then open the instance in your browser. The interface starts in English; the compact language control also offers Simplified Chinese. Your explicit choice is stored in this browser and shared between the homepage and viewer. Switching language changes product controls, not document text, authors or comments.
+[Install and run locally](operations.md#docker-installation), then open the instance in your browser. The interface starts in English; the language control also offers Simplified Chinese. Your choice applies to the homepage and viewer in this browser. It changes product controls while preserving document text, authors and comments.
 
 ## Import and resume a document
 
 1. On the homepage, choose **Import HTML**. Select an HTML file and its local images, or paste HTML source, then import and open it.
-2. Select a published resource folder when needed. The dialog shows the title and selected-resource count; missing declared dependencies fail before publication. Identical selected content resumes the same review for this identity. Check **Start an independent review** for a separate copy. For a revision, enter the previous review URL: the new version preserves every old URL and its feedback, without applying pending old rewrites. Filenames are not browser source identities.
-3. Use **Recent** to find documents opened in this browser, including shared links. Search by title or remove local entries without deleting the server document. **My documents** lists documents created by or explicitly granted to the current signed browser identity; management is not authorship. Deleting a document is a separate, permission-checked action.
+2. Select a published resource folder when needed. The dialog shows the title and selected-resource count. Missing declared dependencies fail before publication.
+3. Identical selected content resumes the same review for this identity, regardless of filename. Check **Start an independent review** for a separate copy. To create a revision, enter the previous review URL. Old URLs retain their feedback; pending old rewrites are not applied to the new version.
+
+Use **Recent** to find documents opened in this browser, including shared links. Search by title or remove local entries without deleting the server document. **My documents** lists documents created by or explicitly granted to the current signed browser identity. Management access does not establish authorship. Deleting a server document is a separate, permission-checked action.
 
 Click **Marginroom** in the viewer to return home. Before leaving with unsaved work, choose to keep editing, submit/save, or discard it. Reading coordinates and viewport preferences are browser-local. Static previews restore reading position; interactive documents retain numeric scroll coordinates, not their forms or application state.
 
@@ -42,11 +44,13 @@ The document owner or administrator handles decisions in **Discussion** or **Lis
 
 These actions update the review in place. Use the pending/handled and comment/revision filters to find the remaining work.
 
-When ready, open **More actions (⋯)** and choose **Export accepted HTML**. The download contains the accepted document, not pending proposals or review controls. Uploaded `<img src>` images are embedded, including animated GIFs. Remote images and interactive dependencies are not bundled. The same menu provides **Version history**, and **Edit source directly** for identities with edit permission. Direct editing changes the original rather than submitting a proposal; only the owner or administrator can restore a historical version.
+Open **More actions (⋯)** and choose **Export accepted HTML** to download the accepted document without pending proposals or review controls. Uploaded `<img src>` images are embedded, including animated GIFs. See [current limits](#current-limits) for resources the export does not bundle.
+
+The same menu offers **Version history** and, with edit permission, **Edit source directly**. Direct editing changes the review document instead of submitting a proposal. Only the owner or administrator can restore a historical version.
 
 ## Share with another reviewer
 
-**First make the instance reachable by the other person.** The local quickstart's `localhost` URL only works on your own machine. Use an appropriately configured private-network or HTTPS deployment before sharing. See [Sharing an instance](operations.md#sharing-an-instance).
+Make the instance reachable through a private network or HTTPS deployment before sharing. A quickstart `localhost` URL works only on your machine. See [sharing an instance](operations.md#sharing-an-instance).
 
 1. As the owner or administrator, open **Share** and set what link holders can do: **Read only**, **Read and suggest**, or **Edit directly**.
 2. Choose **Copy link** and send the direct document URL. The recipient can open that document without going through the homepage.
@@ -60,7 +64,7 @@ Use **Size** in the topbar to show or hide viewport controls. Choose **Auto** to
 
 ## Identity and access
 
-**Anyone who can reach the instance and knows a document URL can read it.** An unlisted document is not private. Sharing does not create individual invitations or accounts.
+Anyone who can reach the instance and knows a document URL can read it, including unlisted documents. Sharing sets a link-wide access level rather than creating individual invitations or accounts.
 
 - **Read:** page only; visitors cannot see discussion records or counts.
 - **Suggest:** page, comments and proposed changes.

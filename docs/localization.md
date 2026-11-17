@@ -1,12 +1,12 @@
 # Interface localization
 
-Marginroom uses official **i18next 27.1.1**, vendored on the same origin. See
+Marginroom uses i18next 27.1.1, vendored on the same origin. See
 [the vendor provenance and acquisition recipe](../public/vendor/README.md).
-No runtime CDN, translation service, bundler or new production dependency is
-required. English is the explicit initial and fallback language; Simplified
-Chinese is the other supported locale. Unknown or unavailable browser storage
-falls back to English. The explicit preference is local to one browser, not an
-account setting.
+The browser loads the engine locally without a runtime CDN or translation
+service. Localization adds no bundler or production dependency. English is the
+initial and fallback language; Simplified Chinese is the other supported locale.
+Unknown or unavailable browser storage falls back to English. The language
+preference belongs to the browser rather than an account.
 
 ## Adding copy
 
@@ -37,28 +37,29 @@ The parent supplies the current locale on readiness as well as on later changes,
 so a switch during delayed boot is not lost. This protocol does not change source
 HTML, source `lang`, script state, selection or canonical anchors.
 
-The message is additive. Older controllers ignore it and older parents do not
-send it. This keeps the bridge compatible, but old/new mixed cached assets cannot
-promise translated frame chrome. Install the engine, resources and frame module
-with the complete reviewed frontend inventory before serving the new shell;
-reload an already-open pre-upgrade tab to obtain the new asset set. **Language
-switches within the upgraded app never reload or reconstruct the frame.** Runtime
-and rollback inventories include the new vendor/resource files. No database,
-backend schema or dependency cutover is introduced by localization.
+Install the engine, resources and frame module with the complete reviewed frontend
+inventory before serving the new shell. Reload pre-upgrade tabs to obtain that
+asset set. Older controllers ignore the additive locale message and older parents
+do not send it, so mixed cached versions may leave frame controls untranslated.
+Within the upgraded app, language switches preserve the frame without reloading
+or reconstructing it.
+
+Include vendor and resource files in runtime and rollback inventories.
+Localization requires no database, backend schema or dependency cutover.
 
 ## Verification
 
 - `bun test/i18n.test.mjs`: resource/key/placeholder parity, fallback, plural,
   storage, missing-key and scoped hardcoded-copy checks.
-- `bun test/i18n-viewer.browser.mjs`: actual disposable SQLite/HTTP/browser
+- `bun test/i18n-viewer.browser.mjs`: disposable SQLite/HTTP/browser
   import, comment/reply, inline draft, save/reload and locale invariants at
   desktop/mobile widths, with ordinary/static/interactive render paths.
 - `bun test/i18n-open-states.browser.mjs`: bounded open name/share/filter,
   failed-submit leave confirmation, grouped help and loading/empty/populated
   history locale roundtrips. Only denial and held-history probes intercept HTTP;
   synthetic version rows live solely in the disposable database.
-- The browser checks use synthetic native composition events. They are **not**
-  physical IME, iPhone, Safari or native-keyboard certification.
+- The browser checks use synthetic native composition events. Physical IME,
+  iPhone, Safari and native-keyboard behavior require device testing.
 
 Detailed operator installation/rollback instructions accompany the independently
 CURRENT-derived candidate; only the protected operator performs deployment.

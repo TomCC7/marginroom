@@ -1,44 +1,76 @@
 # Installed CLI and agent review
 
-Install the supplied Linux x64 glibc standalone distribution using [the verified installer](installation.md). No external runtime is needed. Source development uses Bun 1.4.4. The local service uses a Linux abstract Unix-domain lease.
+Install the standalone CLI for macOS or Linux using the [installer](installation.md). Source development uses Bun 1.4.4.
+
+## Open a review and read feedback
 
 ```sh
 marginroom open ./article.html --json
 marginroom comments 'http://127.0.0.1:PORT/viewer.html?doc=ID' --status open --json
 ```
 
-`--data-dir DIR` or MARGINROOM_DATA_DIR isolates private persistent state. Default: ~/.local/share/marginroom. Directories are 0700; identity, credentials, DB and state are 0600. Logs are private, rotated before launch above 1 MB, with at most another 1 MB emitted per runner lifetime (current + previous bounded to 4 MB); the dedicated runner emits no per-request/access logs. The detached service survives terminal exit. Startup serializes launchers and the runner holds a kernel lifetime lease. Reuse verifies product/protocol/instance identity; no PID is ever killed by the CLI. Restart reuses the last bound loopback port; if an unrelated process occupies it, a new ephemeral port is used without disturbing that process. Previous origin URLs then require the new origin. A loopback link is not public sharing.
+`open` returns the review URL. Local URLs work only on the service host. To use an existing remote instance, pair with it as described below.
 
-## Imports
-Default boundary is the entry directory. `--assets-dir` explicitly selects a wider published root, not a blanket upload. `--include-resource relative/path` (repeatable) explicitly adds dynamically referenced publish files inside the same boundary, never scans a folder. CLI collects static HTML src/srcset/link/style, CSS URL/@import and literal JS module dependencies. 256 files maximum, 2 MB/file, 16 MB total. Traversal, outside-root symlinks, base elements, unsupported schemes and missing dependencies fail before publication. The browser's existing import dialog accepts explicitly selected images and an optional published folder through the same /api/imports manifest endpoint. Missing dependencies fail rather than saving a broken partial bundle. Originals are preserved; a viewer-only base routes relative resources inside the existing opaque sandbox. Static analysis does not replicate dynamically constructed URLs, fetch APIs, bundlers, servers or arbitrary websites. External resources remain network-dependent. Imported source/export HTML is untrusted outside the viewer sandbox; standalone exports do not promise a self-contained offline asset bundle.
+`marginroom comments 'REVIEW_URL'` prints threads with statuses, quotes, bodies, replies and full IDs. Add `--status all` to include handled feedback or `--json` for automation. Redirected text stays text. The text view decodes stored HTML entities once; JSON preserves stored values. Revisions label `quote` as "Original quote" and `body` as "Suggested". A legacy whole-block quote may contain only a display substring, so the CLI cannot supply missing original context.
 
-Unchanged source/content reuses the review. Changed source requires --new-version-of URL. New versions have separate URLs in a stable series; prior sources/assets/overlays/comments/replies are not migrated. Management-only version navigation uses the existing element locator or exact paragraph/range context. Failed, duplicate or unverifiable targets are explicitly not_found/ambiguous/unavailable; navigation creates no records. Public links do not expose series history.
+Without `--json`, `open` prints the URL and a quoted comments command. `open --browser` opens a 60-second, one-use management handoff and cannot be combined with `--json`. `/claim.html` removes the handoff from browser history before its API call and grants that document to the existing browser principal. It does not replace cookies or grant administrator access. Ordinary JSON and share links contain no management secret. Root and subcommand help do not start a service.
 
-## Machine credentials and explicit pairing
-Bearer credentials are separate from cookies and OWNER_KEY; server stores SHA256 hashes, not raw credentials. Invalid/revoked Bearer never falls back to guest. Machine routes are explicitly bounded to owned/granted documents. POST /api/machine/delegate {doc} issues a single-document read-only suggestions credential; POST /api/machine/revoke {token} revokes an issuer-owned token. These are authorized management APIs, not actions automatically performed by comments.
-Managed CLI-owned service only: `marginroom pair --data-dir DIR --out private-pair.json` may start/reuse that managed instance. It is NOT the bootstrap for an existing Bun/Docker host.
+JSON envelopes use `schemaVersion:1`. With `--json`, results and errors go to stdout as JSON; text-mode errors go to stderr. Exit codes are 2 for input errors, 3 for connection/start failures, 4 for authentication/permission failures, 5 for import/resource failures and 6 for version/protocol conflicts. Status accepts `open`, `all`, `accepted`, `rejected`, `stale` and `withdrawn`. Feedback includes records and replies; `complete:true` denotes the unpaginated suggestions response.
 
-For an **already running normal server**, the commissioned host operator runs the installed CLI with explicit filesystem access to that server's real SQLite database:
+## Import resources and create versions
+
+The entry directory is the default resource boundary. `--assets-dir` selects a wider published root. Repeat `--include-resource relative/path` to add dynamically referenced files inside that boundary; it does not scan a folder.
+
+The CLI collects static HTML src/srcset/link/style references, CSS URL/@import references and literal JS module dependencies. Limits are 256 files, 2 MB per file and 16 MB total. Traversal, outside-root symlinks, base elements, unsupported schemes and missing dependencies fail before publication. The browser import dialog submits selected images and an optional published folder through the same `/api/imports` manifest endpoint.
+
+Imports preserve originals. A viewer-only base routes relative resources inside the opaque sandbox. Static analysis cannot resolve dynamically constructed URLs, fetch APIs, bundlers, servers or arbitrary websites. External resources still need network access. Source and exported HTML are untrusted outside the sandbox; standalone exports do not bundle every dependency for offline use.
+
+Unchanged content reopens the same review. Changed source requires `--new-version-of URL`. Each version has a separate URL in a stable series. Prior sources, assets, overlays, comments and replies remain on the old version.
+
+Management-only version navigation uses the existing element locator or exact paragraph/range context. Failed, duplicate or unverifiable targets return `not_found`, `ambiguous` or `unavailable`. Navigation creates no records, and public links do not expose series history.
+
+## Pair with an existing host
+
+Machine Bearer credentials are separate from cookies and `OWNER_KEY`. The server stores their SHA256 hashes. Invalid or revoked Bearer credentials never fall back to guest access. Machine routes are limited to owned or granted documents.
+
+For a CLI-managed local service, `marginroom pair --data-dir DIR --out private-pair.json` can start or reuse that instance. For an already running Bun or Docker server, the host owner must authorize an operator with filesystem access to its actual SQLite database:
+
 ```sh
 marginroom pair --host-db /ABS/EXISTING/app.db --server https://your-existing-instance --out /PRIVATE/private-pair.json --json
 ```
-In Docker, run inside the container (or with the actual mounted DB available), using the same installed executable. This command never starts a service. It verifies the running origin's product/protocol/instance against the database's durable `machine_instance` row, then issues a separate machine principal through the shared credential service. The output file must not exist and is created 0600; stdout contains only `{schemaVersion:1,paired:true}`, not credentials. Normal server startup persists its identity in that database, so same-DB restarts retain paired credentials. A managed runner's previously recorded instance ID is adopted on its first upgrade; conflicting explicit identities fail closed. Back up this additive identity table with the DB; do not delete it to repair pairing.
 
-Securely transfer the private file and use `--server https://your-existing-instance --token-file /private/path.json`. No deployment, tunnel or account is created. Host-local writable DB access is the bootstrap authority, not a public URL, anonymous request, human cookie or global owner key. HTTP pairing remains restricted to an already authorized unscoped machine credential; an HTTP owner alone cannot bootstrap. Pairing must be commissioned by the host owner. A wrong/missing database is rejected, not initialized as another server. Do not expose tokens in URLs, logs, exports or version control. Same-OS-user processes are not security-isolated by these file permissions.
-`open --browser` is explicit and incompatible with --json. A 60-second one-use document handoff is consumed on /claim.html, removed from browser history before its API call and granted to the existing browser principal, without replacing cookies or granting site admin. Ordinary JSON/share links have no management secret.
+In Docker, run inside the container or make the actual mounted database available to the installed executable. This command does not start a service. It checks the running origin's product, protocol and instance against the database's durable `machine_instance` row, then issues a separate machine principal. A missing or wrong database is rejected rather than initialized. The output file must not exist; the CLI creates it with mode 0600. Stdout contains only `{schemaVersion:1,paired:true}`, without credentials.
 
-JSON envelopes use schemaVersion:1. Exit codes: input 2; connection/start 3; auth/permission 4; import/resource 5; version/protocol conflict 6. Status accepts open/all/accepted/rejected/stale/withdrawn. Feedback preserves real records and replies; complete:true denotes the unpaginated existing suggestions response.
+Transfer the private file securely, then supply both `--server https://your-existing-instance` and `--token-file /private/path.json`. Pairing creates no deployment, tunnel or account. Host-local writable database access provides bootstrap authority. A public URL, anonymous request, human cookie or global owner key does not. HTTP pairing requires an already authorized, unscoped machine credential.
 
-## Reproducible verification
-`bun run test:existing-host` exercises normal existing-host identity persistence and supported host-local bootstrap with a fresh installed standalone binary (including unauthorized/wrong-DB denial); `HOST_ARTIFACTS` retains the secret-free receipt. `bun run test:agent` builds and independently installs the standalone binary, exercises real child-process CLI/HTTP/SQLite/native Chromium, then stops only its argv+instance-verified disposable runner. `bun test/agent-migration.mjs ORIGINAL_NODE_FIXTURE_DIR` verifies a copied original-driver fixture, every row/column/schema object, transaction rollback, backup, HTTP content/feedback and coordinated fixture restore. Capture that synthetic fixture before replacing the original driver. `bun test/import-recovery.mjs` tests real abrupt import exits before and after publication and backup/readback. `bun run test:api` and `bun test/i18n.test.mjs` cover relevant existing contracts. `test:agent` also exercises real SIGKILL launcher adoption, competing-runner lease rejection, occupied preferred port, guest quotas and deleted-source reimport. Font decoding uses FONT_FIXTURE (default /usr/share/fonts/TTF/OpenSans-Regular.ttf); point it at an installed licensed TTF on other hosts. Native screenshots are synthetic Chromium 1440/390, not physical Safari or OS IME verification. The earlier c2/c3 unit debt is not claimed fixed.
+Normal server startup persists instance identity in the database, so same-database restarts retain paired credentials. A managed runner adopts its previously recorded instance ID on first upgrade; conflicting explicit identities fail closed. Include `machine_instance` in database backups. Do not delete it to repair pairing.
 
-## Parent-owned production cutover
-This implementation does not deploy or restart production. Coordinate a write pause; verify current PID/cwd/runner/env/DB/docs and current externally maintained metal-arm assets. Back up code, SQLite via a native snapshot, complete docs/assets/bundles, and identity/session configuration together. Verify backup integrity and representative old rows/replies before staging exact production dependencies with the supported runtime. Install only the reviewed allowlisted package into a separate candidate; never overwrite CURRENT metal-arm files with archived copies. Rehearse with copied synthetic state. Restart using the original production runner/environment only after owner authorization; read old documents, raw resources, overlays/replies and identity permissions over HTTP. Rollback requires stopping new writes and restoring code+DB+docs/assets+identity as one coordinated set; additive tables do not authorize an old writer to mutate new imported bundles. Never copy a stale DB over a live writer. Existing backend startup creates additive tables and does not claim old owner rows. Preserve the old source and backup until acceptance.
+Authorized management APIs can issue a single-document, read-only suggestions credential with `POST /api/machine/delegate {doc}` and revoke an issuer-owned token with `POST /api/machine/revoke {token}`. Reading comments does not call these APIs. Keep tokens out of URLs, logs, exports and version control. File permissions do not isolate processes running as the same OS user.
 
-Legacy `/api/upload` safe single-file creates delegate the common validator/publication service while retaining their historical chosen IDs. Explicit legacy overwrite is retained for compatibility on legacy-only documents; it is refused for versioned bundle reviews. Browser/CLI new workflows never use overwrite. The source package and standalone build intentionally excludes externally maintained metal-arm plan assets; an existing-host cutover must preserve its CURRENT copies.
+## Local service state
 
-## Human-readable feedback
+Use `--data-dir DIR` or `MARGINROOM_DATA_DIR` to isolate persistent state. The default is `~/.local/share/marginroom`. Directories use mode 0700; identity, credentials, database and state use 0600. Private logs rotate before launch above 1 MB. The runner emits at most another 1 MB per lifetime, bounding current and previous logs to 4 MB, and emits no per-request access logs.
 
-`marginroom comments 'REVIEW_URL'` prints feedback threads with statuses, quotes, bodies, replies and full IDs. Add `--status all` to include closed threads. For automation keep `--json`: the schema, stored record values and exit statuses are unchanged. Text redirection does not switch formats. `marginroom open article.html` prints the URL and a copyable, quoted comments command; `--browser` still explicitly grants management through a one-use handoff. Root and command `--help` never start a service.
+The detached service survives terminal exit. Startup serializes launchers, and the runner holds a kernel lifetime lease. Linux uses an abstract Unix socket; macOS uses exclusive loopback TCP. Reuse checks product, protocol and instance identity. The CLI never kills a PID. On restart it reuses the last loopback port when available, otherwise it chooses an ephemeral port without disturbing the occupying process. Old review URLs then need the new origin.
 
-Revision text labels the stored `quote` as “Original quote” and `body` as “Suggested”. A legacy whole-block quote may be only a display substring; the CLI does not invent a full original from missing context. Stored HTML entities are decoded once for text only; JSON retains the original escaped record.
+## Verification commands
+
+Run these against disposable state, not production. First prepare the installed
+binary and browser prerequisites in the [test guide](../test/README.md#run-the-suites).
+
+- `bun run test:existing-host` checks existing-host identity persistence and host-local bootstrap with a freshly installed standalone binary, including unauthorized and wrong-database denial. `HOST_ARTIFACTS` retains a secret-free receipt.
+- `bun run test:agent` independently installs the binary, then exercises child-process CLI, HTTP, SQLite and native Chromium. It also tests SIGKILL launcher adoption, competing-runner lease rejection, occupied ports, guest quotas and deleted-source reimport. Cleanup stops only its argv- and instance-verified disposable runner.
+- `bun test/agent-migration.mjs ORIGINAL_NODE_FIXTURE_DIR` checks a copied original-driver fixture, every row, column and schema object, transaction rollback, backup, HTTP content/feedback and coordinated fixture restore. Capture the synthetic fixture before replacing the original driver.
+- `bun test/import-recovery.mjs` tests abrupt import exits before and after publication, backup and readback. `bun run test:api` and `bun test/i18n.test.mjs` cover API and locale contracts.
+
+Set `FONT_FIXTURE` to an installed licensed TTF if `/usr/share/fonts/TTF/OpenSans-Regular.ttf` is unavailable. Screenshots use synthetic Chromium content at 1440/390 widths. Physical Safari and OS IME need device testing. The earlier c2/c3 unit debt remains open.
+
+## Coordinated production cutover
+
+The host owner authorizes deployment and restart. Pause writes, then identify the current PID, working directory, runner, environment, database, documents and externally maintained metal-arm assets. Back up code, a native SQLite snapshot, complete documents/assets/bundles and identity/session configuration together. Check backup integrity and representative old rows and replies.
+
+Stage the reviewed allowlisted package in a separate candidate with the supported runtime and exact production dependencies. Preserve CURRENT metal-arm files; archived copies must not overwrite them. Rehearse with copied synthetic state. After authorization, restart through the original production runner/environment and read old documents, raw resources, overlays, replies and permissions over HTTP. Retain the old source and backup until acceptance.
+
+Rollback requires stopping writes and restoring code, database, documents/assets and identity as one set. Additive tables do not make an old writer compatible with new imported bundles. Never copy a stale database over a live writer. Backend startup adds tables without claiming old owner rows.
+
+Legacy `/api/upload` single-file creates use the common validator/publication service and retain their historical chosen IDs. Legacy-only documents still permit explicit overwrite for compatibility; versioned bundle reviews refuse it. New browser and CLI workflows never use overwrite. Source packages and standalone builds exclude externally maintained metal-arm plan assets, so an existing-host cutover must preserve its CURRENT copies.
