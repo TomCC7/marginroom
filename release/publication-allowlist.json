@@ -31,6 +31,7 @@
     "docs/screenshots/alpha-synthetic.png",
     "docs/screenshots/english-review.png",
     "docs/user-guide.md",
+    "docs/version-feedback.md",
     "document-imports.js",
     "feedback-api.js",
     "guardrails.js",
@@ -223,11 +224,10 @@
     "test/triple-selection.browser.mjs",
     "test/upload.test.mjs",
     "test/v3-api.test.mjs",
+    "test/version-feedback.mjs",
     "test/viewer-ui.test.mjs",
     "test/workspace.browser.mjs",
-    "version-navigation.js",
     "version-feedback.js",
-    "docs/version-feedback.md",
-    "test/version-feedback.mjs"
+    "version-navigation.js"
   ]
 }

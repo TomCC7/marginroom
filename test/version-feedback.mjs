@@ -110,7 +110,7 @@ try{
   assert.match(await cli(args,false),/ANCESTOR FULL BODY/);assert.match(await cli(args,false),/Inherited from/);
   await stop();db=undefined;await cli(['open',root+'/seed.html']);service=JSON.parse(await readFile(root+'/state/service.json'));origin=service.origin;db=openDb(root+'/state/app.db');
   const restart=(await api('/api/suggestions/'+v3+'?status=all',null,null)).data;assert.equal(restart.suggestions.find(r=>r.id===math.id).placement.status,'located');assert.deepEqual(rows(v1),[...oldRows,db.prepare('SELECT * FROM suggestions WHERE id=?').get(lateThread.id)].sort((a,b)=>a.id.localeCompare(b.id)));
-  await review.goto(origin+'/viewer.html?doc='+v3);await review.waitForSelector('#thread-'+math.id);const reopened=review.frames().find(f=>f!==review.mainFrame());await reopened.waitForSelector(`[data-thread="${math.id}"]`);assert.equal(await reopened.locator(`[data-thread="${math.id}"]`).textContent(),quote);
+  await review.goto(origin+'/viewer.html?doc='+v3);await review.waitForSelector('#thread-'+math.id,{state:'attached'});const reopened=review.frames().find(f=>f!==review.mainFrame());await reopened.waitForSelector(`[data-thread="${math.id}"]`);assert.equal(await reopened.locator(`[data-thread="${math.id}"]`).textContent(),quote);
   pass('installed Linux compiled CLI JSON+human comments, authoritative source IDs/replies, real service restart persisted exact math attachment and unchanged old rows');
  }
  await guest.close();
