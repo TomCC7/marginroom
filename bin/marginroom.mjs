@@ -8,12 +8,14 @@ import {profile,readJSON,readCredential,atomic} from '../lib/cli/profile.mjs';
 import {localService} from '../lib/cli/service.mjs';
 import {request,instance,reviewURL,serverURL,CliError} from '../lib/cli/client.mjs';
 import {collect} from '../lib/cli/collect.mjs';
+import {importLimits} from '../import-limits.js';
 if(process.argv[2]==='--service'){
  if(process.argv.length!==4)throw new Error('Expected private service directory');
  await import('../lib/cli/runner.mjs');
 }else{
 let json=process.argv.includes('--json');
 try{
+ importLimits();
  const parsed=argumentsFor(process.argv.slice(2));if(!parsed)process.exit(0);
  const {values:v,positionals:p}=parsed;
  if(p[0]==='pair'){

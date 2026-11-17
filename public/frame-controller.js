@@ -36,9 +36,9 @@
     var stamp=textStamp();if(pickedText&&stamp&&pickedText.every(function(v,i){return v===stamp[i];}))return;pickedText=null;var ticket=++textEpoch;
     var s=getSelection();if(!s||s.isCollapsed){if(frameHadText){frameHadText=false;post({type:'targetCleared'});}return;}
     var raw=s.getRangeAt(0),snapshot=s.toString(),block=singleBlockRange(raw),r=block?block.range:raw,el=block?block.el:(raw.startContainer.nodeType===1?raw.startContainer:raw.startContainer.parentElement);
-    if(!el||el===document.body)return;var b=r.getBoundingClientRect(),quote=r.toString(),anchor=await picker.anchor(el);
+    if(!el||el===document.body)return;var value=logicalSelection(el,r);if(!value||!value.quote.trim())return;var b=r.getBoundingClientRect(),quote=value.quote,anchor=await picker.anchor(el);
     if(ticket!==textEpoch||currentMode!=='suggest'||getSelection().toString()!==snapshot)return;
-    frameHadText=true;post({type:'suggestTarget',anchor:anchor,isText:true,snippet:quote,quote:quote,rect:{left:b.left,top:b.top,width:b.width,height:b.height}});
+    frameHadText=true;post({type:'suggestTarget',anchor:anchor,isText:true,snippet:quote,quote:quote,baseText:logicalText(el),rangeStart:value.start,rangeEnd:value.end,rect:{left:b.left,top:b.top,width:b.width,height:b.height}});
   }
   document.addEventListener('selectionchange',publishText);
 
@@ -156,7 +156,7 @@
   function containsEditableUnit(el) {
     for (var i = 0; i < el.children.length; i++) {
       var child = el.children[i];
-      if (SKIP_TAGS.has(child.tagName.toLowerCase())) continue;
+      if (SKIP_TAGS.has(child.tagName.toLowerCase())||child.matches('math,.katex')||mathHidden(child)) continue;
       if (isEditableLeaf(child) || containsEditableUnit(child)) return true;
     }
     return false;
@@ -171,7 +171,7 @@
   // content hash of the element's normalized text, so edits bind to the right run.
   function isEditableLeaf(el) {
     var tag = el.tagName.toLowerCase();
-    if (SKIP_TAGS.has(tag)) return false;
+    if (SKIP_TAGS.has(tag)||el.closest('math,.katex')||mathHidden(el)) return false;
     if (!hasDirectText(el)) return false;      // no text of its own -> it's a wrapper
     if (containsEditableUnit(el)) return false; // a descendant owns the text instead
     return true;
@@ -189,7 +189,7 @@
     var all = container.querySelectorAll('*');
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
-      if (SKIP_TAGS.has(el.tagName.toLowerCase())) continue;
+      if (SKIP_TAGS.has(el.tagName.toLowerCase())||el.closest('math,.katex')||el.querySelector('math,.katex')||mathHidden(el)) continue;
       if (el.children.length === 0) continue;         // pure leaf: handled normally
       if (!hasDirectText(el)) continue;               // no loose text of its own
       if (el.hasAttribute('data-hs-straytext')) continue;
@@ -229,7 +229,7 @@
     var map = new Map();
     for (var i = 0; i < leaves.length; i++) {
       var el = leaves[i];
-      var norm = normalizeText(el.textContent);
+      var norm = normalizeText(logicalText(el));
       if (!norm) continue;
       var base = await sha256hex(norm);
       var occ = seen.has(base) ? seen.get(base) + 1 : 0;
@@ -338,7 +338,7 @@
 
   function markEditable(el, anchor, isGenerated) {
     el.setAttribute('data-hs-anchor', anchor);
-    el.setAttribute('contenteditable', 'true');
+    if(!el.querySelector('math,.katex'))el.setAttribute('contenteditable', 'true');
     el.setAttribute('data-hs-editable', '1');
     if (isGenerated) { el.setAttribute('data-hs-generated', '1'); generated.add(anchor); }
     el.spellcheck = true;
@@ -502,7 +502,7 @@
   }
   function applyModeToAll(editing) {
     anchorMap.forEach(function (el) {
-      if (editing) { el.setAttribute('contenteditable', 'true'); el.spellcheck = true; }
+      if (editing&&!el.querySelector('math,.katex')) { el.setAttribute('contenteditable', 'true'); el.spellcheck = true; }
       else { el.removeAttribute('contenteditable'); el.spellcheck = false; }
     });
   }
@@ -608,7 +608,7 @@
           // origText the first time we ever see an anchor, so re-showing a tab never
           // clobbers the original text we owe the download source-patch.
           markEditable(el, anchor, !origSet.has(anchor));
-          if (!(anchor in origText)) origText[anchor] = el.textContent;
+          if (!(anchor in origText)) origText[anchor] = logicalText(el);
           if (currentMode !== 'edit') { el.removeAttribute('contenteditable'); el.spellcheck = false; }
         }
       });

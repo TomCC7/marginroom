@@ -20,7 +20,8 @@ import { readFile } from 'node:fs/promises';
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m); } };
 
-const controller = await readFile(new URL('../public/frame-controller.js', import.meta.url), 'utf8');
+const {logicalSource}=await import('../public/logical-text.js');
+const controller = logicalSource()+';'+await readFile(new URL('../public/frame-controller.js', import.meta.url), 'utf8');
 
 // A JS-built doc with the two element kinds a comment can target:
 //   • a TEXT LEAF (the <h1>, and a button whose own label is direct text) —

@@ -1,6 +1,7 @@
 // Server-authoritative continuous revisions. All reads/checks/writes below are
 // synchronous inside one SQLite transaction; source is read inside that boundary.
 import {parse} from 'parse5';
+import {logicalText} from './public/logical-text.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {collectLeaves,groupText,normalizeText,BLOCK_TAGS,GROUP_ATTR,SKIP_TAGS} from './public/anchoring.js';
 import {differences,project} from './public/revision-diff.js';
@@ -17,16 +18,20 @@ const fail=(status,error,extra)=>{throw new RevisionError(status,error,extra)};
 // A deliberately small DOM facade permits reuse of the viewer's actual leaf
 // collector rather than a second, subtly different block/occurrence algorithm.
 function facade(node,parent=null){
- const el={tagName:(node.tagName||'').toUpperCase(),parentElement:parent,
+ const el={nodeType:node.nodeName==='#text'?3:1,tagName:(node.tagName||'').toUpperCase(),parentElement:parent,
+  getAttribute:name=>(node.attrs||[]).find(a=>a.name===name)?.value??null,
+  matches(selector){return selector.split(',').map(s=>s.trim()).some(s=>s.startsWith('.')?(this.getAttribute('class')||'').split(/\s+/).includes(s.slice(1)):s.startsWith('[')?this.hasAttribute(s.slice(1,-1)):this.tagName.toLowerCase()===s)},
+  closest(selector){for(let p=this;p;p=p.parentElement)if(p.matches(selector))return p;return null},
+  querySelector(selector){return this.querySelectorAll(selector)[0]||null},
   hasAttribute:name=>(node.attrs||[]).some(a=>a.name===name),
   get textContent(){return node.nodeName==='#text'?node.value:(this.childNodes||[]).map(c=>c.textContent).join('')},
-  querySelectorAll(){const out=[];const walk=p=>{for(const c of p.children){if(c.hasAttribute(GROUP_ATTR)||BLOCK_TAGS.has(c.tagName.toLowerCase()))out.push(c);walk(c)}};walk(this);return out},
+  querySelectorAll(selector){const out=[];const walk=p=>{for(const c of p.children){if(c.matches(selector))out.push(c);walk(c)}};walk(this);return out},
   namespace:node.namespaceURI};
  el.childNodes=(node.childNodes||[]).map(c=>facade(c,el));el.children=el.childNodes.filter(c=>c.tagName);return el;
 }
 export function sourceParagraphs(html){
  const root=facade(parse(html)),body=root.children.find(c=>c.tagName==='HTML')?.children.find(c=>c.tagName==='BODY');
- if(!body)return [];const seen=new Map();return collectLeaves(body).map(el=>{const norm=el.hasAttribute(GROUP_ATTR)?groupText(el):normalizeText(el.textContent),digest=hash(norm),occ=seen.get(digest)||0;seen.set(digest,occ+1);return {anchor:occ?`${digest}#${occ}`:digest,text:el.textContent,norm};}).filter(p=>p.norm);
+ if(!body)return [];const seen=new Map();return collectLeaves(body).map(el=>{const text=logicalText(el),norm=el.hasAttribute(GROUP_ATTR)?groupText(el):normalizeText(text),digest=hash(norm),occ=seen.get(digest)||0;seen.set(digest,occ+1);return {anchor:occ?`${digest}#${occ}`:digest,text,norm};}).filter(p=>p.norm);
 }
 export function resolveParagraph(html,anchor,config={}){
  if(typeof anchor!=='string'||!/^[a-f0-9]{64}(?:#[1-9][0-9]*)?$/.test(anchor))fail(422,'unsupported_anchor');
@@ -36,14 +41,14 @@ export function resolveParagraph(html,anchor,config={}){
  if(!body)fail(422,'unsupported_anchor');
  const seen=new Map();
  for(const el of collectLeaves(body)){
-  const grouped=el.hasAttribute(GROUP_ATTR),norm=grouped?groupText(el):normalizeText(el.textContent);
+  const grouped=el.hasAttribute(GROUP_ATTR),norm=grouped?groupText(el):normalizeText(logicalText(el));
   if(!norm)continue;const digest=hash(norm),occ=seen.get(digest)||0;seen.set(digest,occ+1);
   if(anchor!==(occ?`${digest}#${occ}`:digest))continue;
   // Groups, foreign namespaces and active/non-text descendants aren't safe
   // single-paragraph text scopes. Generated runtime-only nodes never resolve.
   let unsafe=grouped;for(let p=el;p&&p!==body;p=p.parentElement)if(SKIP_TAGS.has(p.tagName.toLowerCase())||p.namespace!=='http://www.w3.org/1999/xhtml')unsafe=true;
   const scan=p=>{for(const c of p.children){if(SKIP_TAGS.has(c.tagName.toLowerCase())||c.namespace!=='http://www.w3.org/1999/xhtml')unsafe=true;scan(c)}};scan(el);
-  if(unsafe)fail(422,'unsupported_anchor');return el.textContent;
+  if(unsafe||el.querySelector('math,.katex'))fail(422,'unsupported_anchor');return logicalText(el);
  }
  fail(422,'unsupported_anchor');
 }

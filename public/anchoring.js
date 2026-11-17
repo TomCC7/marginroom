@@ -1,4 +1,5 @@
 import {t} from './i18n.js';
+import {mathHidden,logicalText} from './logical-text.js';
 // Content-hash anchoring — the correctness core of markmyword.
 //
 // Each editable "text-bearing leaf block" gets an anchor that is a hash of its
@@ -41,7 +42,7 @@ export function groupShells(container) {
   return [...container.children].filter((c) => {
     const tag = c.tagName.toLowerCase();
     if (SKIP_TAGS.has(tag)) return false;
-    return normalizeText(c.textContent) !== '';
+    return normalizeText(logicalText(c)) !== '';
   });
 }
 
@@ -49,7 +50,7 @@ export function groupShells(container) {
 // so paragraph boundaries are part of the content hash (moving text between
 // paragraphs changes the anchor, which is correct).
 export function groupText(container) {
-  return groupShells(container).map((s) => normalizeText(s.textContent)).join('\n');
+  return groupShells(container).map((s) => normalizeText(logicalText(s))).join('\n');
 }
 
 // SHA-256 hex. Prefer WebCrypto (browsers, Node 20+ globalThis.crypto), but fall
@@ -161,13 +162,13 @@ function hasDirectText(el) {
 // text-bearing so it becomes a leaf. This mirrors the in-frame controller's broader
 // hybrid rule, keeping static-doc and interactive-doc editability consistent.
 function hasOwnText(el) {
-  return normalizeText(el.textContent) !== '';
+  return normalizeText(logicalText(el)) !== '';
 }
 
 function containsBlockCandidate(el) {
   for (const child of el.children) {
     const tag = child.tagName.toLowerCase();
-    if (SKIP_TAGS.has(tag)) continue;
+    if (SKIP_TAGS.has(tag)||mathHidden(child)||child.matches?.('math,.katex')) continue;
     if (BLOCK_TAGS.has(tag) && (hasOwnText(child) || containsBlockCandidate(child))) return true;
     if (containsBlockCandidate(child)) return true;
   }
@@ -181,7 +182,7 @@ function containsBlockCandidate(el) {
 // leaf hashes identically whether its text is bare or wrapped in <strong>/<code>.
 export function isEditableLeaf(el) {
   const tag = el.tagName.toLowerCase();
-  if (SKIP_TAGS.has(tag) || !BLOCK_TAGS.has(tag)) return false;
+  if (SKIP_TAGS.has(tag) || !BLOCK_TAGS.has(tag)||mathHidden(el)||el.closest?.('math,.katex')) return false;
   if (!hasOwnText(el)) return false;
   if (containsBlockCandidate(el)) return false;
   return true;
@@ -323,11 +324,13 @@ export async function assignAnchors(container) {
   const leaves = collectLeaves(container);
   const seen = new Map(); // baseHash -> count
   const map = new Map();
+  const legacy = new Map(), legacySeen = new Map();
+  map.legacy = legacy;
   for (const el of leaves) {
     const grouped = el.hasAttribute(GROUP_ATTR);
     // A group hashes its combined shell text (paragraph boundaries included);
     // a leaf hashes its own normalized text.
-    const norm = grouped ? groupText(el) : normalizeText(el.textContent);
+    const norm = grouped ? groupText(el) : normalizeText(logicalText(el));
     if (!norm) continue;
     const base = await sha256hex(norm);
     const occ = seen.has(base) ? seen.get(base) + 1 : 0;
@@ -336,6 +339,11 @@ export async function assignAnchors(container) {
     el.setAttribute('data-hs-anchor', anchor);
     if (grouped) el.setAttribute('data-hs-grouped', '1');
     map.set(anchor, el);
+    const raw = grouped ? groupText(el) : normalizeText(el.textContent);
+    const oldBase = await sha256hex(raw), oldOcc = legacySeen.get(oldBase)||0;
+    legacySeen.set(oldBase,oldOcc+1);
+    const oldAnchor=oldOcc?`${oldBase}#${oldOcc}`:oldBase;
+    if(oldAnchor!==anchor){legacy.set(oldAnchor,el);el.setAttribute('data-hs-legacy-anchor',oldAnchor);}
   }
   return map;
 }

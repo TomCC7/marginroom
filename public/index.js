@@ -17,7 +17,7 @@ if (new URLSearchParams(location.search).has('key')) {
 const withKey = url => key ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(key)}` : url;
 const viewerUrl = id => `/viewer.html?doc=${encodeURIComponent(id)}`;
 const validId = id => typeof id === 'string' && id.length > 0 && id.length <= 128 && /^[A-Za-z0-9._-]+$/.test(id) && id !== '.' && id !== '..' && !/\.raw$/i.test(id);
-const MAX_HTML_BYTES = 2_000_000;
+async function importPolicy(){const j=await request('/api/instance');if(!j.importLimits)throw Error('missing_import_policy');return j.importLimits;}
 const state = loadHomeState();
 let view = state.view, query = state.query, docs = [], loading = false, loadError = false, generation = 0;
 let whoami = { isOwner: false, docLimit: 1 };
@@ -257,10 +257,11 @@ async function prepareImport() {
   setBusy(true);
   try {
     if (file && !/\.html?$/i.test(file.name)) throw failure(copy('import.htmlOnly'));
-    if (file && file.size > MAX_HTML_BYTES) throw failure(copy('import.fileTooLarge'));
+    const limits=await importPolicy();
+    if (file && file.size > limits.file) throw Error(`bundle_too_large:file=${limits.file}`);
     const html = file ? await file.text() : $('#source').value;
     if (!html.trim()) throw failure(copy('import.chooseOrPaste'));
-    if (new TextEncoder().encode(html).length > MAX_HTML_BYTES) throw failure(copy('import.sourceTooLarge'));
+    if (new TextEncoder().encode(html).length > limits.file) throw Error(`bundle_too_large:file=${limits.file}`);
     if (!/<[a-z!][\s\S]*>/i.test(html)) throw failure(copy('errors.not_html'));
     // Retain legacy filename slug behavior; explicit paste IDs are validated as typed.
     const id = file ? file.name.replace(/\.html?$/i, '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') : $('#paste-id').value.trim();
@@ -313,8 +314,8 @@ async function uploadDocument() {
     const matches=[...selected.keys()].filter(n=>n.split('/').pop()===entry);
     if(matches.length>1)throw new Error('ambiguous_entry_path');if(matches.length===1)entry=matches[0];
     selected.set(entry,$('#htmlFile').files[0]||new Blob([draft.html],{type:'text/html'}));
-    if(selected.size>256)throw new Error('too_many_resources');let total=0;const files=[];
-    for(const [name,f]of selected){total+=f.size;if(f.size>2000000||total>16000000)throw new Error('bundle_too_large');const bytes=await f.arrayBuffer();files.push({path:name,data:await fileToBase64(f),sha256:await hash(bytes)});}
+    const limits=await importPolicy();if(selected.size>limits.count)throw new Error(`too_many_resources:max=${limits.count}`);let total=0;const files=[];
+    for(const [name,f]of selected){total+=f.size;if(f.size>limits.file||total>limits.total)throw new Error(`bundle_too_large:file=${limits.file}:total=${limits.total}`);const bytes=await f.arrayBuffer();files.push({path:name,data:await fileToBase64(f),sha256:await hash(bytes)});}
     const fingerprint=await hash(new TextEncoder().encode(JSON.stringify(files.map(f=>[f.path,f.sha256]).sort())));
     let previous=null;
     if(draft.previous){const u=new URL(draft.previous,location.origin);if(u.origin!==location.origin||u.pathname!=='/viewer.html'||!validId(u.searchParams.get('doc')))throw new Error('invalid_version_parent');previous=u.searchParams.get('doc');}

@@ -22,7 +22,8 @@ import { readFile } from 'node:fs/promises';
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m); } };
 
-const controller = await readFile(new URL('../public/frame-controller.js', import.meta.url), 'utf8');
+const {logicalSource}=await import('../public/logical-text.js');
+const controller = logicalSource()+';'+await readFile(new URL('../public/frame-controller.js', import.meta.url), 'utf8');
 
 // A JS-built, tabbed doc. The raw markup is nearly empty (#app + a script); the
 // script wires tabs and injects each panel's content on click — exactly the shape

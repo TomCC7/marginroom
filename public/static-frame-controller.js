@@ -4,10 +4,10 @@
  const paintAssets=()=>{for(const n of assetLabels)n.textContent=globalThis.__marginroomLocale.t('asset.missingImage',{label:n.dataset.assetLabel||globalThis.__marginroomLocale.t('asset.noSource')})};paintAssets();
  const token=window.__staticPreviewToken;delete window.__staticPreviewToken;
  const send=data=>parent.postMessage({channel:'static-preview',token,...data},'*');
- const find=a=>[...document.querySelectorAll('[data-hs-anchor],[data-hs-comment-anchor]')].find(n=>(n.dataset.hsAnchor||n.dataset.hsCommentAnchor)===a);
- const text=(node,exclude='[data-review-del],[data-review-point]')=>{const n=node.cloneNode(true);n.querySelectorAll?.(exclude).forEach(x=>x.remove());return n.textContent};
- const offset=(el,node,n)=>{const r=document.createRange();r.selectNodeContents(el);r.setEnd(node,n);return text(r.cloneContents()).length};
- function caret(el,n){const w=document.createTreeWalker(el,4);let t,pos=0;while(t=w.nextNode()){if(t.parentElement.closest('[data-review-del],[data-review-point]'))continue;if(pos+t.length>=n){const r=document.createRange();r.setStart(t,n-pos);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);return}pos+=t.length}}
+ const find=a=>[...document.querySelectorAll('[data-hs-anchor],[data-hs-comment-anchor]')].find(n=>(n.dataset.hsAnchor||n.dataset.hsCommentAnchor)===a||n.dataset.hsLegacyAnchor===a);
+ const text=(node,exclude='[data-review-del],[data-review-point]')=>logicalText(node,exclude);
+ const offset=(el,node,n)=>logicalOffset(el,node,n,'[data-review-del],[data-review-point]');
+ function caret(el,n){const r=logicalRange(el,n,n,'[data-review-del],[data-review-point]');if(r){getSelection().removeAllRanges();getSelection().addRange(r)}}
  let composing=false,selectionTimer,mode='read',pickedSelection=null;
  function selectionStamp(){const s=getSelection();if(!s.rangeCount||s.isCollapsed)return null;const r=s.getRangeAt(0);return [r.startContainer,r.startOffset,r.endContainer,r.endOffset]}
  function sameSelection(a,b){return a&&b&&a.every((v,i)=>v===b[i])}
@@ -49,7 +49,7 @@
  });
  let selectionEpoch=0;
  async function selection(requestId){const epoch=++selectionEpoch;if(inline.active)return;if(sameSelection(pickedSelection,selectionStamp()))return;pickedSelection=null;const empty=reason=>send({type:'selection',selection:null,reason,requestId}),s=getSelection();if(!s.rangeCount||s.isCollapsed){empty('collapsed');return}const stamp=selectionStamp(),source=s.getRangeAt(0),canonical=singleBlockRange(source),block=canonical||renderedTextRange(source);if(!block){empty('invalid');return}const {range:r,el}=block,node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;if(node.closest('[data-review-ins]')||r.cloneContents().querySelector('[data-review-ins]')){empty('invalid');return}
-  const pre=document.createRange();pre.selectNodeContents(el);pre.setEnd(r.startContainer,r.startOffset);const quote=canonical?text(r.cloneContents(),'[data-review-ins],[data-review-point]'):s.toString(),start=text(pre.cloneContents(),'[data-review-ins],[data-review-point]').length;
+  const value=logicalSelection(el,r,'[data-review-ins],[data-review-point]');if(!value){empty('unsupported_math_range');return}const quote=value.quote,start=value.start;
   if(!quote.trim()){empty('invalid');return}
   const anchor=canonical?el.dataset.hsAnchor:await picker.anchor(el);
   // Hashing the c3 scope is asynchronous: an older range must not resurrect a

@@ -6,6 +6,7 @@ import {reviewBridge as bridge} from './viewer.js';
 import {reviewerName,setReviewerName} from './identity.js';
 import {installVersionNavigation} from './version-navigation.js';
 import {textOf,rangeAt,difference,locateRecord,singleBlockRange} from './review-ranges.js';
+import {logicalText,logicalSelection} from './logical-text.js';
 import {createStaticPreview} from './static-preview.js';
 import {initPreview} from './preview-viewport.js';
 import {inlineDraftController,inlineDraftCSS} from './inline-draft.js';
@@ -21,7 +22,7 @@ let mode='read', records=[], filter='open', listStatus='all', listType='all', ac
 let clean=new Map(), locations=new Map(), reloading=false;
 const editBuffers=new Map(), pendingComments=new Set();let commentVersion=0;
 let staticPreview=null, reading=null, frameSelection=null, picker=null, composeKind='comment';
-function pickTarget(t,frame=null){if(mode!=='suggest'||!state().canSuggest||!$('#composer').hidden||draft)return;let rect=t.rect;if(frame&&rect){const b=frame.getBoundingClientRect(),sx=b.width/frame.offsetWidth,sy=b.height/frame.offsetHeight;rect={left:b.left+rect.left*sx,top:b.top+rect.top*sy}}selected={anchor:t.anchor,quote:t.quote||t.snippet,baseText:'',element:!t.isText,textAnchor:t.textAnchor,tag:t.tag,context:t.context,parent:t.parent,rect};selectionUI(selected)}
+function pickTarget(t,frame=null){if(mode!=='suggest'||!state().canSuggest||!$('#composer').hidden||draft)return;let rect=t.rect;if(frame&&rect){const b=frame.getBoundingClientRect(),sx=b.width/frame.offsetWidth,sy=b.height/frame.offsetHeight;rect={left:b.left+rect.left*sx,top:b.top+rect.top*sy}}selected={anchor:t.anchor,quote:t.quote||t.snippet,baseText:t.baseText||'',rangeStart:t.rangeStart,rangeEnd:t.rangeEnd,element:!t.isText,textAnchor:t.textAnchor,tag:t.tag,context:t.context,parent:t.parent,rect};selectionUI(selected)}
 function navigateTarget(direction){if(direction!=='parent'||!$('#composer').hidden||draft)return;if(state().interactive)state().frame?.contentWindow.postMessage({type:'targetNavigate',direction},'*');else if(staticPreview?.active)staticPreview.send({type:'targetNavigate',direction});else picker?.navigate(direction)}
 function elementScope(s){
  if(!s?.element||state().interactive||!s.textAnchor)return null;
@@ -38,7 +39,7 @@ function rewriteReason(s){
  if(!s||s.element||!Number.isInteger(s.rangeStart))return tr('review.singleParagraph');
  const c=clean.get(s.anchor),el=getBlock(s.anchor);if(!c||!el||el.hasAttribute('data-hs-group'))return tr('review.groupOnly');
  const doc=new DOMParser().parseFromString(c.html,'text/html');
- if(doc.body.querySelector('br,img,svg,math,input,textarea,select,button,table,ul,ol,li,iframe,[contenteditable]'))return tr('review.structureOnly');
+ if(doc.body.querySelector('br,img,svg,math,.katex,input,textarea,select,button,table,ul,ol,li,iframe,[contenteditable]'))return tr('review.structureOnly');
  if(c.text!==s.baseText||c.text.slice(s.rangeStart,s.rangeEnd)!==s.quote)return tr('review.sourceMoved');
  // Pending changes are reconciled by the server against actual changed hunks,
  // never against this whole editable scope.
@@ -111,7 +112,7 @@ async function api(path,body,method='POST'){
  const data=await r.json().catch(()=>({}));if(!r.ok){const err=new Error(typeof data.error==='string'?data.error:'request_failed');err.reason=typeof data.error==='string'?data.error:'';err.code=r.status;err.suggestion=data.suggestion;err.existingId=data.existingId;throw err}return data;
 }
 function state(){return bridge.state}
-function getBlock(anchor){return state().anchorMap.get(anchor)||state().commentMap.get(anchor)}
+function getBlock(anchor){return state().anchorMap.get(anchor)||state().anchorMap.legacy?.get(anchor)||state().commentMap.get(anchor)}
 function setView(next){
  if(draft){toast(()=>tr('review.finishParagraph'));return}
  const list=next==='list';$('#annotation-list').hidden=!list;$('#threads').hidden=list;$('.discussion>.filters').hidden=list;
@@ -194,10 +195,10 @@ function decorate(){
  for(const s of records){
   if(s.anchor?.startsWith('m:')){const el=getBlock(s.anchor.slice(2).split(',')[0]);locations.set(s.id,el?{fallback:true,get reason(){return tr('review.legacyMulti')}}:{stale:true,get reason(){return tr('review.paragraphUnlocated')}});continue}
   if(s.anchor?.match(/^c[23]:/)){locations.set(s.id,{fallback:true,get reason(){return tr('review.elementComment')}});continue}
-  const el=getBlock(s.anchor), original=clean.get(s.anchor);
+  const el=getBlock(s.anchor), original=clean.get(s.anchor)||clean.get(el?.dataset.hsAnchor);
   if(!el){locations.set(s.id,{stale:true,get reason(){return tr('review.paragraphDeleted')}});continue}
   if(!original){locations.set(s.id,{fallback:true,get reason(){return tr('review.nontextComment')}});if(s.status==='open')el.dataset.reviewBlockThread=s.id;continue}
-  const loc=s.kind==='rewrite'&&(s.invalid_reason||s.stale_reason||s.status==='stale')?{stale:true,reason:staleReason(s)}:el.hasAttribute('data-hs-group')?{fallback:true,get reason(){return tr('review.groupComment')}}:locateRecord(s,original.text,decode);locations.set(s.id,loc);
+  const loc=s.kind==='rewrite'&&(s.invalid_reason||s.stale_reason||s.status==='stale')?{stale:true,reason:staleReason(s)}:el.hasAttribute('data-hs-group')?{fallback:true,get reason(){return tr('review.groupComment')}}:locateRecord(s,original.text,decode,el);locations.set(s.id,loc);
   if(loc.stale||draft?.anchor===s.anchor||s.status!=='open')continue;
   if(loc.fallback){if(s.status==='open')el.dataset.reviewBlockThread=s.id;continue}
   // Pending rewrites are handled after comments so offsets refer only to accepted text.
@@ -212,7 +213,7 @@ function decorate(){
  syncCommentState();
 }
 function syncCommentState(){
- const comments=records.filter(r=>r.kind==='comment').map(r=>({id:r.id,anchor:r.anchor,open:r.status==='open'&&mode!=='edit',...locations.get(r.id)}));
+ const comments=records.filter(r=>r.kind==='comment').map(r=>({id:r.id,anchor:r.anchor,open:r.status==='open'&&mode!=='edit',quote:decode(r.quote),baseText:decode(r.base_text),rangeStart:r.range_start,rangeEnd:r.range_end,...locations.get(r.id)}));
  marks.comments(comments,draft?.anchor);
  const groups=commentGroups();marks.sync(staticPreview?.active||state().interactive?[]:groups,phone.matches);
  const retired=records.filter(r=>r.kind==='rewrite'&&(r.status!=='open'||staleReason(r))).map(r=>r.id);marks.retireRewrites(retired,draft?.anchor);
@@ -252,7 +253,7 @@ async function refresh(reload=false){
 function applyMode(){
  const caps=state();bridge.setMode(caps.interactive?(mode==='read'?'use':mode):'view');
  $$('[data-mode]').forEach(b=>{const m=b.dataset.mode;b.disabled=(m==='edit'&&!caps.canEdit)||(m==='suggest'&&!caps.canSuggest);b.classList.toggle('selected',m===mode);b.setAttribute('aria-pressed',String(m===mode));if(b.disabled)bind(b,m==='edit'?'review.noDirectEdit':'review.noLinkSuggest',{},'title')});
- if(!caps.interactive)for(const [a,el] of caps.anchorMap){const locked=records.some(s=>s.anchor===a&&s.status==='open'&&s.kind==='rewrite');const grouped=el.hasAttribute('data-hs-group');el.contentEditable=String(mode==='edit'&&caps.canEdit);if(grouped&&mode==='suggest')el.title=tr('review.groupRevisionHelp')}
+ if(!caps.interactive)for(const [a,el] of caps.anchorMap){const locked=records.some(s=>s.anchor===a&&s.status==='open'&&s.kind==='rewrite');const grouped=el.hasAttribute('data-hs-group');el.contentEditable=String(mode==='edit'&&caps.canEdit&&!el.querySelector('math,.katex'));if(grouped&&mode==='suggest')el.title=tr('review.groupRevisionHelp')}
  picker?.refresh();staticPreview?.sync();
 }
 function changeMode(next){if(!$('#composer').hidden)return toast(()=>tr('review.finishComment'));if(editTimers.size||editInflight||[...editBuffers.values()].some(b=>b.seq>b.saved))return toast(()=>tr('review.savingMode'));if(draft)return toast(()=>tr('review.finishCurrentDraft'));if(next==='edit'&&!state().canEdit||next==='suggest'&&!state().canSuggest)return;mode=next;decorate();applyMode();clearSelection()}
@@ -265,11 +266,10 @@ function selectionInfo(){
  const sel=getSelection();if(!sel?.rangeCount||sel.isCollapsed)return null;
  const block=singleBlockRange(sel.getRangeAt(0));if(!block||!root.contains(block.el))return null;
  const {range:r,el}=block,node=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;
- if(el.hasAttribute('data-hs-group'))return {anchor:el.dataset.hsAnchor,baseText:bridge.readText(el),quote:r.toString(),rect:r.getBoundingClientRect()};
+ if(el.hasAttribute('data-hs-group')){const value=logicalSelection(el,r);return value?{anchor:el.dataset.hsAnchor,baseText:bridge.readText(el),quote:value.quote,rect:r.getBoundingClientRect()}:null;}
  if(r.cloneContents().querySelector('[data-review-ins]')||node.closest('[data-review-ins]'))return null;
- const pre=document.createRange();pre.selectNodeContents(el);pre.setEnd(r.startContainer,r.startOffset);
- const start=textOf(pre.cloneContents(),'[data-review-ins],[data-review-point]'),quote=textOf(r.cloneContents(),'[data-review-ins],[data-review-point]');if(!quote.trim())return null;
- return {anchor:el.dataset.hsAnchor,baseText:clean.get(el.dataset.hsAnchor)?.text??el.textContent,quote,rangeStart:start.length,rangeEnd:start.length+quote.length,rect:r.getBoundingClientRect()};
+ const value=logicalSelection(el,r,'[data-review-ins],[data-review-point]');if(!value||!value.quote.trim())return null;
+ return {anchor:el.dataset.hsAnchor,baseText:clean.get(el.dataset.hsAnchor)?.text??logicalText(el),quote:value.quote,rangeStart:value.start,rangeEnd:value.end,rect:r.getBoundingClientRect()};
 }
 // Store quote + logical offsets, never a live Range that focus or decoration can mutate.
 let selectionPress=null, selectionPressTimer;
