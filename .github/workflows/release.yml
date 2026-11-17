@@ -54,17 +54,18 @@ jobs:
         if: github.event_name == 'push'
         run: |
           tag="${GITHUB_REF#refs/tags/}"
-          if ! git ls-remote --exit-code origin "refs/tags/${tag}" | grep -Fq "${GITHUB_SHA}"; then
+          if ! git ls-remote --exit-code origin "refs/tags/${tag}" "refs/tags/${tag}^{}" | grep -Fq "${GITHUB_SHA}"; then
             echo "::error title=Immutable tag violation::Release tag '${tag}' does not already point at this commit; refusing to publish or clobber existing history/assets" >&2
             exit 1
           fi
       - run: bun install --frozen-lockfile
+      - run: bun test/release-contract.mjs
       - name: Build all release targets outside source tree
         run: bun scripts/build.mjs "${RUNNER_TEMP:?}/marginroom-release"
       - name: Verify artifact mapping and provenance
         run: |
           cd "${RUNNER_TEMP:?}/marginroom-release"
-          sha256sum --check SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
           manifest_version=$(jq -r '.version' manifest.json)
           test "$manifest_version" = '${{ steps.resolve.outputs.version }}'
           test "$(jq -r '.sourceCommit' manifest.json)" = "${{ github.sha }}"
@@ -108,7 +109,7 @@ jobs:
       - name: Verify downloaded artifact hashes and provenance
         run: |
           cd "${RUNNER_TEMP:?}/marginroom-release"
-          sha256sum --check SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
           test "$(jq -r '.sourceCommit' manifest.json)" = "${{ github.sha }}"
           test "$(jq -r '.version' manifest.json)" = '${{ needs.build.outputs.version }}'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -119,9 +120,8 @@ jobs:
           target='${{ matrix.target }}'
           if [ "$target" = linux-x64 ]; then
             python3 test/release-installer.py "${RUNNER_TEMP:?}/marginroom-release"
-          else
-            TMPDIR="${RUNNER_TEMP:?}" bun test/release-native-installed.mjs "${RUNNER_TEMP:?}/marginroom-release" "$target"
           fi
+          TMPDIR="${RUNNER_TEMP:?}" bun test/release-native-installed.mjs "${RUNNER_TEMP:?}/marginroom-release" "$target"
 
   publish:
     if: github.event_name == 'push'
@@ -141,29 +141,14 @@ jobs:
         id: verify
         run: |
           cd "${RUNNER_TEMP:?}/marginroom-release"
-          sha256sum --check SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
           test "$(jq -r '.version' manifest.json)" = "${{ env.RELEASE_VERSION }}"
           test "$(jq -r '.sourceCommit' manifest.json)" = "${{ github.sha }}"
-      - name: Refuse existing release or assets (no clobber)
-        id: guard
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Publish immutable release (revalidate remote tag, refuse non-404/existing release)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="v${RELEASE_VERSION:?}"
-          if gh api "repos/${GITHUB_REPOSITORY:?}/releases/tags/${tag}" >/dev/null 2>&1; then
-            echo "::error title=No clobber::Release ${tag} already exists; refusing to overwrite it or its assets" >&2
-            exit 1
-          fi
-          prerelease=false
-          case "$RELEASE_VERSION" in *-*) prerelease=true;; esac
-          printf 'prerelease=%s\n' "$prerelease" >> "$GITHUB_OUTPUT"
-      - name: Publish immutable release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="v${RELEASE_VERSION:?}"
-          prerelease='${{ steps.guard.outputs.prerelease }}'
-          args=(release create "$tag" --repo "${GITHUB_REPOSITORY:?}" --target "${GITHUB_SHA:?}" --title "$tag" --notes-file "${RUNNER_TEMP:?}/marginroom-release/RELEASE-NOTES.md")
-          if [ "$prerelease" = true ]; then args+=(--prerelease); fi
-          cd "${RUNNER_TEMP:?}/marginroom-release"
-          gh "${args[@]}" marginroom-*-*.tar.gz manifest-*.json manifest.json SHA256SUMS install.sh LICENSE
+        run: bun scripts/publish-release.mjs "${RUNNER_TEMP:?}/marginroom-release"

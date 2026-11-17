@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {execFile,execFileSync} from 'node:child_process';
 import {promisify} from 'node:util';
-import {mkdtemp,mkdir,writeFile,readFile,stat,chmod} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,stat,chmod,symlink} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import http from 'node:http';
@@ -14,6 +14,7 @@ const exec=promisify(execFile);
 const dist=path.resolve(process.argv[2]??'');
 const target=process.argv[3]??'';
 assert(dist&&target,'usage: bun test/release-native-installed.mjs DIST_DIR TARGET');
+assert.equal(`${process.platform==='darwin'?'darwin':process.platform}-${process.arch}`,target,'Native runner architecture mismatch');
 const manifest=JSON.parse(await readFile(path.join(dist,`manifest-${target}.json`),'utf8'));
 const base=process.env.TMPDIR||os.tmpdir();
 const root=await mkdtemp(path.join(base,'marginroom-native-release-'));
@@ -35,24 +36,37 @@ cleanup.push(()=>server.close());
 const origin=`http://127.0.0.1:${server.address().port}`;
 const installer=path.join(root,'install.sh');
 await writeFile(installer,await readFile(path.join(dist,'install.sh'),'utf8'),{mode:0o755});
-const env={...process.env,HOME:home,TMPDIR:root};
+const tools=path.join(root,'runtime-free-tools');await mkdir(tools);
+for(const name of ['sh','curl','tar','gzip','sha256sum','shasum','uname','getconf','mktemp','rm','mkdir','cp','chmod','mv']) {
+ try {const src=execFileSync('/bin/sh',['-c','command -v "$1"','sh',name],{encoding:'utf8'}).trim();if(src)await symlink(src,path.join(tools,name));}catch{}
+}
+const env={...process.env,HOME:home,TMPDIR:root,PATH:tools};
+for(const name of ['node','bun']) {let absent=false;try{await stat(path.join(tools,name))}catch{absent=true}assert(absent);}
+const state=path.join(root,'state with spaces');
+try {
 await run('/bin/sh',[installer,'--from',origin],{env});
 const binary=path.join(home,'.local/bin','marginroom');
 assert((await stat(binary)).isFile());
 assert.equal(await sha256(binary),manifest.binarySha256);
 assert.equal((await stat(binary)).mode&0o777,0o755);
-const state=path.join(root,'state with spaces');
 const cli=async(...args)=>(await run(binary,[...args,'--data-dir',state],{env})).stdout;
 assert.match(await cli('--help'),/Usage:/);
 const article=path.join(root,'article.html');
-await writeFile(article,'<!doctype html><title>Native release fixture</title><p id="test">Native synthetic release content.</p>');
+await writeFile(path.join(root,'fixture.svg'),'<svg xmlns="http://www.w3.org/2000/svg"><text>synthetic asset</text></svg>');
+await writeFile(article,'<!doctype html><title>Native release fixture</title><p id="test">Native synthetic release content.</p><img src="fixture.svg">');
 const a=JSON.parse(await cli('open',article,'--json'));
 assert(a.reviewUrl);
+const servedOrigin=new URL(a.reviewUrl).origin;
+for(const asset of ['viewer.html','viewer.js','review-v3.css']) {const response=await fetch(`${servedOrigin}/${asset}`);assert.equal(response.status,200);assert((await response.text()).length>100);}
+const assetResponse=await fetch(`${servedOrigin}/bundles/${a.document}/fixture.svg`);
+assert.equal(assetResponse.status,200);assert.match(await assetResponse.text(),/synthetic asset/);
+const same=JSON.parse(await cli('open',article,'--json'));assert.equal(same.document,a.document);assert.equal(same.instanceId,a.instanceId);
+assert.match(await cli('comments',a.reviewUrl),/./);
 const comments=JSON.parse(await cli('comments',a.reviewUrl,'--json'));
 assert.equal(comments.complete,true);
 assert.deepEqual(comments.records,[]);
 const service=JSON.parse(await readFile(path.join(state,'service.json'),'utf8'));
-cleanup.push(()=>{try{process.kill(service.pid,'SIGTERM')}catch{}});
+
 // Same file reuse/restart identity after a hard kill.
 process.kill(service.pid,'SIGKILL');
 await new Promise(resolve=>setTimeout(resolve,500));
@@ -74,4 +88,7 @@ assert(bad,'corrupt install should fail');
 assert.match(bad.stderr,/SHA256 mismatch/);
 assert.equal(await sha256(binary),before);
 console.log(JSON.stringify({target,version:manifest.version,sourceCommit:manifest.sourceCommit,nativeSmoke:'PASS',runtimeVerified:true},null,2));
-await Promise.all(cleanup.map(fn=>fn()));
+} finally {
+ try {const latest=JSON.parse(await readFile(path.join(state,'service.json'),'utf8'));process.kill(latest.pid,'SIGTERM');}catch{}
+ await Promise.all(cleanup.map(fn=>fn()));
+}

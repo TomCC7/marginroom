@@ -5,11 +5,16 @@ const number='(?:0|[1-9][0-9]*)';
 const identifier='(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)';
 const semver=new RegExp(`^${number}\\.${number}\\.${number}(?:-${identifier}(?:\\.${identifier})*)?$`);
 export function releaseVersion(env=process.env,pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url)))) {
- const tag=env.RELEASE_TAG;
+ const push=env.GITHUB_EVENT_NAME==='push';
+ if(push) assert(env.GITHUB_REF?.startsWith('refs/tags/'),'Expected tag push');
+ const refTag=push?env.GITHUB_REF.slice('refs/tags/'.length):undefined;
+ const tag=env.RELEASE_TAG||refTag;
  if(tag!==undefined) assert(tag.startsWith('v')&&semver.test(tag.slice(1)),'Invalid release tag');
- const version=tag?.slice(1)??env.MARGINROOM_BUILD_VERSION??pkg.version;
+ if(refTag&&env.RELEASE_TAG) assert.equal(env.RELEASE_TAG,refTag,'Explicit tag/ref mismatch');
+ const explicit=env.MARGINROOM_BUILD_VERSION||undefined;
+ const version=tag?.slice(1)??explicit??pkg.version;
  assert(typeof version==='string'&&version.length<=100&&semver.test(version),'Invalid release version (SemVer without build metadata)');
- if(env.MARGINROOM_BUILD_VERSION!==undefined) assert.equal(env.MARGINROOM_BUILD_VERSION,version,'Explicit version mismatch');
+ if(explicit!==undefined) assert.equal(env.MARGINROOM_BUILD_VERSION,version,'Explicit version mismatch');
  if(env.GITHUB_EVENT_NAME==='push') {
   assert.equal(env.GITHUB_REF,`refs/tags/v${version}`,'Tag/ref mismatch');
   const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
