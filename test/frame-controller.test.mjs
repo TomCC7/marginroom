@@ -20,7 +20,8 @@ import { sha256hex } from '../public/anchoring.js';
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m); } };
 
-const controller = await readFile(new URL('../public/frame-controller.js', import.meta.url), 'utf8');
+const {logicalSource}=await import('../public/logical-text.js');
+const controller = logicalSource()+';'+await readFile(new URL('../public/frame-controller.js', import.meta.url), 'utf8');
 
 // A doc that mixes block text (h1/p) with INLINE text (span/a/button) and a nested
 // inline badge — the shapes real standalone docs use. The controller reads

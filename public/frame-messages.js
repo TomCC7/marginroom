@@ -47,12 +47,14 @@ export function parseSuggestTarget(m) {
   if (!validRect(m.rect)) return null;
   const snippet = typeof m.snippet === 'string' ? m.snippet.slice(0, 200)
     : (typeof m.quote === 'string' ? m.quote.slice(0, 200) : '');
+  const ranged=m.isText&&typeof m.baseText==='string'&&m.baseText.length<=100000&&Number.isInteger(m.rangeStart)&&Number.isInteger(m.rangeEnd)&&m.rangeStart>=0&&m.rangeEnd>=m.rangeStart&&m.rangeEnd<=m.baseText.length&&m.baseText.slice(m.rangeStart,m.rangeEnd)===m.quote;
   return {
     anchor: m.anchor,
     isText: !!m.isText,
     parent: m.parent===true,
     snippet,
     quote: m.isText && typeof m.quote==='string' ? m.quote.slice(0,100000) : snippet,
+    ...(ranged?{baseText:m.baseText,rangeStart:m.rangeStart,rangeEnd:m.rangeEnd}:{}),
     rect: { left: m.rect.left, top: m.rect.top, width: m.rect.width, height: m.rect.height },
   };
 }

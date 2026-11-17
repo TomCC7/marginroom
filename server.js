@@ -6,7 +6,9 @@
 // anyone may suggest, but editing/restoring/accepting is gated to the doc owner.
 import express from 'express';
 import {machineAuth,machineInstance,digest} from './machine-auth.js';
-import {documentImports,validateBundle} from './document-imports.js';
+import {documentImports,validateBundle,safePath as safeBundlePath} from './document-imports.js';
+import {importLimits} from './import-limits.js';
+import {bundleProjection} from './bundle-projection.js';
 import {locateAcross} from './version-navigation.js';
 import { parse } from 'parse5';
 import { readFile, writeFile, readdir, access, mkdir } from 'node:fs/promises';
@@ -217,12 +219,13 @@ async function readDocConfig(id) {
 }
 
 export function createApp(db, opts = {}) {
+  const BUNDLE_LIMITS=importLimits();
   const app = express();
   app.set('trust proxy', true); // behind Fly's proxy; needed for correct client IP
   // Body limit tracks the file-size cap plus headroom for JSON overhead, so a
   // paste up to MAX_DOC_BYTES isn't rejected by the parser before our own check.
-  app.use(express.json({ limit: 24 * 1024 * 1024 }));
-  app.use((error,req,res,next)=>{if(error?.type==='entity.too.large')return res.status(413).json({error:'bundle_too_large'});if(error instanceof SyntaxError&&error.status===400)return res.status(400).json({error:'invalid_json'});next(error);});
+  const rawBodyLimit=MAX_DOC_BYTES*6+65536,snapshotBodyLimit=Math.max(MAX_DOC_BYTES,BUNDLE_LIMITS.file)*6+65536;
+  const importJson=express.json({limit:BUNDLE_LIMITS.body}),rawJson=express.json({limit:rawBodyLimit}),snapshotJson=express.json({limit:snapshotBodyLimit});
 
   const noStore = (res) => res.setHeader('Cache-Control', 'no-store');
 
@@ -237,11 +240,14 @@ export function createApp(db, opts = {}) {
   // access) 403s. So: json → identify → static.
   const { identify, readLimiter, writeLimiter, uploadLimiter } = makeGuardrails({ now: opts.now });
   const machines = machineAuth(db);
-  const imports = documentImports(db,DOCS_DIR,{stripActiveContent,checkCapacity(req){if(req.caller.isOwner||req.caller.machine)return;const n=countDocsOwnedBy(db,req.caller.token);if(n>=LIMITS.GUEST_DOC_LIMIT)throw Object.assign(new Error(),{status:403,code:'guest_doc_limit'});if(n===0&&countGuestOwners(db)>=LIMITS.MAX_GUEST_OWNERS)throw Object.assign(new Error(),{status:503,code:'capacity_full'});}});
+  const imports = documentImports(db,DOCS_DIR,{stripActiveContent,limits:BUNDLE_LIMITS,checkCapacity(req){if(req.caller.isOwner||req.caller.machine)return;const n=countDocsOwnedBy(db,req.caller.token);if(n>=LIMITS.GUEST_DOC_LIMIT)throw Object.assign(new Error(),{status:403,code:'guest_doc_limit'});if(n===0&&countGuestOwners(db)>=LIMITS.MAX_GUEST_OWNERS)throw Object.assign(new Error(),{status:503,code:'capacity_full'});}});
   const instanceId = machineInstance(db, opts.instanceId);
   app.use((req,res,next)=>req.headers.authorization ? next() : identify(req,res,next));
   app.use(machines.middleware);
-  app.get('/api/instance', (_req,res)=>res.json({product:'marginroom',protocolVersion:1,instanceId,ready:true}));
+  const parser=req=>req.path==='/api/imports'?[importJson,BUNDLE_LIMITS.body]:/^\/api\/snapshot\//.test(req.path)?[snapshotJson,snapshotBodyLimit]:[rawJson,rawBodyLimit];
+  app.use((req,res,next)=>parser(req)[0](req,res,next));
+  app.use((error,req,res,next)=>{if(error?.type==='entity.too.large')return res.status(413).json({error:'bundle_too_large',maxBodyBytes:parser(req)[1]});if(error instanceof SyntaxError&&error.status===400)return res.status(400).json({error:'invalid_json'});next(error);});
+  app.get('/api/instance', (_req,res)=>res.json({product:'marginroom',protocolVersion:1,instanceId,ready:true,importLimits:BUNDLE_LIMITS}));
   app.post('/api/imports', uploadLimiter, (req,res)=>{
     try {req.canManage=id=>machines.manages(req,id);const result=imports.import(req,req.body);res.json({schemaVersion:1,document:result.doc,series:result.series,previous:result.previous,hash:result.hash,reused:result.reused,external:result.external});}
     catch(e){res.status(e.status||500).json({error:e.code||'import_failed'});}
@@ -280,6 +286,12 @@ export function createApp(db, opts = {}) {
   app.use('/bundles/:doc' , (req,res,next)=>{
     if(!imports.get(req.params.doc))return res.sendStatus(404);
     res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'; style-src 'unsafe-inline'");res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Access-Control-Allow-Origin','*');
+    // Only project committed files inside this document; never mount a site root.
+    let name;try{name=decodeURIComponent(req.path.slice(1));}catch{return res.sendStatus(400);}
+    if(/\.(?:html?|css|m?js)$/i.test(name)){
+      if(!safeBundlePath(name))return res.sendStatus(404);
+      return readFile(path.join(imports.root,req.params.doc,name),'utf8').then(text=>res.type(/\.html?$/i.test(name)?'html':/\.css$/i.test(name)?'css':'js').send(bundleProjection(text,name,`/bundles/${req.params.doc}/`))).catch(()=>res.sendStatus(404));
+    }
     express.static(path.join(imports.root,req.params.doc),{dotfiles:'deny',index:false,redirect:false})(req,res,next);
   });
   app.use(Bun.isStandaloneExecutable ? embeddedFrontend : express.static(PUBLIC_DIR));
@@ -534,7 +546,7 @@ export function createApp(db, opts = {}) {
     const mine = ownsDoc(req, id);
     noStore(res);
     res.json({
-      id, baseHtml, overlay: getOverlay(db, id), config, hasRaw: await docHasRaw(id),
+      id, baseHtml, renderHtml:imports.get(id)?bundleProjection(baseHtml,imports.get(id).entry,`/bundles/${id}/`):baseHtml, overlay: getOverlay(db, id), config, hasRaw: await docHasRaw(id),
       access, isDocOwner: mine,
       canEdit: mine || access === 'edit',
       canSuggest: mine || access !== 'view',
@@ -588,7 +600,7 @@ export function createApp(db, opts = {}) {
     res.setHeader('Content-Security-Policy', 'sandbox allow-scripts');
     const imported=imports.get(id);
     const resourceBase=imported ? `/bundles/${id}/${imported.entry.split('/').slice(0,-1).join('/')}${imported.entry.includes('/')?'/':''}` : null;
-    res.json({ id, rawHtml, resourceBase });
+    res.json({ id, rawHtml, resourceBase, renderHtml:imported?bundleProjection(rawHtml,imported.entry,`/bundles/${id}/`):rawHtml });
   });
 
   // POST /api/snapshot/:id { html } -> { ok, html }
@@ -608,8 +620,9 @@ export function createApp(db, opts = {}) {
     if (!(await docHasRaw(id))) return res.status(404).json({ error: 'no_raw' });
     const { html } = req.body || {};
     if (typeof html !== 'string' || html.length === 0) return res.status(400).json({ error: 'invalid_html' });
-    if (Buffer.byteLength(html, 'utf8') > MAX_DOC_BYTES) {
-      return res.status(413).json({ error: 'too_large', maxBytes: MAX_DOC_BYTES });
+    const snapshotLimit=imports.get(id)?BUNDLE_LIMITS.file:MAX_DOC_BYTES;
+    if (Buffer.byteLength(html, 'utf8') > snapshotLimit) {
+      return res.status(413).json({ error: 'too_large', maxBytes: snapshotLimit });
     }
     const clean = stripActiveContent(html);
     noStore(res);

@@ -1,6 +1,6 @@
 {
   "name": "marginroom",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Imported HTML review with comments and paragraph suggestions",
   "type": "module",
@@ -27,11 +27,13 @@
     "test:agent-migration": "bun test/agent-migration.mjs",
     "build": "bun scripts/build.mjs",
     "check:sqlite": "bun check-sqlite.mjs",
-    "test:storage": "bun test/bun-storage.mjs"
+    "test:storage": "bun test/bun-storage.mjs",
+    "test:ssg-math": "bun test/ssg-math-installed.mjs"
   },
   "dependencies": {
     "commander": "15.1.0",
     "cookie": "^0.7.2",
+    "es-module-lexer": "2.0.0",
     "express": "^5.2.1",
     "linkedom": "0.18.15",
     "parse5": "8.0.1"

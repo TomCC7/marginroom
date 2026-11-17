@@ -13,7 +13,8 @@ import {t as tr,locale,bind,onLocaleChange} from './i18n.js';
 import { assignAnchors, assignCommentAnchors, normalizeText, GROUP_ATTR, groupShells, findUnreachableText, summarizeUnreachable } from './anchoring.js';
 import { diffWords, renderDiffHtml } from './diff.js';
 import { resolveAssets, forceRevealContent, summarizeMissing, healImageAssets } from './assets.js';
-import { icon } from './icons.js';
+import {icon} from './icons.js';
+import {logicalText,logicalSource} from './logical-text.js';
 import { parseSuggestTarget, validRect, parseFrameReady } from './frame-messages.js';
 import {annotationAffordances} from './annotation-affordances.js';
 import {elementReview} from './element-review.js';
@@ -169,7 +170,7 @@ function readGroupText(container) {
   // If every direct child is a shell we recognize, read them directly.
   const directBlocks = [...container.children].filter((c) => c.nodeType === 1);
   if (shells.length > 0 && shells.length === directBlocks.length) {
-    return shells.map((s) => normalizeText(s.textContent)).filter((t) => t !== '').join(GROUP_SEP);
+    return shells.map((s) => normalizeText(logicalText(s))).filter((t) => t !== '').join(GROUP_SEP);
   }
   // Fallback: reconstruct lines from mixed content (text nodes, <br>, blocks).
   const lines = [];
@@ -532,7 +533,7 @@ async function restore(versionId, when) {
 
 // The current text of a block (edit-applied), used to pre-fill a rewrite and to
 // store the "quote" a suggestion refers to.
-function blockText(el) { return isGroup(el) ? readGroupText(el) : el.textContent; }
+function blockText(el) { return isGroup(el) ? readGroupText(el) : logicalText(el); }
 
 // Resolve any suggestion anchor to its element: comment anchors ("c:…") live in
 // commentMap (non-text elements), text anchors in anchorMap. A multi-block anchor
@@ -1145,7 +1146,7 @@ function buildSrcdoc(rawHtml, controllerSrc, id) {
   const controller = `<script>${controllerSrc}</script>`;
   // Prepend the bootstrap (globals must exist before the doc's scripts, harmless
   // there) and append the controller at end of body via string concat.
-  return boot + `<script>const annotationAffordances=${annotationAffordances.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};</script>` + controller + String(rawHtml);
+  return boot + `<script>${logicalSource()};const annotationAffordances=${annotationAffordances.toString()};const elementReview=${elementReview.toString()};const singleBlockRange=${singleBlockRange.toString()};</script>` + controller + String(rawHtml);
 }
 
 // Handle a message from the sandboxed frame. The frame runs untrusted JS next to
@@ -1263,7 +1264,7 @@ async function bootInteractive(data) {
   let raw, controllerSrc;
   try {
     [raw, controllerSrc] = await Promise.all([
-      fetch(`/api/raw/${encodeURIComponent(docId)}`).then((r) => { if (!r.ok) throw new Error(); return r.json(); }).then((j) => j.resourceBase ? (()=>{const base=`<base href="${new URL(j.resourceBase,location.origin).href}">`;return /<head(?:\s|>)/i.test(j.rawHtml)?j.rawHtml.replace(/<head([^>]*)>/i,`<head$1>${base}`):base+j.rawHtml;})() : j.rawHtml),
+      fetch(`/api/raw/${encodeURIComponent(docId)}`).then((r) => { if (!r.ok) throw new Error(); return r.json(); }).then((j) => {const html=j.renderHtml||j.rawHtml;return j.resourceBase ? (()=>{const base=`<base href="${new URL(j.resourceBase,location.origin).href}">`;return /<head(?:\s|>)/i.test(html)?html.replace(/<head([^>]*)>/i,`<head$1>${base}`):base+html;})() : html}),
       getFrameControllerSrc(),
     ]);
   } catch {
@@ -1325,7 +1326,7 @@ async function boot(overlayOverride) {
   canSuggest = data.canSuggest !== false;
   // Interactive (JS) doc -> sandboxed-iframe path (skips the inline pipeline).
   if (data.hasRaw) return bootInteractive(data);
-  renderBaseHtml(data.baseHtml);
+  renderBaseHtml(data.renderHtml||data.baseHtml);
   // Apply block-grouping from per-doc config BEFORE anchoring, so grouped
   // containers are anchored as one unit. (Config lives in docs/<id>.config.json
   // so HTML formatters can't strip the marker.)
@@ -1356,7 +1357,7 @@ async function boot(overlayOverride) {
   // Capture original template text per anchor BEFORE applying edits, so version
   // diffs can show "original words -> edit" for the very first change to a block.
   baseText = new Map();
-  for (const [anchor, el] of anchorMap) baseText.set(anchor, isGroup(el) ? readGroupText(el) : el.textContent);
+  for (const [anchor, el] of anchorMap) baseText.set(anchor, isGroup(el) ? readGroupText(el) : logicalText(el));
   // Keep the last-saved overlay for the static path too (bootInteractive sets its
   // own). revertBlockToSaved uses it to roll a refused edit back to the stored
   // value rather than the original template text.
@@ -1708,7 +1709,7 @@ export const reviewBridge = {
  async init(id) { docId=id; mode='view'; return boot(); },
  async reload() { return boot(); },
  get state() { return {docId,anchorMap,commentMap,baseText,currentOverlay,canEdit,canSuggest,isDocOwner,interactive,frame}; },
- readText(el) { return isGroup(el) ? readGroupText(el) : el.textContent; },
+ readText: (el) => isGroup(el) ? readGroupText(el) : logicalText(el),
  setMode(next) { mode=next; applyMode(); },
  exportHtml: downloadOriginal,
  exportSnapshot: downloadSnapshot,
