@@ -42,7 +42,13 @@ try:
  for asset in ['viewer.html','viewer.js','review-v3.css']:
   with urllib.request.urlopen(origin+'/'+asset) as response:assert response.status==200 and len(response.read())>100
  comments=json.loads(cli('comments',a['reviewUrl'],'--json').stdout);assert comments['records']==[] and comments['complete']
- cli('open',str(article),'--browser');assert (pathlib.Path(env['HOME'])/'browser-url').read_text().startswith(origin+'/claim.html#')
+ cli('open',str(article),'--browser')
+ import time
+ browser_file=pathlib.Path(env['HOME'])/'browser-url'
+ for _ in range(100):
+  if browser_file.exists():break
+  time.sleep(.02)
+ assert browser_file.read_text().startswith(origin+'/claim.html#')
  article.write_text('<!doctype html><title>Synthetic release revision</title><p id="test">Synthetic revised release content.</p>')
  b=json.loads(cli('open',str(article),'--new-version-of',a['reviewUrl'],'--json').stdout);assert a['document']!=b['document']
  record('Linux installed help/open/browser dispatch/embedded HTTP assets/comments JSON/explicit revision')
