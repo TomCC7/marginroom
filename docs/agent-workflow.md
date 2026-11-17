@@ -40,3 +40,5 @@ Legacy `/api/upload` safe single-file creates delegate the common validator/publ
 ## Human-readable feedback
 
 `marginroom comments 'REVIEW_URL'` prints feedback threads with statuses, quotes, bodies, replies and full IDs. Add `--status all` to include closed threads. For automation keep `--json`: the schema, stored record values and exit statuses are unchanged. Text redirection does not switch formats. `marginroom open article.html` prints the URL and a copyable, quoted comments command; `--browser` still explicitly grants management through a one-use handoff. Root and command `--help` never start a service.
+
+Revision text labels the stored `quote` as “Original quote” and `body` as “Suggested”. A legacy whole-block quote may be only a display substring; the CLI does not invent a full original from missing context. Stored HTML entities are decoded once for text only; JSON retains the original escaped record.

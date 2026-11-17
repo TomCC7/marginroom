@@ -125,6 +125,7 @@
     "test/api.test.mjs",
     "test/bun-storage.mjs",
     "test/capture-english-review.mjs",
+    "test/cli-installed-readable.mjs",
     "test/cli-readable.mjs",
     "test/container-smoke.mjs",
     "test/context-dismiss.browser.mjs",

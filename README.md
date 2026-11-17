@@ -30,7 +30,7 @@ Default output keeps each thread together, including replies and its full ID:
 ID  00000000-0000-4000-8000-000000000001
 ```
 
-Use `marginroom --help` or `marginroom comments --help` for options. Quote review URLs (the `?` is a glob in zsh). Text stays text when redirected; `NO_COLOR` disables terminal colors. Revision threads label the original selection and suggested replacement. `--json` retains exact stored records and the existing schema, without terminal formatting.
+Use `marginroom --help` or `marginroom comments --help` for options. Quote review URLs (the `?` is a glob in zsh). Text stays text when redirected; `NO_COLOR` disables terminal colors. Revision threads label the stored original quote and suggested replacement (legacy quotes may be only part of a replaced block). `--json` retains exact stored records and the existing schema, without terminal formatting.
 
 Reopening the same file resumes review. After editing the HTML, preserve earlier feedback with a new version:
 
