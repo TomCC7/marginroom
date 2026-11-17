@@ -1,45 +1,59 @@
 # Marginroom
 
-Review generated HTML in place. Read feedback threads in your terminal, or use JSON with an agent.
+Review HTML in the browser. Bring the feedback back to your agent.
+
+Open a generated page, leave comments and revision suggestions beside the content, then read the discussion from your terminal or as JSON. Your original HTML stays unchanged.
+
+![An HTML document with comments, replies and an inline revision in Marginroom](docs/screenshots/english-review.png)
+
+## Install
+
+macOS Apple Silicon / Intel, or Linux x64 with glibc. No Node, Bun or sudo required.
 
 ```sh
-curl -fsSL https://github.com/TomCC7/marginroom/releases/download/v0.1.0-alpha.2/install.sh | sh
+curl -fsSL https://github.com/TomCC7/marginroom/releases/latest/download/install.sh | sh
+```
+
+This installs the latest release to `~/.local/bin`. Follow the PATH instruction if prompted. See [installation and macOS security notes](docs/installation.md) for platform limitations.
+
+## Review a page
+
+```sh
 marginroom open ./article.html --browser
 ```
 
-Pre-release for macOS Apple Silicon / Intel and Linux x64 glibc. No Bun, Node or sudo needed. Installs to `~/.local/bin`; add it to PATH if prompted. **macOS binaries are cross-built, not runtime-tested, Developer-ID signed or notarized.** See [platform limits and installation](docs/installation.md). The release route becomes available when the owner publishes this prerelease.
+Marginroom starts its local service and opens your page. Switch to **Annotate** to comment on text or elements, propose revisions, and reply to feedback.
 
-Select text or an element in Annotate, comment, and reply. Read feedback:
+## Read the feedback
+
+Copy the review URL from your browser. Read the threads in your terminal:
 
 ```sh
 marginroom comments 'REVIEW_URL'
-# Stable machine-readable schema:
+```
+
+Or give your agent structured records, including IDs, quotes and replies:
+
+```sh
 marginroom comments 'REVIEW_URL' --json
 ```
 
-Default output keeps each thread together, including replies and its full ID:
+Keep URLs quoted. Use `--status all` to include handled feedback, or `marginroom comments --help` for more options.
 
-```text
-1 open comment · 1 reply
+## Keep reviewing
 
-[open] Comment · Synthetic Owl
-“Review this paragraph”
-  Please clarify the example.
-  ↳ Synthetic Fox
-    Added more detail.
-ID  00000000-0000-4000-8000-000000000001
-```
-
-Use `marginroom --help` or `marginroom comments --help` for options. Quote review URLs (the `?` is a glob in zsh). Text stays text when redirected; `NO_COLOR` disables terminal colors. Revision threads label the stored original quote and suggested replacement (legacy quotes may be only part of a replaced block). `--json` retains exact stored records and the existing schema, without terminal formatting.
-
-Reopening the same file resumes review. After editing the HTML, preserve earlier feedback with a new version:
+Opening an unchanged file resumes its review. After changing the HTML, create a new version:
 
 ```sh
 marginroom open ./article.html --new-version-of 'REVIEW_URL' --browser
 ```
 
-Original files stay unchanged. Use `--json` instead of `--browser` for headless use. Local links are loopback-only; anyone who can reach a document URL can read it.
+Earlier versions and their feedback remain available.
 
-[Source builds](docs/installation.md#source-builds) · [User guide](docs/user-guide.md) · [CLI and pairing](docs/agent-workflow.md) · [Operations](docs/operations.md) · [Agent skill](skills/marginroom/SKILL.md)
+Local review links work only on the service host. To review from another device, [connect to a reachable instance](docs/agent-workflow.md). Anyone who can reach a document URL can read it.
 
-[MIT](LICENSE). Based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith. Original notices preserved.
+## Documentation
+
+[User guide](docs/user-guide.md) · [Agent workflow](skills/marginroom/SKILL.md) · [Build from source](docs/installation.md#source-builds) · [Hosting and backups](docs/operations.md)
+
+[MIT](LICENSE). Based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith.
