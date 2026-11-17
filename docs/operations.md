@@ -4,13 +4,13 @@ Installation, configuration, ownership recovery, and backups for a self-hosted i
 
 ## Installed CLI and coordinated backend upgrade
 
-See [agent workflow](agent-workflow.md) for isolated npm-tarball installation, Linux loopback service ownership, explicit pairing, private credential files and scope limitations. CLI identity is separate from human cookies and OWNER_KEY. Ordinary JSON/share links never contain management handoffs. Machine import is host-authorized; browser imports retain guest capacity limits.
+See [agent workflow](agent-workflow.md) for verified standalone installation, Linux loopback service ownership, explicit pairing, private credential files and scope limitations. CLI identity is separate from human cookies and OWNER_KEY. Ordinary JSON/share links never contain management handoffs. Machine import is host-authorized; browser imports retain guest capacity limits.
 
-`npm run test:agent-migration` rehearses baseline → additive migration → complete code/DB/docs/identity rollback on synthetic data, including independent locked rollback dependencies and old HTTP rows/replies. It does not touch a live deployment. A new backend must be installed as a coordinated candidate with matching DB/docs/bundles/identity backup, not a static-asset hot swap. Existing externally maintained metal-arm files must be retained from CURRENT.
+`bun test/agent-migration.mjs ORIGINAL_NODE_FIXTURE_DIR` verifies migration and rollback on copied synthetic original-driver data. It does not touch a live deployment. A new backend must be installed as a coordinated candidate with matching DB/docs/bundles/identity backup, not a static-asset hot swap. Existing externally maintained metal-arm files must be retained from CURRENT.
 
 ## Docker installation
 
-Requires Docker Engine with Compose v2 and a free local port. Run commands from the release repository. The Docker build installs locked dependencies using `npm ci --omit=dev`, including the native SQLite module; no host Node installation is needed.
+Requires Docker Engine with Compose v2 and a free local port. Run commands from the release repository. The Docker build installs locked dependencies using `bun install --frozen-lockfile --production`, using Bun 1.4.4 and its built-in SQLite driver; no host JavaScript runtime is needed.
 
 ```sh
 cp .env.example .env
@@ -26,7 +26,7 @@ On first boot the image creates `/data/identity.json` with random, persistent `S
 Retrieve your owner recovery key on your own terminal (it is a secret):
 
 ```sh
-docker compose exec app node -e 'console.log(JSON.parse(require("fs").readFileSync("/data/identity.json","utf8")).OWNER_KEY)'
+docker compose exec app bun -e 'console.log(JSON.parse(require("fs").readFileSync("/data/identity.json","utf8")).OWNER_KEY)'
 ```
 
 Open `http://localhost:3939/?key=YOUR_KEY` once in your owner browser. Then use the plain URL; do not share key-bearing links or include them in screenshots/logs. The `x-owner-key` request header is also supported for operator API requests. Keep the key in a private password manager independently of the running volume.
@@ -51,14 +51,14 @@ Open the document through that reachable address, choose **Share**, select **Rea
 
 ## Runtime and configuration
 
-The supported/tested packaging baseline is **Node 22.23.4** on Debian Bookworm (Docker). Native dependencies make arbitrary Node upgrades or copying host `node_modules` into a container unsafe. Host `npm ci` was also exercised on Node 22.23.4; other runtimes/platforms are not certified by this release.
+The runtime and dependency manager are **Bun 1.4.4**. The lockfile is `bun.lock`; Docker uses `oven/bun:1.4.4-slim`. The compiled CLI needs no separately installed runtime. See [installation](installation.md).
 
 | Setting | App behavior / packaging value |
 | --- | --- |
 | `HS_DB_PATH` | Docker: `/data/app.db`; native default: `./data/app.db` |
 | `HS_DOCS_DIR` | Docker: `/data/docs`; native default: repository `docs/` |
 | `HOST`, `PORT` | Docker: `0.0.0.0:3939` internally; Compose publishes loopback only |
-| `SESSION_SECRET`, `OWNER_KEY` | Docker initializes/persists in `/data/identity.json`; plain `node server.js` does **not** do this |
+| `SESSION_SECRET`, `OWNER_KEY` | Docker initializes/persists in `/data/identity.json`; plain `bun server.js` does **not** do this |
 | `NODE_ENV` | Compose defaults to `development` for local HTTP cookie support. Use `production` with HTTPS to set Secure cookies. This flag is cookie behavior, not a security guarantee. |
 | `MMW_GUEST_DOC_LIMIT`, `MMW_MAX_GUEST_OWNERS` | App defaults: 1 document per guest; 15 distinct guest owners |
 | `MMW_MAX_DOC_BYTES` | App default: 2,000,000 bytes per uploaded file |
@@ -66,13 +66,13 @@ The supported/tested packaging baseline is **Node 22.23.4** on Debian Bookworm (
 
 Compose deliberately passes only the settings shown in `compose.yaml`. Add limit overrides explicitly to its `environment` section; placing arbitrary variables in `.env` alone does not pass them to the container. Feedback-to-GitHub is not configured or required: leave `GITHUB_TOKEN` unset. This packaging does not upload your documents to a hosted service, though imported remote URLs can cause browser network requests.
 
-For native development, run `npm ci` on Node 22.23.4. Explicitly export stable `SESSION_SECRET`, `OWNER_KEY`, an absolute `HS_DB_PATH`, and an absolute `HS_DOCS_DIR` pointing to a **fresh disposable directory** before `npm start`. The server does not load `.env` automatically. With no session secret native runs use a per-boot random secret; with no owner key owner-key recovery is disabled. Native operators must securely create `identity.json` matching the two exported secrets in their data directory to use the backup tools. The image's automatic initialization is the recommended quickstart.
+For native development, run `bun install --frozen-lockfile` with Bun 1.4.4. Explicitly export stable `SESSION_SECRET`, `OWNER_KEY`, an absolute `HS_DB_PATH`, and an absolute `HS_DOCS_DIR` pointing to a **fresh disposable directory** before `bun run start`. The server does not load `.env` automatically. With no session secret native runs use a per-boot random secret; with no owner key owner-key recovery is disabled. Native operators must securely create `identity.json` matching the two exported secrets in their data directory to use the backup tools. The image's automatic initialization is the recommended quickstart.
 
 ## Backup and restore
 
 A backup must include **all three**: SQLite review state/history/ownership, the entire document tree (including raw interactive HTML/config/assets), and persistent identity secrets. Copying only `app.db` is insufficient, particularly in SQLite WAL mode.
 
-The tools use SQLite's backup API and check integrity. **Stop the application and every other writer for the entire operation**: SQLite consistency alone cannot coordinate file uploads/deletions with database changes. `--writes-stopped` is your assertion, not an automatic lock. Do not run another app against the same volume. Backups are unencrypted directories containing content and owner credentials; store privately, encrypt at rest/off-host as appropriate, and never commit or publicly upload them. SHA-256 inventory checks detect accidental corruption, not maliciously replaced manifests.
+The tools use SQLite's consistent `VACUUM INTO` snapshot and check integrity. **Stop the application and every other writer for the entire operation**: SQLite consistency alone cannot coordinate file uploads/deletions with database changes. `--writes-stopped` is your assertion, not an automatic lock. Do not run another app against the same volume. Backups are unencrypted directories containing content and owner credentials; store privately, encrypt at rest/off-host as appropriate, and never commit or publicly upload them. SHA-256 inventory checks detect accidental corruption, not maliciously replaced manifests.
 
 ### Back up the Compose instance
 
@@ -82,11 +82,11 @@ chmod 700 backups
 docker compose stop app
 # Choose a NEW backup name; existing directories are refused.
 docker compose run --rm --no-deps -v "$PWD/backups:/backups" app \
-  node scripts/backup.mjs /data /backups/alpha-001 --writes-stopped
+  bun scripts/backup.mjs /data /backups/alpha-001 --writes-stopped
 docker compose start app
 ```
 
-The image runs as UID/GID 1000 (`node`). On Linux the backup directory must be writable by that user; if your host UID differs, grant that user access to **only that directory** before running the command. Do not make backups world-readable. Check the command's exit status before considering a backup successful. A failed run can leave an incomplete directory; never restore it. Keep a separate private copy outside the application disk.
+The image runs as UID/GID 1000 (`bun`). On Linux the backup directory must be writable by that user; if your host UID differs, grant that user access to **only that directory** before running the command. Do not make backups world-readable. Check the command's exit status before considering a backup successful. A failed run can leave an incomplete directory; never restore it. Keep a separate private copy outside the application disk.
 
 ### Restore rehearsal or recovery into a new volume
 
@@ -98,7 +98,7 @@ mkdir -p backups
 # Replace alpha-001 with an existing successful backup.
 MMW_PORT=3940 docker compose -p mmw-recovery run --rm --no-deps \
   -v "$PWD/backups:/backups:ro" app \
-  node scripts/restore.mjs /backups/alpha-001 /data --writes-stopped
+  bun scripts/restore.mjs /backups/alpha-001 /data --writes-stopped
 MMW_PORT=3940 docker compose -p mmw-recovery up -d
 # Open http://localhost:3940/ and recover owner access with the SAME saved key.
 # Check a real imported document, comments/suggestions/history, and its download.

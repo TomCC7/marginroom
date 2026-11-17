@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import path from 'node:path';
 import {parseArgs} from 'node:util';
 import {randomUUID} from 'node:crypto';
@@ -7,10 +7,14 @@ import {profile,readJSON,readCredential,atomic} from '../lib/cli/profile.mjs';
 import {localService} from '../lib/cli/service.mjs';
 import {request,instance,reviewURL,serverURL,CliError} from '../lib/cli/client.mjs';
 import {collect} from '../lib/cli/collect.mjs';
+if(process.argv[2]==='--service'){
+ if(process.argv.length!==4)throw new Error('Expected private service directory');
+ await import('../lib/cli/runner.mjs');
+}else{
 let json=process.argv.includes('--json');
 try{
  const {values:v,positionals:p}=parseArgs({allowPositionals:true,options:{json:{type:'boolean'},browser:{type:'boolean'},help:{type:'boolean'},'data-dir':{type:'string'},server:{type:'string'},'assets-dir':{type:'string'},'include-resource':{type:'string',multiple:true},'new-version-of':{type:'string'},status:{type:'string'},'token-file':{type:'string'},'host-db':{type:'string'},out:{type:'string'}}});
- if(v.help||!p.length){console.log('marginroom open FILE [--assets-dir DIR] [--new-version-of URL] [--browser] [--json]\nmarginroom comments URL [--status open|all|accepted|rejected|stale|withdrawn] --json\nmarginroom pair --out PRIVATE_JSON [--data-dir DIR]\nmarginroom pair --host-db EXISTING_DB --server ORIGIN --out PRIVATE_JSON\nOptions: --data-dir DIR; --server ORIGIN --token-file PRIVATE_JSON\nLocal links are loopback-only. See docs/agent-workflow.md.');process.exit(0);}
+ if(v.help||!p.length){console.log('marginroom open FILE [--assets-dir DIR] [--new-version-of URL] [--browser] [--json]\nmarginroom comments URL [--status open|all|accepted|rejected|stale|withdrawn] --json\nmarginroom pair --out PRIVATE_JSON [--data-dir DIR]\nmarginroom pair --host-db EXISTING_DB --server ORIGIN --out PRIVATE_JSON\nOptions: --data-dir DIR; --server ORIGIN --token-file PRIVATE_JSON\nLocal links are loopback-only. See the CLI workflow documentation.');process.exit(0);}
  if(p[0]==='pair'){
   if(p.length!==1||!v.out||Boolean(v.server)!==Boolean(v['host-db']))throw new CliError('invalid_arguments','Managed service: pair --out FILE [--data-dir DIR]; existing host: pair --host-db DB --server ORIGIN --out FILE');
   let service,credential;
@@ -18,7 +22,7 @@ try{
    // Explicit host filesystem authority only. Never start a service or borrow cookies.
    const origin=serverURL(v.server);if(origin.pathname!=='/'||origin.search)throw new CliError('invalid_server','Server must be an origin');
    const info=await instance(origin.origin);
-   const {default:Database}=await import('better-sqlite3');const db=new Database(path.resolve(v['host-db']),{fileMustExist:true});
+   const {default:Database}=await import('../lib/sqlite.mjs');const db=new Database(path.resolve(v['host-db']),{create:false});
    try{
     const stored=db.prepare('SELECT id FROM machine_instance WHERE singleton=1').get();
     if(stored?.id!==info.instanceId)throw new CliError('incompatible_instance','Host database does not belong to the running server',6);
@@ -55,3 +59,5 @@ try{
   console.log(v.json?JSON.stringify({schemaVersion:1,instanceId:service.instanceId,...result,reviewUrl,localOnly:!explicit,warnings:['Static declared dependencies only; dynamic resources and backend APIs are not replicated.',...(result.external.length?['External resources require network access.']:[])]}):reviewUrl);
  }
 }catch(e){const error={code:e.code||'invalid_arguments',message:e.message};if(json)console.log(JSON.stringify({schemaVersion:1,error}));else console.error(`Error: ${error.message}`);process.exitCode=e.exit||2;}
+
+}

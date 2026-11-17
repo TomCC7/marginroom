@@ -6,12 +6,12 @@ Read MODERN-WEB-AUDIT.md for guide version/IDs/quotes, finding dispositions, rep
 
 Rerun narrow changed cases:
 ```
-node test/modern-web.browser.mjs
-node test/modern-web-probes.mjs
-APP_DIR=../current-app RUNTIME_ARTIFACTS=../evidence/reviewer-runtime npm run test:runtime-text
-npm run test:api
+bun test/modern-web.browser.mjs
+bun test/modern-web-probes.mjs
+APP_DIR=../current-app RUNTIME_ARTIFACTS=../evidence/reviewer-runtime bun run test:runtime-text
+bun run test:api
 ```
-Private current-enhancer exact-legend case uses predecessor private-doc.json with APP_DIR=../current-app, PRIVATE_DOC=/home/cc/work/marginroom-runtime-text-comment-fix/private-doc.json and RUNTIME_ARTIFACTS=../reviewer-private. Never commit/attach those screenshots/documents. test/runtime-text-storage.mjs now finds the private legend by exact approved phrase rather than stale first-legend order, and checks that same paragraph after reload.
+Private current-enhancer exact-legend case uses predecessor private-doc.json with APP_DIR=../current-app, PRIVATE_DOC=/ABS/PRIVATE/private-doc.json and RUNTIME_ARTIFACTS=../reviewer-private. Never commit/attach those screenshots/documents. test/runtime-text-storage.mjs now finds the private legend by exact approved phrase rather than stale first-legend order, and checks that same paragraph after reload.
 
 Synthetic evidence: ../evidence/audit (four viewport menu captures and two modal captures), ../evidence/probes, ../evidence/current-runtime. Real isolated HTTP/SQLite synthetic and private exact-ID persistence/reload both passed at 1440/390. API passed. Unit file frame-suggest still has the predecessor's two c2/c3 assertion failures (17/2); no all-green claim. WebKit binary missing. Physical Safari and real OS IME are unverified. Synthetic Enter/composition-confirm and dirty-draft retention pass.
 

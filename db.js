@@ -4,10 +4,10 @@
 // - document_versions: append-only snapshots for Google-Docs-style history.
 // - suggestions:       phase 2 (schema created now so migrations aren't needed).
 //
-// better-sqlite3 is synchronous (no async/await) and ACID — ideal for a single
+// bun:sqlite is synchronous (no async/await) and ACID — ideal for a single
 // always-on box. The DB path is configurable so tests use a throwaway file and
 // production uses a persistent volume.
-import Database from 'better-sqlite3';
+import Database from './lib/sqlite.mjs';
 import {rangesConflict} from './public/range-patches.js';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';

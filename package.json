@@ -5,29 +5,31 @@
   "description": "Imported HTML review with comments and paragraph suggestions",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "test": "node test/run.mjs",
-    "test:unit": "node test/run.mjs unit",
-    "test:i18n": "node test/i18n.test.mjs && node test/i18n-home.browser.mjs",
-    "test:api": "node test/run.mjs api",
-    "test:browser": "node test/frontend.browser.mjs",
-    "test:all": "npm test && npm run test:browser && npm run test:toggle && npm run test:chrome && npm run test:selection && npm run test:preview && npm run test:security && npm run test:acceptance",
-    "test:chrome": "node test/review-chrome.browser.mjs",
-    "test:runtime-text": "node test/runtime-text-storage.mjs",
-    "test:selection": "node test/triple-selection.browser.mjs && node test/mobile-selection.browser.mjs && node test/mobile-selection-storage.mjs && node test/element-review.browser.mjs && node test/element-review-storage.mjs && node test/list-suggest.browser.mjs && node test/list-selection-storage.mjs",
-    "test:toggle": "node test/discussion-toggle.browser.mjs",
-    "test:preview": "node test/static-preview.browser.mjs && node test/preview-viewport.browser.mjs && node test/preview-viewport-storage.mjs && node test/workspace.browser.mjs && node test/preview-resize.browser.mjs",
-    "browser:install": "playwright-core install chromium",
-    "test:acceptance": "node test/release-acceptance.mjs",
-    "test:security": "node test/security-release.test.mjs",
-    "test:agent": "node test/agent-workflow.mjs",
-    "test:import-recovery": "node test/import-recovery.mjs",
-    "test:existing-host": "node test/existing-host.mjs",
-    "test:agent-migration": "node test/agent-migration.mjs"
+    "start": "bun server.js",
+    "dev": "bun --watch server.js",
+    "test": "bun test/run.mjs",
+    "test:unit": "bun test/run.mjs unit",
+    "test:i18n": "bun test/i18n.test.mjs && bun test/i18n-home.browser.mjs",
+    "test:api": "bun test/run.mjs api",
+    "test:browser": "bun test/frontend.browser.mjs",
+    "test:all": "bun run test && bun run test:browser && bun run test:toggle && bun run test:chrome && bun run test:selection && bun run test:preview && bun run test:security && bun run test:acceptance",
+    "test:chrome": "bun test/review-chrome.browser.mjs",
+    "test:runtime-text": "bun test/runtime-text-storage.mjs",
+    "test:selection": "bun test/triple-selection.browser.mjs && bun test/mobile-selection.browser.mjs && bun test/mobile-selection-storage.mjs && bun test/element-review.browser.mjs && bun test/element-review-storage.mjs && bun test/list-suggest.browser.mjs && bun test/list-selection-storage.mjs",
+    "test:toggle": "bun test/discussion-toggle.browser.mjs",
+    "test:preview": "bun test/static-preview.browser.mjs && bun test/preview-viewport.browser.mjs && bun test/preview-viewport-storage.mjs && bun test/workspace.browser.mjs && bun test/preview-resize.browser.mjs",
+    "browser:install": "bun node_modules/playwright-core/cli.js install chromium",
+    "test:acceptance": "bun test/release-acceptance.mjs",
+    "test:security": "bun test/security-release.test.mjs",
+    "test:agent": "bun test/agent-workflow.mjs",
+    "test:import-recovery": "bun test/import-recovery.mjs",
+    "test:existing-host": "bun test/existing-host.mjs",
+    "test:agent-migration": "bun test/agent-migration.mjs",
+    "build": "bun scripts/build.mjs",
+    "check:sqlite": "bun check-sqlite.mjs",
+    "test:storage": "bun test/bun-storage.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
     "cookie": "^0.7.2",
     "express": "^5.2.1",
     "linkedom": "0.18.15",
@@ -37,11 +39,8 @@
     "jsdom": "^29.1.1",
     "playwright-core": "^1.62.1"
   },
-  "allowScripts": {
-    "better-sqlite3@13.0.3": true
-  },
   "engines": {
-    "node": ">=22.23.4 <23"
+    "bun": "1.4.4"
   },
   "bin": {
     "marginroom": "bin/marginroom.mjs"
@@ -53,11 +52,18 @@
     "public/",
     "skills/",
     "docs/agent-workflow.md",
+    "docs/operations.md",
+    "docs/user-guide.md",
     "README.md",
     "LICENSE",
-    "docs/user-guide.md",
-    "docs/operations.md",
-    "!public/metal-arm-plan.js",
-    "!public/metal-arm-plan-content.json"
-  ]
+    "!public/metal-arm-plan*",
+    "bun.lock",
+    ".bun-version",
+    "docs/installation.md",
+    "docs/localization.md",
+    "test/README.md",
+    "scripts/backup.mjs",
+    "scripts/restore.mjs"
+  ],
+  "packageManager": "bun@1.4.4"
 }

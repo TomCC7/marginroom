@@ -1,6 +1,6 @@
 // Real HTTP and disposable on-disk SQLite; never touches repository documents.
 import assert from 'node:assert/strict';
-import {test} from 'node:test';
+import {test} from './helpers/check.mjs';
 import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';

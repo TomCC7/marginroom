@@ -52,12 +52,12 @@ Guide: `performance` avoid unnecessary UI work. No newly introduced scheduler AP
 
 ## Verification and limitations
 Commands run from this worktree:
-- `node test/modern-web.browser.mjs`: PASS at 1440×900,390×260,390×320,390×844, plus interactive DOM rescan. GET-only fixtures; no API writes.
-- `node test/modern-web-probes.mjs`: PASS schema, baseline/candidate hidden-poll counters and two-origin sentinel before/after.
-- `APP_DIR=../current-app RUNTIME_ARTIFACTS=../evidence/current-runtime npm run test:runtime-text`: PASS 1440/390 synthetic real HTTP/SQLite, native drag, UI submit, exact-ID readback, reload/locate, canonical inline, cross-block/hidden/ambiguous rejection. Base HTML/overlay unchanged.
+- `bun test/modern-web.browser.mjs`: PASS at 1440×900,390×260,390×320,390×844, plus interactive DOM rescan. GET-only fixtures; no API writes.
+- `bun test/modern-web-probes.mjs`: PASS schema, baseline/candidate hidden-poll counters and two-origin sentinel before/after.
+- `APP_DIR=../current-app RUNTIME_ARTIFACTS=../evidence/current-runtime bun run test:runtime-text`: PASS 1440/390 synthetic real HTTP/SQLite, native drag, UI submit, exact-ID readback, reload/locate, canonical inline, cross-block/hidden/ambiguous rejection. Base HTML/overlay unchanged.
 - Same command with predecessor private-doc JSON and `RUNTIME_ARTIFACTS=../private-evidence`: PASS 1440/390 exact requested legend using CURRENT external enhancer. Initial private test assumed first legend and failed after external enhancer update; test now selects the exact authorized phrase and reload checks that same paragraph, without weakening any assertions. Private screenshots/data are not committed or attached.
 - Initial synthetic run hit a transient existing mobile discussion overlay at canonical click; retry and both final repo/CURRENT-derived runs pass. Failure evidence retained, not silently counted as pass.
-- `npm run test:api`: PASS. `npm run test:unit`: stops at known baseline frame-suggest c2/c3 assertions, 17 passed/2 failed in that file, same debt as predecessor. No all-green unit claim.
+- `bun run test:api`: PASS. `bun run test:unit`: stops at known baseline frame-suggest c2/c3 assertions, 17 passed/2 failed in that file, same debt as predecessor. No all-green unit claim.
 - WebKit executable is absent (`webkit-2336/pw_run.sh`); no WebKit or physical Safari result claimed. Chromium viewport emulation and synthetic composition events do not prove real OS IME, screen reader or physical keyboard behavior.
 - Desktop/mobile synthetic and private exact-legend composer screenshots inspected natively. No product visual redesign or permanent explanatory chrome.
 

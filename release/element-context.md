@@ -8,8 +8,8 @@ The whole-element editable scope does not become a blind whole-block submission:
 
 ## Bounded verification
 
-- `node test/element-context.browser.mjs`: disposable real server/SQLite; actual pointer p/image/parent/child, whole p/li inline caret/type/cancel/submit/owner accept, safe em/link/sup and comments, minimal word range, disjoint accept/rebase, permissions, native screenshots at 1440/1024/390/360, draft/toggle retention, stale frame substring plus shell Selection, comments-only text quote.
-- `node test/inline-geometry.browser.mjs`: mapped 50%/100%, nested scroll/stage pan, ordinary controller, cancellation, simulated visualViewport keyboard and stationary toggle.
+- `bun test/element-context.browser.mjs`: disposable real server/SQLite; actual pointer p/image/parent/child, whole p/li inline caret/type/cancel/submit/owner accept, safe em/link/sup and comments, minimal word range, disjoint accept/rebase, permissions, native screenshots at 1440/1024/390/360, draft/toggle retention, stale frame substring plus shell Selection, comments-only text quote.
+- `bun test/inline-geometry.browser.mjs`: mapped 50%/100%, nested scroll/stage pan, ordinary controller, cancellation, simulated visualViewport keyboard and stationary toggle.
 - Migrated `element-review.browser.mjs`, `element-review-storage.mjs`, `list-suggest.browser.mjs`, `list-selection-storage.mjs` retain their navigation/source-action/UTF16/export and cross-block guards using the element-only edit entry.
 - Existing `mobile-selection.browser.mjs`, `triple-selection.browser.mjs`, unit suites, v3 API and multirange gates remain applicable.
 

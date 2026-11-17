@@ -36,7 +36,7 @@ selection history is not known. Pending-record locking is a separate behavior.
 
 ## Verification
 
-`npm run test:selection` runs GET-only native-input/selection fixtures and a real
+`bun run test:selection` runs GET-only native-input/selection fixtures and a real
 throwaway server/SQLite import→comment→rewrite→accept→viewer-export test.
 Fixtures cover 1440/390, Auto/phone, Fit/100%, li/p visual wrapping, inline shells,
 Ctrl+A, cursor edge deletion, plain/multiline paste, CDP composition, repeated

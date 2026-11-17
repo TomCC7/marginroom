@@ -31,3 +31,5 @@ review-artifacts
 **/*.sqlite*
 **/*cookies*
 prepare-release.py
+
+public/metal-arm-plan*

@@ -2,34 +2,34 @@
 
 ## Installed agent workflow
 
-- `npm run test:agent`: actual npm pack + isolated install + normal CLI subprocesses, native comment/reply exact-ID readback and restart; bundle/font/module errors, scope/revocation/pairing, preserved versions/locate, browser management/guest quota/deletion, preferred-port occupation and real launcher SIGKILL/lease adoption. Set `AGENT_ARTIFACTS` for retained synthetic reports/captures, `FONT_FIXTURE` for a valid installed TTF (default `/usr/share/fonts/carlito/Carlito-Regular.ttf`).
-- `npm run test:existing-host`: review130 narrow regression. Fresh tarball/isolated install; normal `createApp(db)` HTTP host (no managed runner identity injection); host-local `pair --host-db DB --server ORIGIN` → installed open → close/reopen DB + same-port host → original credential/review/source/owner readback; anonymous/owner/invalid-Bearer HTTP bootstrap denied, wrong DB rejected, revocation fails closed and no managed service created. `HOST_ARTIFACTS` retains a secret-free receipt.
-- `npm run test:import-recovery`: real abrupt exits at publication boundaries.
-- `npm run test:agent-migration`: baseline archive → synthetic HTTP rows/replies → stopped-writer complete backup → additive migration → independently installed baseline rollback/readback. Requires local baseline Git object and npm dependency access; no production state.
-- `npm run test:i18n`, `npm run test:api`: relevant existing contracts. Chromium screenshots/keyboard and synthetic composition events do not certify physical Safari or OS IME.
+- `bun run test:agent`: actual standalone build + HTTP installer + normal CLI subprocesses, native comment/reply exact-ID readback and restart; bundle/font/module errors, scope/revocation/pairing, preserved versions/locate, browser management/guest quota/deletion, preferred-port occupation and real launcher SIGKILL/lease adoption. Set `AGENT_ARTIFACTS` for retained synthetic reports/captures, `FONT_FIXTURE` for a valid installed TTF (default `/usr/share/fonts/TTF/OpenSans-Regular.ttf`).
+- `bun run test:existing-host`: review130 narrow regression. Fresh binary/isolated install; normal `createApp(db)` HTTP host (no managed runner identity injection); host-local `pair --host-db DB --server ORIGIN` → installed open → close/reopen DB + same-port host → original credential/review/source/owner readback; anonymous/owner/invalid-Bearer HTTP bootstrap denied, wrong DB rejected, revocation fails closed and no managed service created. `HOST_ARTIFACTS` retains a secret-free receipt.
+- `bun run test:import-recovery`: real abrupt exits at publication boundaries.
+- `bun test/agent-migration.mjs ORIGINAL_NODE_FIXTURE_DIR`: copies a pre-migration synthetic original-driver fixture and verifies all rows, columns, schema, HTTP source/feedback, cookie/token identity, transaction rollback, backup/integrity and copied rollback. The fixture must include app.db, before.db, docs, identity.json, credential.json and snapshot.json captured before driver replacement; never point this at production.
+- `bun run test:i18n`, `bun run test:api`: relevant existing contracts. Chromium screenshots/keyboard and synthetic composition events do not certify physical Safari or OS IME.
 
 
-Run from the repository root on the tested Node 22.23.4 baseline:
+Build the standalone distribution with `bun run build` before installed-workflow tests. Run from the repository root with Bun 1.4.4:
 
 ```sh
-npm ci
-npm test                    # unit/DOM + disposable local API tests, including v3-api
-npm run test:unit
-npm run test:api
-npm run browser:install     # download the Chromium version matching playwright-core
-npm run test:browser        # route-isolated frontend regressions, no server needed
-npm run test:chrome         # borderless shell, bottom dock, legacy migration, rail list
-npm run test:selection      # native list input, double→triple quote, disposable SQLite/export
-npm run test:toggle         # bounded 1440/390 discussion toggle + force-open/draft/state safety
-npm run test:preview        # static bridge + true viewport/state matrix + disposable DB
-npm run test:security       # real isolated negative/security probes (Chromium required)
-npm run test:acceptance     # real npm start + browser/API upload/review/export/restart
-npm run test:all            # unit, API, frontend browser, security, release acceptance
-node test/mobile-selection.browser.mjs # isolated 360/390/440/1440 selection + viewport checks
-node test/mobile-selection-storage.mjs # disposable server/DB: precise quote, one submit, draft guard
+bun install --frozen-lockfile
+bun run test                    # unit/DOM + disposable local API tests, including v3-api
+bun run test:unit
+bun run test:api
+bun run browser:install     # download the Chromium version matching playwright-core
+bun run test:browser        # route-isolated frontend regressions, no server needed
+bun run test:chrome         # borderless shell, bottom dock, legacy migration, rail list
+bun run test:selection      # native list input, double→triple quote, disposable SQLite/export
+bun run test:toggle         # bounded 1440/390 discussion toggle + force-open/draft/state safety
+bun run test:preview        # static bridge + true viewport/state matrix + disposable DB
+bun run test:security       # real isolated negative/security probes (Chromium required)
+bun run test:acceptance     # real bun run start + browser/API upload/review/export/restart
+bun run test:all            # unit, API, frontend browser, security, release acceptance
+bun test/mobile-selection.browser.mjs # isolated 360/390/440/1440 selection + viewport checks
+bun test/mobile-selection-storage.mjs # disposable server/DB: precise quote, one submit, draft guard
 ```
 
-On a minimal Linux host use `npm run browser:install -- --with-deps` to install
+On a minimal Linux host use `bun run browser:install -- --with-deps` to install
 browser OS dependencies too (may require elevated permissions). An existing
 browser can be selected explicitly with `CHROMIUM_EXECUTABLE_PATH=/path/to/chromium`.
 The harness also discovers system Chromium and Playwright's browser cache,
@@ -90,7 +90,7 @@ and panning, plus frame/nested scroll navigation and guest edit restrictions.
 The static bridge test mocks only API submissions and the viewport UI adapter;
 the matrix and storage tests use the actual selector/controller.
 
-`PREVIEW_ARTIFACTS=/absolute/output node test/preview-viewport.browser.mjs`
+`PREVIEW_ARTIFACTS=/absolute/output bun test/preview-viewport.browser.mjs`
 optionally saves viewport screenshots and `viewport-metadata.json`, recording
 the actual iframe CSS dimensions separately from the host screenshot dimensions.
 `FRONTEND_PUBLIC=/absolute/candidate/public` lets the route-isolated suites verify
@@ -129,7 +129,7 @@ keyboard geometry. `CHROME_ARTIFACTS=/absolute/output` saves native viewport
 captures and measured metrics; no real device/OS keyboard fidelity is implied.
 
 
-Browse/Annotate contract: `npm run test:selection` now runs native triple-click,
+Browse/Annotate contract: `bun run test:selection` now runs native triple-click,
 mobile press-snapshot, real mobile SQLite, element/static dashboard and real
 element SQLite suites. `element-review.test.mjs` covers the ordinary authority
 picker, identity/fingerprint ambiguity and no detached-node retargeting.
@@ -139,13 +139,13 @@ rich source/cross-block refusal, sibling/inline-shell integrity and actual expor
 assertions remain exercised. Explicit 原位修改 opens a temporary native editable
 projection; Annotate alone never grants contenteditable or mutates source.
 
-Continuous revision: `node --test test/revision-diff.test.mjs test/continuous-revision-api.test.mjs`
+Continuous revision: `bun test/revision-diff.test.mjs && bun test/continuous-revision-api.test.mjs`
 checks deterministic grapheme hunks, bidirectional UTF-16 maps, atomic reconciliation,
 caller ownership, immutable retries, paragraph-scoped ABA versions, populated legacy
 records, split/merge discussion history and both acceptance orders with real SQLite/HTTP.
-`node test/continuous-revision.browser.mjs` exercises ordinary/static 1440/390
+`bun test/continuous-revision.browser.mjs` exercises ordinary/static 1440/390
 save → reenter → distant edit → save/reload, stable IDs/replies, withdrawal/cancel,
-foreign overlap and stale draft retention. `node test/draft-diff.browser.mjs`
+foreign overlap and stale draft retention. `bun test/draft-diff.browser.mjs`
 checks native undo/redo/IME and inline deletion flow, including long cross-line runs.
 `REVISION_RUNTIME` selects an independent CURRENT-derived candidate; optional
 `REVISION_ARTIFACTS` selects native screenshot/evidence output. Physical Safari

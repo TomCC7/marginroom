@@ -1,10 +1,10 @@
 // Disposable-only API regression coverage. No live server or repository docs used.
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from './helpers/check.mjs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import Database from 'better-sqlite3';
+import Database from '../lib/sqlite.mjs';
 import { openDb, getSuggestion, listSuggestions, deleteDocData } from '../db.js';
 
 process.env.OWNER_KEY = 'v3-disposable-owner';

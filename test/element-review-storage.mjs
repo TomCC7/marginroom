@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
 import net from 'node:net';
-import Database from 'better-sqlite3';
+import Database from '../lib/sqlite.mjs';
 import {JSDOM} from 'jsdom';
 import {launchBrowser} from './helpers/browser.mjs';
 import {dashboard} from './fixtures/review-dashboard.mjs';

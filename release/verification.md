@@ -1,5 +1,7 @@
 # Marginroom private alpha verification
 
+Historical pre-Bun execution record. These runtime and package-manager versions describe that earlier run; current setup and commands are in [installation](../docs/installation.md).
+
 ## Provenance and publication boundary
 
 - Upstream baseline: `c089565bc398b78dfd83d2c2ccf70fb8a834b363`, MIT copyright Alexa Griffith, source `alexagriffith/markmyword`.

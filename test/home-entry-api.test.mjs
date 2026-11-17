@@ -1,10 +1,10 @@
-// Standalone isolated API contract: node test/home-entry-api.test.mjs
+// Standalone isolated API contract: bun test/home-entry-api.test.mjs
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, mkdir, writeFile, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import test from './helpers/check.mjs';
 
 const root = await mkdtemp(path.join(process.env.TMPDIR || tmpdir(), 'home-entry-api-'));
 const docsDir = path.join(root, 'docs');

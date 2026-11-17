@@ -1,14 +1,52 @@
-import assert from 'node:assert/strict';import {fork,execFileSync} from 'node:child_process';import {once} from 'node:events';import {mkdtemp,mkdir,cp,symlink,writeFile,readFile} from 'node:fs/promises';import path from 'node:path';import os from 'node:os';import {randomBytes,createHash} from 'node:crypto';import {openDb} from '../db.js';
-const baseline='591609ed20d67bada4a9fb3f8b4640ab08866c2f',repo=process.cwd(),root=await mkdtemp(path.join(process.env.TMPDIR||os.tmpdir(),'mr-migration-')),old=root+'/baseline',data=root+'/data',backup=root+'/backup',restored=root+'/restored';
-for(const dir of [old,data+'/docs',backup])await mkdir(dir,{recursive:true});execFileSync('git',['archive',baseline,'-o',root+'/baseline.tar']);execFileSync('tar',['-xf',root+'/baseline.tar','-C',old]);await symlink(repo+'/node_modules',old+'/node_modules');await writeFile(data+'/identity.json',JSON.stringify({session:randomBytes(32).toString('hex'),owner:randomBytes(32).toString('hex')}),{mode:0o600});
-let child,origin,cookie='';const checks=[];async function start(code,state){child=fork('test/migration-worker.mjs',[code,state],{stdio:['ignore','ignore','inherit','ipc']});const [message]=await once(child,'message');origin=message.origin;}
-async function stop(){if(!child)return;const exited=once(child,'exit');child.kill('SIGTERM');await exited;child=null;}
-async function api(route,body){const r=await fetch(origin+route,{method:body?'POST':'GET',headers:{Cookie:cookie,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});for(const h of r.headers.getSetCookie())if(h.startsWith('mmw_guest='))cookie=h.split(';')[0];const j=await r.json();assert.equal(r.status,200,JSON.stringify(j));return j;}
+// A fixture MUST be captured with the original Node driver before migration.
+// This check only copies it; it never opens the operator's original directory.
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,cp,readFile,writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import {tmpdir} from 'node:os';
+import {openDb} from '../db.js';
+import {machineAuth,machineInstance,digest} from '../machine-auth.js';
+const fixture=process.argv[2]||process.env.MARGINROOM_NODE_FIXTURE;
+assert(fixture,'Usage: bun test/agent-migration.mjs ORIGINAL_NODE_FIXTURE_DIR');
+const root=await mkdtemp(path.join(tmpdir(),'marginroom-migration-'));
+const upgraded=root+'/upgraded',restored=root+'/restored';
+await cp(path.resolve(fixture),upgraded,{recursive:true});await cp(path.resolve(fixture),restored,{recursive:true});
+const before=JSON.parse(await readFile(upgraded+'/snapshot.json')),identity=JSON.parse(await readFile(upgraded+'/identity.json')),credential=JSON.parse(await readFile(upgraded+'/credential.json'));
+Object.assign(process.env,{...identity,HS_DB_PATH:upgraded+'/app.db',HS_DOCS_DIR:upgraded+'/docs'});
+const {createApp}=await import('../server.js');
+function unchanged(db){
+ for(const [table,state]of Object.entries(before.tables)){
+  assert.deepEqual(db.prepare(`PRAGMA table_info(${table})`).all(),state.columns,table+' columns');
+  assert.deepEqual(db.prepare(`SELECT * FROM ${table}`).all(),state.rows,table+' rows');
+ }
+ assert.deepEqual(db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all(),before.schema,'schema/indexes/triggers');
+ assert.equal(db.pragma('integrity_check',{simple:true}),'ok');
+ assert.equal(machineInstance(db),before.instanceId);
+ assert(db.prepare('SELECT hash FROM machine_credentials WHERE hash=? AND revoked=0').get(digest(credential.token)));
+}
+let db=openDb(),server;
 try{
- await start(old,data);await api('/api/whoami');await api('/api/upload',{id:'old-review',html:'<html><body><p>Old migration synthetic source</p></body></html>'});const suggestion=await api('/api/suggest/old-review',{anchor:'x'.repeat(20),kind:'comment',body:'Old retained comment'});const sid=suggestion.id||suggestion.suggestion?.id;assert(sid);await api('/api/suggest/old-review/'+sid+'/replies',{body:'Old retained reply'});const before={doc:await api('/api/doc/old-review'),rows:await api('/api/suggestions/old-review?status=all')};
- // Stop all synthetic writers, then take SQLite's backup and copy its matching files/identity.
- await stop();const db=openDb(data+'/app.db');await db.backup(backup+'/app.db');assert.equal(db.pragma('integrity_check',{simple:true}),'ok');const tables=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(r=>r.name);const oldRows=Object.fromEntries(tables.map(t=>[t,db.prepare('SELECT * FROM '+t).all()]));db.close();await cp(data+'/docs',backup+'/docs',{recursive:true});await cp(data+'/identity.json',backup+'/identity.json');await cp(old,backup+'/code',{recursive:true,dereference:false,filter:src=>!src.endsWith('node_modules')});checks.push('baseline real HTTP source/comment/reply, stopped-writer SQLite backup plus docs/identity/code');
- await start(repo,data);const migrated=await api('/api/doc/old-review');assert.deepEqual(migrated,before.doc);const after=await api('/api/suggestions/old-review?status=all');assert.equal(after.suggestions[0].id,sid);assert.equal(after.suggestions[0].replies[0].body,'Old retained reply');await stop();const upgraded=openDb(data+'/app.db');for(const t of tables)assert.deepEqual(upgraded.prepare('SELECT * FROM '+t).all(),oldRows[t]);assert.equal(upgraded.pragma('integrity_check',{simple:true}),'ok');upgraded.close();checks.push('new exact working tree additive migration preserves every original table row, source/overlay/permissions and HTTP replies');
- await cp(backup,restored,{recursive:true});execFileSync('npm',['ci','--prefix',restored+'/code','--omit=dev'],{stdio:'pipe',timeout:120000});await start(restored+'/code',restored);assert.deepEqual(await api('/api/doc/old-review'),before.doc);assert.deepEqual(await api('/api/suggestions/old-review?status=all'),before.rows);await stop();assert.deepEqual(await readFile(restored+'/identity.json'),await readFile(backup+'/identity.json'));const final=openDb(restored+'/app.db');assert.equal(final.pragma('integrity_check',{simple:true}),'ok');final.close();checks.push('coordinated code/DB/docs/identity rollback into separate empty destination, baseline HTTP exact old rows and reply readback');
- const out=process.env.AGENT_ARTIFACTS||root;await mkdir(out,{recursive:true});await writeFile(out+'/migration-receipt.json',JSON.stringify({baseline,head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),checks,oldTableCount:tables.length,sourceSha256:createHash('sha256').update(await readFile(data+'/docs/old-review.html')).digest('hex'),synthetic:true},null,2));console.log(checks.map(c=>'PASS '+c).join('\n'));
-}finally{await stop();}
+ const app=createApp(db);unchanged(db);
+ server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const origin='http://127.0.0.1:'+server.address().port;
+ for(const [route,expected]of [['/api/doc/original-review',before.doc],['/api/suggestions/original-review?status=all',before.feedback]]){
+  const response=await fetch(origin+route,{headers:{cookie:before.cookie}});assert.equal(response.status,200);assert.deepEqual(await response.json(),expected);
+ }
+ const authenticated=await fetch(origin+'/api/instance',{headers:{Authorization:'Bearer '+credential.token}});assert.equal(authenticated.status,200);assert.equal((await authenticated.json()).instanceId,before.instanceId);
+ assert.equal((await fetch(origin+'/api/instance',{headers:{Authorization:'Bearer '+'A'.repeat(43)}})).status,401);
+ console.log('PASS original Node-format fixture: every table row/column, schema/index/trigger, source/overlay/history, permissions, signed cookie identity and credential hash preserved');
+ const count=db.prepare('SELECT count(*) n FROM suggestions').get().n;
+ assert.throws(db.transaction(()=>{db.prepare("INSERT INTO documents VALUES('rollback-probe','{}','synthetic')").run();machineAuth(db).issue();throw Error('rollback');}),/rollback/);
+ assert.equal(db.prepare("SELECT count(*) n FROM documents WHERE doc_id='rollback-probe'").get().n,0);unchanged(db);
+ assert.equal(db.prepare('SELECT 1 WHERE 0').get(),undefined);
+ assert.throws(()=>db.prepare('SELECT @required').get({wrong:1}),/parameter|bind/i);
+ assert.throws(()=>db.prepare("UPDATE rewrite_history SET operation='tamper'").run(),/append_only_history/);
+ await new Promise(r=>server.close(r));server=null;
+ db.backup(root+'/snapshot.db');db.close();db=openDb(root+'/snapshot.db');unchanged(db);db.close();db=openDb();unchanged(db);
+ assert.equal(db.prepare('SELECT count(*) n FROM suggestions').get().n,count);
+ console.log('PASS transaction rollback including credential issuance and trigger epochs; append-only guard; native backup/integrity and repeat reopen');
+ const rollback=openDb(restored+'/before.db');unchanged(rollback);rollback.close();
+ assert.deepEqual(await readFile(restored+'/identity.json'),await readFile(upgraded+'/identity.json'));
+ assert.deepEqual(await readFile(restored+'/docs/original-review.html'),await readFile(upgraded+'/docs/original-review.html'));
+ console.log('PASS coordinated rollback into separate copied fixture retains old DB rows, identity and exact content');
+ const out=process.env.AGENT_ARTIFACTS||root;await mkdir(out,{recursive:true});await writeFile(out+'/migration-receipt.json',JSON.stringify({root,originalDriver:'Node better-sqlite3',tables:Object.keys(before.tables),instancePreserved:true,rowsColumnsSchemaPreserved:true,rollback:true},null,2));
+}finally{if(server)await new Promise(r=>server.close(r));db.close();}

@@ -1,4 +1,4 @@
-// Real npm-start process + fresh files/database/secrets. Never contacts live data.
+// Real Bun-start process + fresh files/database/secrets. Never contacts live data.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
@@ -13,7 +13,7 @@ const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r
 const base=`http://127.0.0.1:${port}`;
 let child, browser, output='';
 async function start(){
- child=spawn('npm',['start'],{cwd:new URL('..',import.meta.url),env:{...process.env,HOST:'127.0.0.1',PORT:String(port),HS_DB_PATH:path.join(dir,'app.db'),HS_DOCS_DIR:path.join(dir,'docs'),SESSION_SECRET:secret,OWNER_KEY:key,MMW_UPLOAD_PER_HOUR:'1000'},detached:true,stdio:['ignore','pipe','pipe']});
+ child=spawn(process.execPath,['run','start'],{cwd:new URL('..',import.meta.url),env:{...process.env,HOST:'127.0.0.1',PORT:String(port),HS_DB_PATH:path.join(dir,'app.db'),HS_DOCS_DIR:path.join(dir,'docs'),SESSION_SECRET:secret,OWNER_KEY:key,MMW_UPLOAD_PER_HOUR:'1000'},detached:true,stdio:['ignore','pipe','pipe']});
  child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d);
  for(let i=0;i<150;i++){try{if((await fetch(base+'/api/whoami')).ok)return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Startup failed: '+output);
 }
@@ -68,5 +68,5 @@ try{
  assert.equal(await op.locator('#first').textContent(),'The first paragraph now contains accepted text.');
  const persisted=await owner.request.get(base+'/api/suggestions/synthetic-notes?status=all').then(r=>r.json());assert.equal(persisted.suggestions.length,4);
  assert.deepEqual(await owner.request.get(base+'/docs/assets/synthetic-motion.gif').then(r=>r.body()),gif);
- console.log('PASS real npm start: synthetic UI upload, relative animated GIF, owner cookie, anonymous comment/suggest, pending lock, UI accept/reject, clean self-contained export, process restart/persistence.');
+ console.log('PASS real bun start: synthetic UI upload, relative animated GIF, owner cookie, anonymous comment/suggest, pending lock, UI accept/reject, clean self-contained export, process restart/persistence.');
 }finally{await browser?.close();await stop();await rm(dir,{recursive:true,force:true});}

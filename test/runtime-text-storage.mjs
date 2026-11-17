@@ -6,7 +6,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomBytes} from 'node:crypto';
 import net from 'node:net';
-import Database from 'better-sqlite3';
+import Database from '../lib/sqlite.mjs';
 import {launchBrowser} from './helpers/browser.mjs';
 const app=process.env.APP_DIR||new URL('..',import.meta.url).pathname;
 const out=process.env.RUNTIME_ARTIFACTS||path.join(app,'review-artifacts/runtime-text');await mkdir(out,{recursive:true});

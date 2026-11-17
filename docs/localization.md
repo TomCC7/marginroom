@@ -2,7 +2,7 @@
 
 Marginroom uses official **i18next 27.1.1**, vendored on the same origin. See
 [the vendor provenance and acquisition recipe](../public/vendor/README.md).
-No runtime CDN, translation service, bundler or new npm production dependency is
+No runtime CDN, translation service, bundler or new production dependency is
 required. English is the explicit initial and fallback language; Simplified
 Chinese is the other supported locale. Unknown or unavailable browser storage
 falls back to English. The explicit preference is local to one browser, not an
@@ -44,16 +44,16 @@ with the complete reviewed frontend inventory before serving the new shell;
 reload an already-open pre-upgrade tab to obtain the new asset set. **Language
 switches within the upgraded app never reload or reconstruct the frame.** Runtime
 and rollback inventories include the new vendor/resource files. No database,
-backend schema or npm dependency cutover is introduced by localization.
+backend schema or dependency cutover is introduced by localization.
 
 ## Verification
 
-- `node test/i18n.test.mjs`: resource/key/placeholder parity, fallback, plural,
+- `bun test/i18n.test.mjs`: resource/key/placeholder parity, fallback, plural,
   storage, missing-key and scoped hardcoded-copy checks.
-- `node test/i18n-viewer.browser.mjs`: actual disposable SQLite/HTTP/browser
+- `bun test/i18n-viewer.browser.mjs`: actual disposable SQLite/HTTP/browser
   import, comment/reply, inline draft, save/reload and locale invariants at
   desktop/mobile widths, with ordinary/static/interactive render paths.
-- `node test/i18n-open-states.browser.mjs`: bounded open name/share/filter,
+- `bun test/i18n-open-states.browser.mjs`: bounded open name/share/filter,
   failed-submit leave confirmation, grouped help and loading/empty/populated
   history locale roundtrips. Only denial and held-history probes intercept HTTP;
   synthetic version rows live solely in the disposable database.

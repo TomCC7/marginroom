@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
 import {readFile, mkdir} from 'node:fs/promises';
-const cmd=JSON.parse(await readFile('/image-command.json','utf8'));
+const cmd=['bun','scripts/docker-start.mjs'];
 await mkdir('/app/test/.container-checks',{recursive:true});
 let child;const base='http://127.0.0.1:3939';let logs='';
 async function start(extra={}){child=spawn(cmd[0],cmd.slice(1),{env:{...process.env,...extra},stdio:['ignore','pipe','pipe']});child.stdout.on('data',d=>logs+=d);child.stderr.on('data',d=>logs+=d);for(let i=0;i<100;i++){try{if((await fetch(base+'/api/whoami')).ok)return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error(logs);}

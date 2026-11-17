@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import Database from './lib/sqlite.mjs';
 const db = new Database(':memory:');
 db.exec('create table t(a)');
 db.prepare('insert into t values (?)').run(1);

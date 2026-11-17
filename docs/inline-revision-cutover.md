@@ -21,18 +21,18 @@ Acceptance is a single SQLite transaction: verify base/quote, splice, rebase dis
 Run from the release checkout with dependencies installed:
 
 ```sh
-node test/inline-repair-storage.mjs
-node test/inline-geometry.browser.mjs
-node test/list-selection-storage.mjs
-node test/list-suggest.browser.mjs
-node --test test/multirange.test.mjs test/v3-api.test.mjs
-node test/inline-cutover.mjs CURRENT CANDIDATE
-node scripts/install-inline-candidate.mjs check CANDIDATE CURRENT UNUSED_BACKUP
+bun test/inline-repair-storage.mjs
+bun test/inline-geometry.browser.mjs
+bun test/list-selection-storage.mjs
+bun test/list-suggest.browser.mjs
+bun test/multirange.test.mjs && bun test/v3-api.test.mjs
+bun test/inline-cutover.mjs CURRENT CANDIDATE
+bun scripts/install-inline-candidate.mjs check CANDIDATE CURRENT UNUSED_BACKUP
 ```
 
 For the independent CURRENT-derived runtime, copy CURRENT root modules/package metadata to an isolated runtime, overlay the candidate's manifest-listed files and point `INLINE_SERVER_ROOT` at it when running `inline-repair-storage.mjs`. Never point that runtime at production docs/DB/config.
 
-Parent-only stopped code installation: `node scripts/install-inline-candidate.mjs install CANDIDATE CURRENT NEW_CODE_BACKUP --writers-stopped`. To reverse a failed **pre-write** cutover: `node scripts/install-inline-candidate.mjs rollback CANDIDATE CURRENT MATCHING_CODE_BACKUP --writers-stopped`, plus coordinated DB/docs/identity recovery described above. The flag is an operator attestation, not a service-stop or DB-backup mechanism. All inventory, before/after and preserved hashes are checked before writes and read back afterwards. A partial copy failure keeps the service stopped: restore the coordinated snapshot manually; never resume writes on a mixed tree.
+Parent-only stopped code installation: `bun scripts/install-inline-candidate.mjs install CANDIDATE CURRENT NEW_CODE_BACKUP --writers-stopped`. To reverse a failed **pre-write** cutover: `bun scripts/install-inline-candidate.mjs rollback CANDIDATE CURRENT MATCHING_CODE_BACKUP --writers-stopped`, plus coordinated DB/docs/identity recovery described above. The flag is an operator attestation, not a service-stop or DB-backup mechanism. All inventory, before/after and preserved hashes are checked before writes and read back afterwards. A partial copy failure keeps the service stopped: restore the coordinated snapshot manually; never resume writes on a mixed tree.
 
 Desktop counts use an available right or left margin. Full-bleed content with no safe margin uses the light-green inline threads and existing discussion rail instead of covering letters. Mobile deliberately has no margin bubbles. Markup splitting can change Chromium glyph bounds by one 1/64 CSS-pixel layout unit; the regression gate checks exact character count, y positions, line heights and wrap, plus this bounded x/width quantization, not a pixel-perfect glyph-shaping claim.
 

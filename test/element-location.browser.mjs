@@ -5,7 +5,7 @@ import {mkdtemp,mkdir,rm,writeFile} from 'node:fs/promises';
 import {randomBytes} from 'node:crypto';
 import net from 'node:net';
 import path from 'node:path';
-import Database from 'better-sqlite3';
+import Database from '../lib/sqlite.mjs';
 import {launchBrowser} from './helpers/browser.mjs';
 const tmp=await mkdtemp(path.join(process.env.TMPDIR,'element-location-')),out=path.resolve(process.env.LOCATION_ARTIFACTS||'review-artifacts/element-location/evidence');await mkdir(out,{recursive:true});
 const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));

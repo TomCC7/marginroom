@@ -9,16 +9,14 @@ import {promisify} from 'node:util';
 const exec=promisify(execFile),root=await mkdtemp(path.join(process.env.TMPDIR||os.tmpdir(),'marginroom-host-'));
 await mkdir(root+'/docs');
 Object.assign(process.env,{HS_DB_PATH:root+'/app.db',HS_DOCS_DIR:root+'/docs',SESSION_SECRET:'synthetic-host-session',OWNER_KEY:'synthetic-host-owner'});
-const packed=JSON.parse((await exec('npm',['pack','--json','--pack-destination',root])).stdout);
-const tarball=root+'/'+(Array.isArray(packed)?packed[0]:Object.values(packed)[0]).filename;
-await exec('npm',['install','--prefix',root+'/installed',tarball,'--omit=dev']);
-const base=root+'/installed/node_modules/marginroom',cli=root+'/installed/node_modules/.bin/marginroom';
-const {openDb}=await import(pathToFileURL(base+'/db.js'));
-const {createApp}=await import(pathToFileURL(base+'/server.js'));
+const {installFixture}=await import('./helpers/install.mjs');
+const {cli}=await installFixture(root);
+const {openDb}=await import('../db.js');
+const {createApp}=await import('../server.js');
 let db=openDb(),server,origin;
 async function start(port=0){server=createApp(db).listen(port,'127.0.0.1');await new Promise((r,j)=>{server.once('listening',r);server.once('error',j)});origin='http://127.0.0.1:'+server.address().port;}
 async function stop(){await new Promise(r=>server.close(r));db.close();}
-async function call(args,exit=0){let r;try{r=await exec(cli,[...args,'--data-dir',root+'/client','--json']);assert.equal(exit,0,r.stdout)}catch(e){assert.equal(e.code,exit,e.stdout||e.message);r=e}assert.equal(r.stderr,'');return JSON.parse(r.stdout)}
+async function call(args,exit=0){let r;try{r=await exec(cli,[...args,'--data-dir',root+'/client','--json'],{cwd:root,env:{...process.env,PATH:'/nonexistent'}});assert.equal(exit,0,r.stdout)}catch(e){assert.equal(e.code,exit,e.stdout||e.message);r=e}assert.equal(r.stderr,'');return JSON.parse(r.stdout)}
 const info=()=>fetch(origin+'/api/instance',{headers:{Connection:'close'}}).then(r=>r.json());
 try{
  await start();const first=await info(),port=server.address().port;
@@ -44,12 +42,12 @@ try{
  assert.deepEqual(await (await fetch(origin+'/api/doc/'+opened.document,{headers:{Connection:'close'}})).json(),oldSource);
  assert.deepEqual(db.prepare('SELECT * FROM doc_owners WHERE doc_id=?').get(opened.document),oldOwner);
  const comments=await call(['comments',opened.reviewUrl,'--server',origin,'--token-file',root+'/pair.json']);assert.equal(comments.complete,true);
- const {digest}=await import(pathToFileURL(base+'/machine-auth.js'));
+ const {digest}=await import('../machine-auth.js');
  db.prepare('UPDATE machine_credentials SET revoked=1 WHERE hash=?').run(digest(credential.token));
  assert.equal((await call(args,4)).error.code,'invalid_machine_credential');
  // Explicit remote and host-local operations never created a managed service.
  await assert.rejects(stat(root+'/client/service.json'),{code:'ENOENT'});
- const {machineInstance}=await import(pathToFileURL(base+'/machine-auth.js'));
+ const {machineInstance}=await import('../machine-auth.js');
  const adopted=openDb(root+'/managed-upgrade.db');assert.equal(machineInstance(adopted,'preserved-managed-instance'),'preserved-managed-instance');adopted.close();
  const adoptedAgain=openDb(root+'/managed-upgrade.db');assert.equal(machineInstance(adoptedAgain),'preserved-managed-instance');assert.throws(()=>machineInstance(adoptedAgain,'conflicting-instance'),/machine_instance_mismatch/);adoptedAgain.close();
  const result={root,checks:['managed identity adoption preserved; conflicting identity fails closed','anonymous/owner/invalid Bearer pairing denied','installed host-local bootstrap original DB and origin, 0600 secret-free JSON','wrong DB rejected','normal createApp + DB reopen keeps instance, source, old owners and installed credential','same review reused and comments readable after restart','revocation fails closed; no managed service'],instanceId:first.instanceId,document:opened.document};

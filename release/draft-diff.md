@@ -22,11 +22,11 @@ This deliberately retains the existing single minimal-enclosing-range semantics 
 
 ## Real verification
 
-- `DRAFT_BASELINE=1 node test/draft-diff.browser.mjs` before edits: `REPRODUCED: one-letter input renders entire 323 UTF-16-unit paragraph as deleted`.
-- `node test/draft-diff.browser.mjs`: PASS native p/li start/middle/end, 1440/390, preserved emphasis/citation, cancellation, real native undo/redo, insertion/deletion, emoji-surrogate replacement and Chromium CDP IME composition/commit.
-- `node test/element-context.browser.mjs`: PASS real disposable server/SQLite browser flow, varying residual full/partial selections, exact removed letter and highlighted inserted `Z`, rich p/li, comments/citations, exact UI POST `quote:'p', body:'Z', rangeStart:3, rangeEnd:4`, persisted row matching that request, submitted DOM `del p`/`ins Z`, accepted `SimZle text leaf.`, immutable original source, disjoint pending rebase and permission gates.
-- Narrow tests: `node --test test/review-ranges.test.mjs test/frame-messages.test.mjs test/element-review.test.mjs test/anchoring-inline.test.mjs`: four modules PASS; UTF-16, repeated quotes, drift, DOM exclusions and message guards covered.
-- `node test/security-release.test.mjs`: 23 checks PASS on synthetic runtime.
+- `DRAFT_BASELINE=1 bun test/draft-diff.browser.mjs` before edits: `REPRODUCED: one-letter input renders entire 323 UTF-16-unit paragraph as deleted`.
+- `bun test/draft-diff.browser.mjs`: PASS native p/li start/middle/end, 1440/390, preserved emphasis/citation, cancellation, real native undo/redo, insertion/deletion, emoji-surrogate replacement and Chromium CDP IME composition/commit.
+- `bun test/element-context.browser.mjs`: PASS real disposable server/SQLite browser flow, varying residual full/partial selections, exact removed letter and highlighted inserted `Z`, rich p/li, comments/citations, exact UI POST `quote:'p', body:'Z', rangeStart:3, rangeEnd:4`, persisted row matching that request, submitted DOM `del p`/`ins Z`, accepted `SimZle text leaf.`, immutable original source, disjoint pending rebase and permission gates.
+- Narrow tests: `bun test/review-ranges.test.mjs && bun test/frame-messages.test.mjs && bun test/element-review.test.mjs && bun test/anchoring-inline.test.mjs`: four modules PASS; UTF-16, repeated quotes, drift, DOM exclusions and message guards covered.
+- `bun test/security-release.test.mjs`: 23 checks PASS on synthetic runtime.
 - CURRENT-derived candidate served from its own disposable server/SQLite also passes `test/element-context.browser.mjs`; its log is `review-artifacts/draft-candidate-test.log` and evidence is `review-artifacts/draft-candidate-evidence/`.
 
 Native-inspected screenshots: `review-artifacts/draft-diff/before-1440.png`; `review-artifacts/element-context/evidence/one-letter-draft-1440.png`, `one-letter-draft-390.png`, `one-letter-submitted-1440.png`. Candidate evidence includes same-edit `one-letter-leaf-draft-1440.png` / `one-letter-submitted-1440.png` and recorded exact payloads in `evidence.json`.
@@ -38,13 +38,13 @@ Baseline release: `b6145c0b9ce02bc92e1859942d86fef67705f978`. Observed CURRENT g
 Build command (CURRENT is the actual served code root; it is read only here):
 
 ```
-DRAFT_ONLY=1 INLINE_BASELINE=b6145c0b9ce02bc92e1859942d86fef67705f978 node scripts/stage-inline-candidate.mjs CURRENT review-artifacts/draft-current-candidate
+DRAFT_ONLY=1 INLINE_BASELINE=b6145c0b9ce02bc92e1859942d86fef67705f978 bun scripts/stage-inline-candidate.mjs CURRENT review-artifacts/draft-current-candidate
 ```
 
 The candidate is independently copied from CURRENT, then patched with only the two reviewed frontend hunks. Its `manifest.json` contains every before/after hash. All other public assets, branding, backend and package files stay byte-identical. The draft-only stage guard rejects any other deployed delta.
 
 ```
-node scripts/install-inline-candidate.mjs check review-artifacts/draft-current-candidate CURRENT NEW_BACKUP
+bun scripts/install-inline-candidate.mjs check review-artifacts/draft-current-candidate CURRENT NEW_BACKUP
 ```
 
 Check was actually run against CURRENT and passed. Check → install → rollback → check was rehearsed against a disposable **code-only copy**, with all post-write hashes verified. No live install happened.
@@ -52,8 +52,8 @@ Check was actually run against CURRENT and passed. Check → install → rollbac
 Only the parent may perform live cutover after independent review, identity/docs/DB backup and appropriate writer freeze:
 
 ```
-node scripts/install-inline-candidate.mjs install CANDIDATE CURRENT NEW_BACKUP --writers-stopped
-node scripts/install-inline-candidate.mjs rollback CANDIDATE CURRENT NEW_BACKUP --writers-stopped
+bun scripts/install-inline-candidate.mjs install CANDIDATE CURRENT NEW_BACKUP --writers-stopped
+bun scripts/install-inline-candidate.mjs rollback CANDIDATE CURRENT NEW_BACKUP --writers-stopped
 ```
 
 Both commands guard the full inventory and candidate/target/backup digests. Any drift requires restaging/review, not overriding the guard. This task performed no live mutations, service operations, pushes or CI. Parent owns public hash verification and private exact-SHA publication.

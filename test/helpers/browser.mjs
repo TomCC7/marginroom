@@ -15,7 +15,7 @@ export async function launchBrowser() {
     try { await access(executablePath); } catch { continue; }
     return chromium.launch({ executablePath, headless: true, args: ['--no-sandbox'] });
   }
-  throw Error('Chromium missing. Run npm run browser:install (Linux system dependencies: npm run browser:install -- --with-deps), or set CHROMIUM_EXECUTABLE_PATH.');
+  throw Error('Chromium missing. Run bun run browser:install (Linux system dependencies: bun run browser:install -- --with-deps), or set CHROMIUM_EXECUTABLE_PATH.');
 }
 // All resources are fulfilled from this checkout or synthetic in-memory data.
 // Unexpected hosts and writes fail closed: this harness never contacts a server.

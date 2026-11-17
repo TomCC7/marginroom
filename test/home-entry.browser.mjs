@@ -1,4 +1,4 @@
-// Real isolated service/browser acceptance. Run: node test/home-entry.browser.mjs
+// Real isolated service/browser acceptance. Run: bun test/home-entry.browser.mjs
 // ENTRY_RUNTIME selects a separate runtime tree (server, DB module and real public).
 // No API responses are mocked. Only the optional git-original static-index baseline
 // is substituted server-side; all current acceptance uses the actual runtime assets.

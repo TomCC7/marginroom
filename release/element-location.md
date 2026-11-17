@@ -16,8 +16,8 @@ Current continuous-revision, resolve/reopen and interactive-reading browser gate
 
 ## Parent cutover
 
-After reviewing the clean SHA, stage from latest read-only CURRENT with `node scripts/stage-element-location.mjs CURRENT review-artifacts/element-location/candidate`. It applies only six frontend semantic diffs from 7526f05, preserves all other runtime bytes and binds the complete inventory. If CURRENT drift prevents patching, reconcile rather than copying the release public directory wholesale.
+After reviewing the clean SHA, stage from latest read-only CURRENT with `bun scripts/stage-element-location.mjs CURRENT review-artifacts/element-location/candidate`. It applies only six frontend semantic diffs from 7526f05, preserves all other runtime bytes and binds the complete inventory. If CURRENT drift prevents patching, reconcile rather than copying the release public directory wholesale.
 
-Read-only guard: `node scripts/install-inline-candidate.mjs check CANDIDATE CURRENT UNUSED_BACKUP`. Offline rehearsal: `node test/inline-cutover.mjs CURRENT CANDIDATE` (only disposable copies). Candidate native gate: `LOCATION_RUNTIME=CANDIDATE LOCATION_ARTIFACTS=EVIDENCE node test/element-location.browser.mjs`.
+Read-only guard: `bun scripts/install-inline-candidate.mjs check CANDIDATE CURRENT UNUSED_BACKUP`. Offline rehearsal: `bun test/inline-cutover.mjs CURRENT CANDIDATE` (only disposable copies). Candidate native gate: `LOCATION_RUNTIME=CANDIDATE LOCATION_ARTIFACTS=EVIDENCE bun test/element-location.browser.mjs`.
 
 Only parent may publish/deploy. Recheck the full guard immediately before authorized coordinated asset installation, use the existing installer install/readback/rollback with writers stopped and a new backup, preserve current DB/docs/identity, then verify public asset hashes and a synthetic comment flow. No migration or backend restart is introduced by this card. Workers/reviewers must not write real documents/comments, deploy, push, start persistent services or tunnels.

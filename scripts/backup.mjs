@@ -1,13 +1,13 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Offline application snapshot: SQLite backup API + document tree + identity.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import Database from 'better-sqlite3';
+import Database from '../lib/sqlite.mjs';
 
 const [sourceArg, targetArg, confirmation] = process.argv.slice(2);
 if (!sourceArg || !targetArg || confirmation !== '--writes-stopped') {
-  console.error('Usage: node scripts/backup.mjs DATA_DIR NEW_BACKUP_DIR --writes-stopped');
+  console.error('Usage: bun scripts/backup.mjs DATA_DIR NEW_BACKUP_DIR --writes-stopped');
   console.error('Stop the application and every other writer first. This flag is an operator assertion, not a lock.');
   process.exit(1);
 }
@@ -36,13 +36,13 @@ await regularTree(path.join(source, 'docs'));
 await fs.mkdir(target, { mode: 0o700 }); // Never overwrite an existing backup.
 let db;
 try {
-  db = new Database(path.join(source, 'app.db'), { readonly: true, fileMustExist: true });
+  db = new Database(path.join(source, 'app.db'), { readonly: true, create: false });
   if (db.pragma('integrity_check', { simple: true }) !== 'ok') throw Error('Source SQLite integrity check failed');
   await db.backup(path.join(target, 'app.db'));
   db.close(); db = null;
   // Make the standalone snapshot readable on a read-only backup mount. A WAL
   // header otherwise makes SQLite try to create -wal/-shm beside the snapshot.
-  db = new Database(path.join(target, 'app.db'), { fileMustExist: true });
+  db = new Database(path.join(target, 'app.db'), { create: false });
   db.pragma('journal_mode = DELETE');
   if (db.pragma('integrity_check', { simple: true }) !== 'ok') throw Error('Snapshot SQLite integrity check failed');
   db.close(); db = null;

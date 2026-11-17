@@ -1,5 +1,7 @@
 # Packaging and recovery evidence
 
+Historical pre-Bun execution record. These runtime and package-manager versions describe that earlier run; current setup and commands are in [installation](../docs/installation.md).
+
 ## Scope
 
 This records real local Docker execution against **disposable synthetic data only**. No live source checkout, production volume, other service, hosted deployment, or external document upload was used. Package/server/database source files were inspected but not edited by this packaging task. Application behavior and browser regression testing are separate release checks.

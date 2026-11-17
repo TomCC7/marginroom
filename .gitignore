@@ -32,3 +32,5 @@ docs/screenshots/*
 !docs/user-guide.md
 !docs/localization.md
 !docs/screenshots/english-review.png
+
+!docs/installation.md

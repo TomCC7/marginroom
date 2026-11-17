@@ -1,24 +1,24 @@
-import test from 'node:test';
+import test from './helpers/check.mjs';
 import assert from 'node:assert/strict';
 import { differences, project } from '../public/revision-diff.js';
 
 const h = (start, end, old, next) => ({ start, end, old, next });
 
-test('separate edits stay separate and whitespace is exact', () => {
+await test('separate edits stay separate and whitespace is exact', () => {
   assert.deepEqual(differences('abcdefghij', 'abXdefgYij'), [h(2, 3, 'c', 'X'), h(7, 8, 'h', 'Y')]);
   const before = ' a\tb\r\nc  ', after = '  a\tb\nc ';
   assert.equal(project(before, differences(before, after)).text, after);
   assert.deepEqual(differences(before, before), []);
 });
 
-test('insertions, deletions, and empty inputs', () => {
+await test('insertions, deletions, and empty inputs', () => {
   assert.deepEqual(differences('', 'hi'), [h(0, 0, '', 'hi')]);
   assert.deepEqual(differences('hi', ''), [h(0, 2, 'hi', '')]);
   assert.deepEqual(differences('abcd', 'abXYcd'), [h(2, 2, '', 'XY')]);
   assert.deepEqual(differences('abXYcd', 'abcd'), [h(2, 4, 'XY', '')]);
 });
 
-test('graphemes are indivisible, with UTF-16 offsets', () => {
+await test('graphemes are indivisible, with UTF-16 offsets', () => {
   for (const [before, after, expected] of [
     ['a👩‍💻b', 'a👨‍💻b', [h(1, 6, '👩‍💻', '👨‍💻')]],
     ['ae\u0301z', 'ae\u0300z', [h(1, 3, 'e\u0301', 'e\u0300')]],
@@ -30,14 +30,14 @@ test('graphemes are indivisible, with UTF-16 offsets', () => {
   }
 });
 
-test('repeated text has a stable prefix-first alignment', () => {
+await test('repeated text has a stable prefix-first alignment', () => {
   assert.deepEqual(differences('aaaa', 'aaa'), [h(3, 4, 'a', '')]);
   assert.deepEqual(differences('ababab', 'abXabab'), [h(2, 2, '', 'X')]);
   const expected = differences('abcabc', 'acbacb');
   for (let i = 0; i < 20; i++) assert.deepEqual(differences('abcabc', 'acbacb'), expected);
 });
 
-test('long sparse edits do not become one enclosing replacement', () => {
+await test('long sparse edits do not become one enclosing replacement', () => {
   const before = 'a'.repeat(100) + 'Q' + 'b'.repeat(79899) + 'R' + 'c'.repeat(9999);
   const after = before.slice(0, 100) + 'X' + before.slice(101, 80000) + 'Y' + before.slice(80001);
   const edits = differences(before, after);
@@ -45,7 +45,7 @@ test('long sparse edits do not become one enclosing replacement', () => {
   assert.equal(project(before, edits).text, after);
 });
 
-test('mapping insertions and deletions has explicit left/right bias', () => {
+await test('mapping insertions and deletions has explicit left/right bias', () => {
   const inserted = project('abcd', [h(2, 2, '', 'XY')]);
   assert.equal(inserted.text, 'abXYcd');
   assert.equal(inserted.forward(2), 2);
@@ -60,7 +60,7 @@ test('mapping insertions and deletions has explicit left/right bias', () => {
   assert.equal(deleted.backward(3), 5);
 });
 
-test('replacement mapping snaps interiors; unchanged offsets round-trip', () => {
+await test('replacement mapping snaps interiors; unchanged offsets round-trip', () => {
   const p = project('0123456789', [h(2, 5, '234', 'AB'), h(8, 9, '8', 'XYZ')]);
   assert.equal(p.text, '01AB567XYZ9');
   assert.equal(p.forward(3), 2);
@@ -75,7 +75,7 @@ test('replacement mapping snaps interiors; unchanged offsets round-trip', () => 
   assert.throws(() => p.forward(1, 'middle'), TypeError);
 });
 
-test('invalid or excessive work fails explicitly, never partially', () => {
+await test('invalid or excessive work fails explicitly, never partially', () => {
   assert.throws(() => differences(null, ''), TypeError);
   assert.throws(() => differences('x'.repeat(100001), ''), RangeError);
   assert.throws(() => differences('a'.repeat(2000), 'b'.repeat(2000)), /budget/i);
@@ -86,7 +86,7 @@ test('invalid or excessive work fails explicitly, never partially', () => {
   assert.throws(() => project('x'.repeat(100000), [h(0, 0, '', 'y')]), RangeError);
 });
 
-test('touching edits, captured snapshots, and final size limits', () => {
+await test('touching edits, captured snapshots, and final size limits', () => {
   const edits = [h(0, 1, 'a', ''), h(1, 2, 'b', ''), h(2, 2, '', 'X')];
   const p = project('abc', edits);
   assert.equal(p.text, 'Xc');
@@ -101,7 +101,7 @@ test('touching edits, captured snapshots, and final size limits', () => {
   assert.throws(() => project('a', [h(0, 0, '', 'X'), h(0, 0, '', 'Y')]), /order|overlap/i);
 });
 
-test('exhaustive small strings reconstruct exactly with disjoint hunks', () => {
+await test('exhaustive small strings reconstruct exactly with disjoint hunks', () => {
   const words = [''];
   for (let n = 1; n <= 4; n++) {
     for (let bits = 0; bits < 2 ** n; bits++) words.push(bits.toString(2).padStart(n, '0'));

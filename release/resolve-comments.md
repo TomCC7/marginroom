@@ -24,15 +24,15 @@ All browser writes go to random-port disposable servers with fresh synthetic doc
 Commands:
 
 ```sh
-node test/v3-api.test.mjs
-node test/resolve.browser.mjs
-node test/draft-diff.browser.mjs
-node test/element-context.browser.mjs
-node test/element-review.test.mjs
-node test/frame-controller.test.mjs
-node test/frame-tabs.test.mjs
-node test/frame-suggest.test.mjs
-node test/frame-messages.test.mjs
+bun test/v3-api.test.mjs
+bun test/resolve.browser.mjs
+bun test/draft-diff.browser.mjs
+bun test/element-context.browser.mjs
+bun test/element-review.test.mjs
+bun test/frame-controller.test.mjs
+bun test/frame-tabs.test.mjs
+bun test/frame-suggest.test.mjs
+bun test/frame-messages.test.mjs
 ```
 
 `resolve.browser.mjs` covers ordinary DOM, static opaque iframe and interactive source iframe at 1440 and 390 CSS pixels. The ordinary renderer is selected through a test-only Article option, not a shipped UI addition. Its input state is seeded directly because the existing ordinary renderer blocks native form editing in read mode; iframe paths use native input. Synthetic host minimum-height allows nonzero outer scroll even for the normally viewport-bounded iframe shell.
@@ -47,11 +47,11 @@ The candidate is staged independently from CURRENT, then receives only semantic 
 
 ```sh
 INLINE_BASELINE=6b7d58176e3b101be2b8c4eb2a66afc75568deb6 RESOLVE_ONLY=1 \
-  node scripts/stage-inline-candidate.mjs "$CURRENT" review-artifacts/resolve/candidate-final
-node scripts/install-inline-candidate.mjs check "$CANDIDATE" "$CURRENT" "$NEW_CODE_BACKUP"
-node test/inline-cutover.mjs "$CURRENT" "$CANDIDATE"
+  bun scripts/stage-inline-candidate.mjs "$CURRENT" review-artifacts/resolve/candidate-final
+bun scripts/install-inline-candidate.mjs check "$CANDIDATE" "$CURRENT" "$NEW_CODE_BACKUP"
+bun test/inline-cutover.mjs "$CURRENT" "$CANDIDATE"
 RESOLVE_SERVER_ROOT="$CANDIDATE" RESOLVE_ARTIFACTS=review-artifacts/resolve/candidate-final-evidence \
-  node test/resolve.browser.mjs
+  bun test/resolve.browser.mjs
 ```
 
 The candidate needs dependencies available for disposable process tests. Never point its test DB/docs environment at production. The existing guard checks the full code inventory and all before/after SHA-256 values, rejects drift or extra assets, and verifies installed bytes. The disposable rehearsal covers guard/install/rollback and coordinated synthetic SQLite/docs/identity recovery.

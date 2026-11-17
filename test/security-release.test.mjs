@@ -1,4 +1,4 @@
-// Standalone: node test/security-release.test.mjs. Synthetic, loopback-only runtime.
+// Standalone: bun test/security-release.test.mjs. Synthetic, loopback-only runtime.
 import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';

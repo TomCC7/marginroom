@@ -36,6 +36,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SEED_DOCS_DIR = path.join(__dirname, 'docs');
 const DOCS_DIR = process.env.HS_DOCS_DIR || SEED_DOCS_DIR;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+// Express sendFile streams through a real file descriptor; embedded Bun assets
+// are blobs. Serve their exact bytes without extracting a source checkout.
+const embeddedPublic = new Map(Bun.embeddedFiles.filter(f=>f.name.startsWith('public/')).map(f=>['/'+f.name.slice(7),f]));
+async function embeddedFrontend(req,res,next) {
+  if(!['GET','HEAD'].includes(req.method))return next();
+  let name;try{name=decodeURIComponent(req.path);}catch{return next();}
+  if(name==='/')name='/index.html';
+  const asset=embeddedPublic.get(name);if(!asset)return next();
+  res.type(path.extname(name)).send(Buffer.from(await asset.arrayBuffer()));
+}
 const PORT = process.env.PORT || 3939;
 const HOST = process.env.HOST || '127.0.0.1';
 const MAX_TEXT = 50_000;
@@ -272,7 +282,7 @@ export function createApp(db, opts = {}) {
     res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'; style-src 'unsafe-inline'");res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Access-Control-Allow-Origin','*');
     express.static(path.join(imports.root,req.params.doc),{dotfiles:'deny',index:false,redirect:false})(req,res,next);
   });
-  app.use(express.static(PUBLIC_DIR));
+  app.use(Bun.isStandaloneExecutable ? embeddedFrontend : express.static(PUBLIC_DIR));
   app.get('/api/whoami', (req, res) => {
     noStore(res);
     res.json({ isOwner: !!req.caller?.isOwner, docLimit: LIMITS.GUEST_DOC_LIMIT });
@@ -950,10 +960,12 @@ async function seedDocs() {
 }
 
 // Start only when run directly (not when imported by tests).
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+export async function startServer() {
   await seedDocs();
   const db = openDb();
   createApp(db).listen(PORT, HOST, () => {
     console.log(`Marginroom on http://${HOST}:${PORT}  (open / to list + add files)`);
   });
 }
+
+if (!Bun.isStandaloneExecutable && import.meta.main) await startServer();

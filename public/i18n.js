@@ -1,11 +1,11 @@
-import './vendor/i18next-27.1.1.min.js';
+import * as vendor from './vendor/i18next-27.1.1.min.js';
 import en from './locales/en.js';
 import zhCN from './locales/zh-CN.js';
 export const LOCALE_KEY='marginroom.locale.v1';
 export const supportedLocale=value=>value==='zh-CN'?'zh-CN':'en';
 export function storedLocale(storage){try{return supportedLocale(storage?.getItem(LOCALE_KEY))}catch{return 'en'}}
 export function createLocale(storage){
-  const engine=globalThis.i18next.createInstance();
+  const engine=(globalThis.i18next || vendor.default).createInstance();
   engine.init({resources:{en:{translation:en},'zh-CN':{translation:zhCN}},lng:storedLocale(storage),fallbackLng:'en',supportedLngs:['en','zh-CN'],load:'currentOnly',initImmediate:false,initAsync:false,interpolation:{escapeValue:false},returnNull:false});
   const missing=new Set();
   const t=(key,params={})=>{if(!engine.exists(key,params)){missing.add(key);throw new Error('Missing shell locale key: '+key)}return engine.t(key,params)};

@@ -15,7 +15,7 @@ services:
     volumes:
       - app-data:/data
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3939/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3939/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       start_period: 10s

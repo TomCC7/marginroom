@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from './helpers/check.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { launchBrowser } from './helpers/browser.mjs';
@@ -10,7 +10,7 @@ function storage() {
   const values = new Map();
   return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
 }
-test('shared history: bounded, case-sensitive canonical IDs, state, and storage fallback', async () => {
+await test('shared history: bounded, case-sensitive canonical IDs, state, and storage fallback', async () => {
   globalThis.localStorage = storage(); globalThis.sessionStorage = storage();
   const history = await import('../public/entry-history.js?unit');
   for (let i = 0; i < 110; i++) history.rememberDoc({ id: `doc-${i}`, title: `Title ${i}` });
@@ -33,7 +33,7 @@ test('shared history: bounded, case-sensitive canonical IDs, state, and storage 
   delete globalThis.localStorage; delete globalThis.sessionStorage;
 });
 
-test('real browser homepage and import interactions against isolated API fixtures', async () => {
+await test('real browser homepage and import interactions against isolated API fixtures', async () => {
   const browser = await launchBrowser();
   try {
     const page = await browser.newPage();

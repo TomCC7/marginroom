@@ -15,12 +15,12 @@ UI shows only **标记已处理** as the owner decision for stale rewrites, not 
 From the release root:
 
 ```sh
-node test/stale-resolution.mjs
-STALE_ONLY=1 node scripts/stage-continuous-candidate.mjs /home/cc/hermes/wechat-markmyword-prototype/upstream review-artifacts/stale/candidate-current
-STALE_RUNTIME=review-artifacts/stale/candidate-current STALE_ARTIFACTS=review-artifacts/stale/candidate-evidence node test/stale-resolution.mjs
-npm test
-node test/resolve.browser.mjs
-node test/inline-cutover.mjs /home/cc/hermes/wechat-markmyword-prototype/upstream review-artifacts/stale/candidate-current
+bun test/stale-resolution.mjs
+STALE_ONLY=1 bun scripts/stage-continuous-candidate.mjs /ABS/CURRENT review-artifacts/stale/candidate-current
+STALE_RUNTIME=review-artifacts/stale/candidate-current STALE_ARTIFACTS=review-artifacts/stale/candidate-evidence bun test/stale-resolution.mjs
+bun run test
+bun test/resolve.browser.mjs
+bun test/inline-cutover.mjs /ABS/CURRENT review-artifacts/stale/candidate-current
 ```
 
 The new test uses temporary on-disk SQLite, synthetic documents, an ephemeral loopback HTTP listener and Chromium. It verifies open-orphan/DB-stale closeout, no source/overlay changes, saved replies and reason after reopen, owner/404/cross-doc restrictions, forged stale rejection, concurrent invalid accept/duplicate closeout, valid acceptance, unrelated-source changes, duplicate ambiguity, and ordinary/static at 1440/390. Real pointer closeout removes pending cards; history/filter/count/reload persist. Source/input/iframe identity, inner reading/nested scroll, unsent reply and separate native inline editor text survive. A loaded-valid UI whose source changes has its actual accept rejected and then closes safely, without frame/input loss. Reply-draft concurrency uses a deliberate dispatched event behind the modal, not a claim that the modal permits pointer click-through. Native screenshots show unobstructed primary controls and history.

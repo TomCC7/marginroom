@@ -1,13 +1,13 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Validate offline snapshot before restoring into a NEW or EMPTY data directory.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import Database from 'better-sqlite3';
+import Database from '../lib/sqlite.mjs';
 
 const [backupArg, targetArg, confirmation] = process.argv.slice(2);
 if (!backupArg || !targetArg || confirmation !== '--writes-stopped') {
-  console.error('Usage: node scripts/restore.mjs BACKUP_DIR EMPTY_DATA_DIR --writes-stopped');
+  console.error('Usage: bun scripts/restore.mjs BACKUP_DIR EMPTY_DATA_DIR --writes-stopped');
   console.error('Stop the application and every other writer first. Never restore over existing data.');
   process.exit(1);
 }
@@ -36,7 +36,7 @@ if (!(await fs.lstat(path.join(backup, 'docs'))).isDirectory()) throw Error('Mis
 if (Object.keys(actual).length !== Object.keys(manifest.files).length || Object.entries(actual).some(([k, v]) => manifest.files[k] !== v)) throw Error('Backup checksum/file inventory mismatch');
 const identity = JSON.parse(await fs.readFile(path.join(backup, 'identity.json'), 'utf8'));
 for (const key of ['SESSION_SECRET', 'OWNER_KEY']) if (typeof identity[key] !== 'string' || identity[key].length < 32) throw Error(`Invalid ${key}`);
-const db = new Database(path.join(backup, 'app.db'), { readonly: true, fileMustExist: true });
+const db = new Database(path.join(backup, 'app.db'), { readonly: true, create: false });
 try { if (db.pragma('integrity_check', { simple: true }) !== 'ok') throw Error('Backup SQLite integrity check failed'); }
 finally { db.close(); }
 try {

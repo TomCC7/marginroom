@@ -8,8 +8,8 @@ Build **from CURRENT**, not by copying this checkout over a running application:
 
 ```sh
 ENTRY_BASELINE_INVENTORY="$INITIAL_INVENTORY" \
-  node scripts/stage-entry-candidate.mjs "$CURRENT" "$NEW_CANDIDATE"
-node scripts/install-inline-candidate.mjs check "$NEW_CANDIDATE" "$CURRENT" "$NEW_BACKUP"
+  bun scripts/stage-entry-candidate.mjs "$CURRENT" "$NEW_CANDIDATE"
+bun scripts/install-inline-candidate.mjs check "$NEW_CANDIDATE" "$CURRENT" "$NEW_BACKUP"
 ```
 
 The optional initial inventory is the integration-start JSON evidence; its overlaid source hashes must still match. The stage script copies the latest full runtime public inventory and core modules, then overlays exactly its explicit entry paths. It rechecks source inventory/hashes during the snapshot, records every before/after hash, and rejects non-allowlisted changes. Installer checks the entire public inventory and every core module, including **unchanged** paths. Any mismatch means rebuild/reconcile/review—never force overwrite.
@@ -23,14 +23,14 @@ The candidate also retains release security hardening absent from CURRENT: reser
 ## Verification before approval
 
 ```sh
-node test/home-entry.browser.mjs
-ENTRY_RUNTIME="$NEW_CANDIDATE" node test/home-entry.browser.mjs
-node --test test/home-entry-api.test.mjs test/home-entry-ui.test.mjs test/entry-reading.test.mjs
-node test/viewer-ui.test.mjs
-node test/resolve.browser.mjs
-node test/element-context.browser.mjs
-node test/draft-diff.browser.mjs
-node test/security-release.test.mjs
+bun test/home-entry.browser.mjs
+ENTRY_RUNTIME="$NEW_CANDIDATE" bun test/home-entry.browser.mjs
+bun test/home-entry-api.test.mjs && bun test/home-entry-ui.test.mjs && bun test/entry-reading.test.mjs
+bun test/viewer-ui.test.mjs
+bun test/resolve.browser.mjs
+bun test/element-context.browser.mjs
+bun test/draft-diff.browser.mjs
+bun test/security-release.test.mjs
 ```
 
 All test servers must use disposable synthetic docs/SQLite/identity and loopback random ports. The real-browser entry suite does so internally; `ENTRY_APPROVED_PREVIEW` optionally captures the read-only approved HTML reference at native 1440/1024/390/360 widths. Production endpoints are never test fixtures. API/UI tests additionally cover fresh A/B/admin identities, read-only count privacy, blocked/corrupt storage, image collisions and input-preserving errors. Browser draft tests cover in-page Stay/Discard and save failure; genuine browser departures retain native beforeunload protection.
@@ -46,14 +46,14 @@ This change includes server code and a production parser dependency: **frontend-
 3. With a fresh backup destination, parent alone runs:
 
    ```sh
-   node scripts/install-inline-candidate.mjs install "$NEW_CANDIDATE" "$CURRENT" "$NEW_BACKUP" --writers-stopped
+   bun scripts/install-inline-candidate.mjs install "$NEW_CANDIDATE" "$CURRENT" "$NEW_BACKUP" --writers-stopped
    ```
 
-4. Parent installs the exact lockfile's production dependencies using the documented Node version, restarts the existing service under its established supervisor, and performs public **read-only** health/hash checks of the exact changed assets plus representative viewer deep links. Do not report localhost candidate proof as public deployment proof. Keep write freeze until consistency is checked.
+4. Parent installs the exact lockfile's production dependencies using the pinned Bun version, restarts the existing service under its established supervisor, and performs public **read-only** health/hash checks of the exact changed assets plus representative viewer deep links. Do not report localhost candidate proof as public deployment proof. Keep write freeze until consistency is checked.
 5. On failure, stop/fence again and run guarded rollback:
 
    ```sh
-   node scripts/install-inline-candidate.mjs rollback "$NEW_CANDIDATE" "$CURRENT" "$NEW_BACKUP" --writers-stopped
+   bun scripts/install-inline-candidate.mjs rollback "$NEW_CANDIDATE" "$CURRENT" "$NEW_BACKUP" --writers-stopped
    ```
 
    Restore dependency installation from the backed-up lockfile before restarting. The code installer never touches SQLite/docs/identity or service state. Restore data separately only if the operator's consistency plan requires it; never blindly overwrite new writes.
