@@ -50,7 +50,7 @@ Opening an unchanged file resumes its review. After changing the HTML, create a 
 marginroom open ./article.html --new-version-of 'REVIEW_URL' --browser
 ```
 
-Earlier versions keep their feedback.
+The new version shows permitted ancestor discussions, including full comments and replies. Exact unchanged targets attach to the current text; changed or ambiguous targets remain in history with an original-version link. Earlier records stay unchanged. [Details](docs/version-feedback.md).
 
 Local review links work only on the service host. To review from another device, [connect to a reachable instance](docs/agent-workflow.md). Anyone who can reach a document URL can read it.
 

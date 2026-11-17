@@ -47,9 +47,16 @@ try{
   if(local?.origin===target.origin){await instance(local.origin,local.instanceId);service={...local,...await readJSON(path.join(dir,'credentials.json'))};}
   else{await instance(target.origin);const credentials=v['token-file']?await readCredential(path.resolve(v['token-file'])):null;if(!credentials?.token)throw new CliError('pairing_required','Use --token-file for an explicitly paired instance',4);await instance(target.origin,credentials.instanceId);service={origin:target.origin,token:credentials.token};}
   const status=v.status||'open';if(!['open','all','accepted','rejected','stale','withdrawn'].includes(status))throw new CliError('invalid_status','Unsupported status');
-  const data=await request(service.origin,`/api/suggestions/${target.doc}?status=${status}`,{token:service.token});
-  const records=data.suggestions;if(!Array.isArray(records))throw new CliError('invalid_response','Missing suggestions',6);
-  console.log(json?JSON.stringify({schemaVersion:1,instanceId:(await instance(service.origin)).instanceId,document:target.doc,reviewUrl:p[1],status,complete:true,records}):threads(records));
+  const records=[],seen=new Set();let offset=0,complete=false,snapshot='';
+  for(let page=0;page<50;page++){
+    const data=await request(service.origin,`/api/suggestions/${target.doc}?status=${status}&offset=${offset}&snapshot=${encodeURIComponent(snapshot)}`,{token:service.token});
+    if(!Array.isArray(data.suggestions))throw new CliError('invalid_response','Missing suggestions',6);
+    for(const r of data.suggestions){if(seen.has(r.id))throw new CliError('history_changed','History changed while loading; retry',6);seen.add(r.id);records.push(r);}
+    if(data.complete!==false){complete=true;break;}snapshot=data.snapshot||'';
+    if(!Number.isSafeInteger(data.nextOffset)||data.nextOffset<=offset)throw new CliError('invalid_response','Incomplete history pagination',6);offset=data.nextOffset;
+  }
+  if(!complete)throw new CliError('history_limit','History exceeds 10000 threads; narrow --status',6);
+  console.log(json?JSON.stringify({schemaVersion:1,instanceId:(await instance(service.origin)).instanceId,document:target.doc,reviewUrl:p[1],status,complete,records}):threads(records));
  }else{
   const {bundle,absolute}=await collect(p[1],v['assets-dir'],v['include-resource']);
   if(explicit){const info=await instance(explicit);const credentials=v['token-file']?await readCredential(path.resolve(v['token-file'])):null;if(!credentials?.token)throw new CliError('pairing_required','Use --token-file for an explicitly paired instance',4);await instance(explicit,credentials.instanceId);service={origin:explicit,instanceId:info.instanceId,token:credentials.token};}else service=await localService(dir);

@@ -10,6 +10,7 @@ import {documentImports,validateBundle,safePath as safeBundlePath} from './docum
 import {importLimits} from './import-limits.js';
 import {bundleProjection} from './bundle-projection.js';
 import {locateAcross} from './version-navigation.js';
+import {ancestry,feedbackPage} from './version-feedback.js';
 import { parse } from 'parse5';
 import { readFile, writeFile, readdir, access, mkdir } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
@@ -271,15 +272,25 @@ export function createApp(db, opts = {}) {
       db.prepare('DELETE FROM management_handoffs WHERE hash=?').run(hash);db.prepare('INSERT OR IGNORE INTO document_grants VALUES(?,?)').run(row.doc,req.caller.token);return row.doc;}).immediate();
     if(!claim)return res.status(403).json({error:'handoff_expired_or_used'});res.json({document:claim});
   });
+  // Discussion visibility is not management. Bearer scopes never inherit public access.
+  function canReadDiscussion(req,id){
+    if(req.caller?.machine)return req.caller.doc ? req.caller.doc===id : machines.manages(req,id);
+    return canSuggestDoc(req,id);
+  }
+  function visibleAncestry(req,id){return ancestry(db,id,doc=>canReadDiscussion(req,doc));}
   app.get('/api/document-series/:id',(req,res)=>{
-    const current=imports.get(req.params.id);if(!current||!machines.manages(req,current.doc))return res.status(403).json({error:'not_your_doc'});
-    res.json({series:current.series,versions:db.prepare('SELECT doc,previous,created FROM imported_documents WHERE series=? ORDER BY rowid').all(current.series).filter(v=>machines.manages(req,v.doc))});
+    const current=imports.get(req.params.id);if(!current)return res.status(404).json({error:'doc_not_found'});
+    if(!canReadDiscussion(req,current.doc))return res.status(403).json({error:'view_only'});
+    try{const chain=visibleAncestry(req,current.doc),ids=new Set(chain.map(v=>v.doc));noStore(res);
+      res.json({series:chain.some(v=>v.doc===current.series)?current.series:null,versions:chain.reverse().map(({doc,previous,created})=>({doc,previous:ids.has(previous)?previous:null,created}))});
+    }catch(e){res.status(e.status||500).json({error:e.message});}
   });
   app.post('/api/versions-locate',async(req,res)=>{
-    const {record:recordId,target}=req.body||{};const record=getSuggestion(db,recordId);if(!record||!machines.manages(req,record.doc_id)||!machines.manages(req,target))return res.status(403).json({error:'not_your_doc'});
-    const from=imports.get(record.doc_id),to=imports.get(target);if(!from||!to||from.series!==to.series)return res.status(400).json({error:'unrelated_versions'});
-    const source=await readDocHtml(record.doc_id),html=await readDocHtml(target);
-    res.json({sourceVersion:record.doc_id,targetVersion:target,record:record.id,...await locateAcross(db,record,source,{doc:target,html})});
+    const {record:recordId,target}=req.body||{};const record=getSuggestion(db,recordId);if(!record||!canReadDiscussion(req,record.doc_id)||!canReadDiscussion(req,target))return res.status(403).json({error:'view_only'});
+    try{if(!visibleAncestry(req,target).some(v=>v.doc===record.doc_id))return res.status(400).json({error:'unrelated_versions'});
+      const source=await readDocHtml(record.doc_id),html=await readDocHtml(target);
+      res.json({sourceVersion:record.doc_id,targetVersion:target,record:record.id,...await locateAcross(db,record,source,{doc:target,html})});
+    }catch(e){res.status(e.status||500).json({error:e.message});}
   });
   // Imports are visible only after their synchronous SQLite publication commit.
   app.use((req,res,next)=>{const id=/^\/api\/(?:doc|raw|doc-meta|suggestions)\/(review-[a-f0-9-]+)$/.exec(req.path)?.[1];if(id&&!imports.get(id))return res.status(404).json({error:'doc_not_found'});next();});
@@ -766,9 +777,27 @@ export function createApp(db, opts = {}) {
     if (!canSuggestDoc(req, id)) return res.status(403).json({ error: 'view_only' });
     const status = req.query.status ?? 'open';
     if (!['open', 'all', 'accepted', 'rejected', 'stale', 'withdrawn'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+    const offset=Number(req.query.offset??0),limit=Number(req.query.limit??200);
+    if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>200)return res.status(400).json({error:'invalid_pagination'});
     noStore(res);
-    const html = await readDocHtml(id);
-    res.json({ suggestions: listSuggestions(db, id, status).map(s => s.kind==='rewrite'&&(s.status==='open'||s.status==='stale') ? {...s,invalid_reason:revisions.invalidReason(id,s,html)} : s) });
+    try{
+      const historyStamp=()=>digest(instanceId+':'+db.prepare('SELECT total_changes() n').get().n+':'+db.prepare('PRAGMA data_version').get().data_version),snapshot=historyStamp();
+      if(req.query.snapshot&&req.query.snapshot!==snapshot)return res.status(409).json({error:'history_changed_retry'});
+      const html=await readDocHtml(id),chain=visibleAncestry(req,id),versions=new Map(chain.map(v=>[v.doc,v]));
+      const ids=chain.length?chain.map(v=>v.doc).reverse():[id];
+      const {rows,total}=feedbackPage(db,ids,status,{offset,limit}),sources=new Map();
+      for(const sourceId of new Set(rows.filter(s=>s.doc_id!==id).map(s=>s.doc_id)))sources.set(sourceId,await readDocHtml(sourceId));
+      const suggestions=[],placementCache=new Map();
+      for(const s of rows){
+        if(s.doc_id===id){suggestions.push(s.kind==='rewrite'&&(s.status==='open'||s.status==='stale')?{...s,invalid_reason:revisions.invalidReason(id,s,html)}:s);continue;}
+        const placement=await locateAcross(db,s,sources.get(s.doc_id),{doc:id,html},placementCache);
+        suggestions.push({...s,inherited:true,sourceDocId:s.doc_id,sourceVersion:{document:s.doc_id,created:versions.get(s.doc_id).created},viewDocId:id,placement,
+          canReply:!req.caller.machine&&canSuggestDoc(req,s.doc_id),canManageSource:machines.manages(req,s.doc_id)});
+      }
+      const nextOffset=offset+rows.length<total?offset+rows.length:null;
+      if(historyStamp()!==snapshot)return res.status(409).json({error:'history_changed_retry'});
+      res.json({suggestions,total,complete:nextOffset===null,nextOffset,snapshot});
+    }catch(e){res.status(e.status||500).json({error:e.status?e.message:'history_unavailable'});}
   });
 
   // POST /api/suggest/:id { anchor, quote, body, kind, author } -> { ok, suggestion }

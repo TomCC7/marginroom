@@ -225,6 +225,9 @@
     "test/v3-api.test.mjs",
     "test/viewer-ui.test.mjs",
     "test/workspace.browser.mjs",
-    "version-navigation.js"
+    "version-navigation.js",
+    "version-feedback.js",
+    "docs/version-feedback.md",
+    "test/version-feedback.mjs"
   ]
 }

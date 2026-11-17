@@ -15,7 +15,7 @@ marginroom comments 'http://127.0.0.1:PORT/viewer.html?doc=ID' --status open --j
 
 Without `--json`, `open` prints the URL and a quoted comments command. `open --browser` opens a 60-second, one-use management handoff and cannot be combined with `--json`. `/claim.html` removes the handoff from browser history before its API call and grants that document to the existing browser principal. It does not replace cookies or grant administrator access. Ordinary JSON and share links contain no management secret. Root and subcommand help do not start a service.
 
-JSON envelopes use `schemaVersion:1`. With `--json`, results and errors go to stdout as JSON; text-mode errors go to stderr. Exit codes are 2 for input errors, 3 for connection/start failures, 4 for authentication/permission failures, 5 for import/resource failures and 6 for version/protocol conflicts. Status accepts `open`, `all`, `accepted`, `rejected`, `stale` and `withdrawn`. Feedback includes records and replies; `complete:true` denotes the unpaginated suggestions response.
+JSON envelopes use `schemaVersion:1`. With `--json`, results and errors go to stdout as JSON; text-mode errors go to stderr. Exit codes are 2 for input errors, 3 for connection/start failures, 4 for authentication/permission failures, 5 for import/resource failures and 6 for version/protocol conflicts. Status accepts `open`, `all`, `accepted`, `rejected`, `stale` and `withdrawn`. Feedback includes records and replies; `complete:true` means all permitted feedback pages were collected; limits and concurrent history changes fail explicitly, never as complete output.
 
 ## Import resources and create versions
 
@@ -35,7 +35,7 @@ Math comments use one UTF-16 logical text walk: KaTeX's visible HTML once, or na
 
 Unchanged content reopens the same review. Changed source requires `--new-version-of URL`. Each version has a separate URL in a stable series. Prior sources, assets, overlays, comments and replies remain on the old version.
 
-Management-only version navigation uses the existing element locator or exact paragraph/range context. Failed, duplicate or unverifiable targets return `not_found`, `ambiguous` or `unavailable`. Navigation creates no records, and public links do not expose series history.
+New versions show permitted ancestor discussions in the right sidebar and CLI, with full bodies, replies and source-version links. This is a read projection, including threads/replies added to predecessors later; no records are copied or rewritten. Only exact validated targets attach to the current text. Changed, duplicate or unverifiable targets stay as historical discussion with original context. Pending rewrites are discussion only, never replayed on the new source. Ordinary human reviewers use their own session; every ancestor is independently authorized. Read-only delegated tokens remain confined to their one document. See [version feedback semantics and limits](version-feedback.md).
 
 ## Pair with an existing host
 

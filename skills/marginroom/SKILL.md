@@ -30,7 +30,7 @@ Unchanged bundles reopen the same review. After authorized source changes, run:
 marginroom open ./article.html --new-version-of 'REVIEW_URL' --json
 ```
 
-Old records remain on the old version. Do not replay pending rewrites or copy comments into the new version. Version navigation returns `located` only after exact validation. Treat `not_found`, `ambiguous` and `unavailable` as failed navigation, not permission to guess a target.
+Original records remain on their source version; new-version sidebar and `comments` reads project permitted ancestor threads, full bodies and replies without copying. Preserve `doc_id`/`sourceDocId`; route authorized replies/mutations to the actual source, not the viewed version. Pending inherited rewrites remain discussion only; do not replay or accept them on newer text. Outdated targets retain historical context and a source-version link. Version navigation returns `located` only after exact validation. Treat `not_found`, `ambiguous` and `unavailable` as failed navigation, not permission to guess a target.
 
 ## Hand management to a local browser
 

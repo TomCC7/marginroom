@@ -50,7 +50,7 @@ URL 请保留引号。加上 `--status all` 可查看所有状态的反馈，更
 marginroom open ./article.html --new-version-of '原审稿页面URL' --browser
 ```
 
-旧版本保留各自的反馈。
+新版本默认显示有权查看的祖先版本讨论，包含完整评论与回复。精确未变的目标附着当前正文；已变更或不唯一的目标保留为历史讨论，并提供原始版本链接。旧记录不改写。[详细规则](docs/version-feedback.md)。
 
 本地审稿链接只能在运行服务的电脑上访问。需要跨设备审稿时，请[连接可访问的实例](docs/agent-workflow.md)。任何能访问文稿 URL 的人都能阅读文稿。
 
