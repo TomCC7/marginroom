@@ -1,40 +1,33 @@
 # Installation and builds
 
-The standalone distribution supports Linux x86_64 with glibc. Other targets are refused by the installer. The local service uses Linux abstract Unix sockets. macOS, Windows, ARM64 and musl artifacts are not supplied or verified. A desktop opener (`xdg-open`) is required only for `--browser`; headless callers use `--json`.
+## Platforms and verification limits
 
-The repository is private. No public release URL is configured. Ask the repository owner for a complete exact-version distribution: `marginroom-VERSION-linux-x64`, `install.sh`, `manifest.json`, `SHA256SUMS`, and `LICENSE`. The generated installer embeds the exact version and SHA256 of its binary. Verify the installer/manifest through your trusted delivery channel; downloading both a binary and a checksum from an untrusted source does not authenticate either.
+Release `v0.1.0-alpha.1` supplies archives for macOS arm64, macOS x86_64, and Linux x86_64 glibc. Linux installation and the installed CLI/service journey are exercised on Linux. macOS binaries are real Bun cross-builds with inspected Mach-O CPU headers and embedded assets, **not executed on macOS**. No authorized Mac is documented in the supplied environment. Windows, Linux ARM and musl are unsupported. Bun's own OS/CPU minimums apply; see [official executable targets](https://bun.sh/docs/bundler/executables).
 
-From that directory:
+macOS builds have no Developer ID signature or Apple notarization (an internal/ad-hoc code signature is not Developer ID). Gatekeeper may block downloaded software. Only if you trust the source and verified digest, follow [Apple's app-specific Open Anyway instructions](https://support.apple.com/en-us/102445) in System Settings → Privacy & Security after attempting launch. Do not disable Gatekeeper globally or bypass malware/damaged-app alerts. This test release does not establish Mac runtime compatibility.
+
+## Installer
 
 ```sh
-sh ./install.sh
+curl -fsSL https://github.com/TomCC7/marginroom/releases/download/v0.1.0-alpha.1/install.sh | sh
 marginroom open ./article.html --browser
 ```
 
-Installation copies only the verified executable to `~/.local/bin/marginroom`, without sudo or shell-profile changes. `--bin-dir '/path/with spaces/bin'` selects another directory. The installer reports if the chosen directory is absent from PATH. It refuses unsupported targets and digest mismatches before replacing an installed binary. A running managed service retains its original executable until it is stopped and restarted by its operator; installation does not stop any service.
+The owner must first publish the release for that URL to work. The version-pinned installer embeds a distinct trusted archive SHA256 for each target; it does not trust a freshly downloaded checksum file. HTTPS delivery of the installer is the trust root. Downloading the installer executes code: inspect it first if desired. macOS uses `shasum -a 256`; Linux uses `sha256sum` and checks glibc. Both need curl, tar and standard shell file tools. Rosetta shells reporting x86_64 select Intel builds.
 
-For a task-owned or owner-provided HTTP endpoint containing the same exact version, use the generated installer:
+Installation atomically replaces only a user-owned `~/.local/bin/marginroom`, without sudo or shell-profile changes. It never restarts services. Use `sh install.sh --bin-dir '/absolute/path with spaces/bin'` after downloading the installer to choose a directory. `--from HTTPS_DIRECTORY` selects a mirror but never changes the embedded version/digests. Plain HTTP is accepted only on localhost for tests. The source template intentionally refuses installation: use generated release bytes.
 
-```sh
-sh ./install.sh --from 'https://YOUR_AUTHORIZED_HOST/EXACT_VERSION_DIRECTORY'
-```
+State defaults to `~/.local/share/marginroom` on both platforms; `--data-dir DIR` isolates advanced use. Directories are private (0700), credentials 0600. Browser launch uses macOS `open` or Linux `xdg-open`; headless callers use `--json`. The service reexecutes its own binary, detached, with no external runtime or checkout. Linux uses a kernel abstract Unix socket lease. macOS uses a deterministic exclusive loopback TCP lease, released by the kernel on crash. A rare port/hash collision fails closed; select another state directory rather than kill an unrelated process. SQLite uses Bun's built-in driver; backup/restore use native SQLite and Node-compatible file APIs, not platform shell commands. Hashing is built-in crypto. No Linux `/proc`, GNU readlink, shell hashing or external Bun is needed by the service.
 
-This is a placeholder, not a public Marginroom service. Download requires curl; local copy does not. The installer needs a POSIX shell, standard Linux file tools, `getconf`, and `sha256sum`. To use the source installer rather than a generated distribution, supply its trust anchor explicitly:
+## Source builds
 
-```sh
-sh scripts/install.sh --from '/trusted/release directory' --version 'EXACT_VERSION' --sha256 'TRUSTED_64_CHARACTER_SHA256'
-```
-
-## Development
-
-Use **Bun 1.4.4** for the backend, CLI, dependency installation and tests. `.bun-version`, `packageManager`, and the Docker image pin it. No Node runtime, npm, native addon compiler, or alternate database driver is required.
+Use pinned **Bun 1.4.4**, a clean Git tree, Git and tar:
 
 ```sh
 bun install --frozen-lockfile
-bun run test:api
-bun run build
+bun scripts/build.mjs
 ```
 
-Builds write to `../deliverables` by default; `bun scripts/build.mjs '/other/output directory'` selects another destination. The binary name includes the package version and exact Git commit prefix. `manifest.json` records the full source commit, dirty status, Bun version, dependencies, target, binary digest and every embedded public asset digest. Build from a clean committed tree for delivery. The build copies only explicit runtime paths and allowlisted frontend assets into an isolated staging directory. It excludes uploaded documents, databases, identities, private docs, screenshots/backups and externally maintained `public/metal-arm-plan*` assets. MIT license notices remain in the distribution.
+All three targets are compiled using Bun's official `--target=bun-linux-x64`, `bun-darwin-arm64`, and `bun-darwin-x64`. Output is `../deliverables`: versioned archives with executable + MIT license, generated install.sh, SHA256SUMS, per-target manifests and release notes. Manifests record exact clean source head, Bun version and frontend asset digests. Uploaded documents, databases, identities, backups, screenshots and externally maintained metal-arm assets are not embedded. No native addon compiler is required.
 
-The executable embeds its dependencies and real frontend files. Its child reexecutes that executable through the private `--service` dispatch, without source files or a Bun/Node executable on PATH. Source use is also supported: `bun bin/marginroom.mjs open ./article.html --json`. Ordinary self-hosted servers run `bun run start`; [operations](operations.md) covers persistent identity and containers.
+Source CLI: `bun bin/marginroom.mjs open ./article.html --json`. Server: `bun run start`. [Operations](operations.md) covers backup/restore and existing-host identity. The accepted Linux/native UI evidence is retained outside Git; no new UI acceptance claim is made for macOS.

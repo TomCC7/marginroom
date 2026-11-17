@@ -1,41 +1,28 @@
 # Marginroom
 
-Review generated HTML in place. Comment on text or elements, propose revisions, and let an agent read the feedback as JSON.
-
-## Install
-
-**Linux x64 (glibc):** [download the private test bundle](https://github.com/TomCC7/marginroom/releases/tag/untagged-e5de983647c4743f1190) (`marginroom-linux-x64-test.tar.gz`), extract it, and run this inside `marginroom-test`:
+Review generated HTML in place; let an agent read saved feedback as JSON.
 
 ```sh
-sh ./install.sh
-```
-
-Sign in as the repository owner to access this draft download. The installer verifies the executable and installs it without sudo.
-
-Then open your HTML in a desktop session:
-
-```sh
+curl -fsSL https://github.com/TomCC7/marginroom/releases/download/v0.1.0-alpha.1/install.sh | sh
 marginroom open ./article.html --browser
 ```
 
-The CLI starts or reuses its local service, prints the review URL, and opens your browser with document management permission. Original files stay unchanged. If the installer reports that its directory is absent from PATH, use the printed executable path or add that directory yourself. No Bun or Node installation is needed for the standalone binary.
+Pre-release for macOS Apple Silicon / Intel and Linux x64 glibc. No Bun, Node or sudo needed. Installs to `~/.local/bin`; add it to PATH if prompted. **macOS binaries are cross-built, not runtime-tested, Developer-ID signed or notarized.** See [platform limits and installation](docs/installation.md). The release route becomes available when the owner publishes this prerelease.
 
-In **Annotate**, select text or an element, add a comment, then reply in its thread. An agent reads the exact saved records with:
+Select text or an element in Annotate, comment, and reply. Read feedback:
 
 ```sh
-marginroom comments 'REVIEW_URL' --status open --json
+marginroom comments 'REVIEW_URL' --json
 ```
 
-Opening the same file again resumes its review. After changing the source, explicitly create a new version:
+Reopening the same file resumes review. After editing the HTML, preserve earlier feedback with a new version:
 
 ```sh
 marginroom open ./article.html --new-version-of 'REVIEW_URL' --browser
 ```
 
-Prior URLs and feedback remain intact. For headless use, replace `--browser` with `--json`. State defaults to `~/.local/share/marginroom`; advanced isolation uses `--data-dir DIR`. Loopback links work only on the service host. For another device, use an explicitly paired, reachable instance. Anyone who can reach a document URL can read it.
+Original files stay unchanged. Use `--json` instead of `--browser` for headless use. Local links are loopback-only; anyone who can reach a document URL can read it.
 
-The repository and artifacts are private; there is no public download URL or published package. Obtain the exact versioned release and its trusted SHA256 manifest from the repository owner. [Installation, verified downloads and builds](docs/installation.md) describes local and HTTP installation, platform limits, and Bun 1.4.4 development.
+[Source builds](docs/installation.md#source-builds) · [User guide](docs/user-guide.md) · [CLI and pairing](docs/agent-workflow.md) · [Operations](docs/operations.md) · [Agent skill](skills/marginroom/SKILL.md)
 
-[User guide](docs/user-guide.md) · [CLI and pairing](docs/agent-workflow.md) · [Operations and backups](docs/operations.md) · [Agent skill](skills/marginroom/SKILL.md) · [Tests](test/README.md) · [Localization](docs/localization.md)
-
-[MIT](LICENSE). Based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith. Original notices are preserved.
+[MIT](LICENSE). Based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith. Original notices preserved.
