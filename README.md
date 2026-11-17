@@ -2,11 +2,15 @@
 
 Review generated HTML in place. Comment on text or elements, propose revisions, and let an agent read the feedback as JSON.
 
-From the supplied, verified Linux x64 release directory, install without sudo:
+## Install
+
+**Linux x64 (glibc):** [download the private test bundle](https://github.com/TomCC7/marginroom/releases/tag/untagged-e5de983647c4743f1190) (`marginroom-linux-x64-test.tar.gz`), extract it, and run this inside `marginroom-test`:
 
 ```sh
 sh ./install.sh
 ```
+
+Sign in as the repository owner to access this draft download. The installer verifies the executable and installs it without sudo.
 
 Then open your HTML in a desktop session:
 
