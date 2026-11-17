@@ -1,9 +1,9 @@
-# Marginroom v0.1.0-alpha.1
+# Marginroom v0.1.0-alpha.2
 
 Standalone HTML review CLI and embedded local service for Linux x64 glibc, macOS arm64 and macOS Intel.
 
 ```sh
-curl -fsSL https://github.com/TomCC7/marginroom/releases/download/v0.1.0-alpha.1/install.sh | sh
+curl -fsSL https://github.com/TomCC7/marginroom/releases/download/v0.1.0-alpha.2/install.sh | sh
 marginroom open ./article.html --browser
 ```
 
@@ -14,3 +14,7 @@ No Node/Bun runtime, checkout or sudo needed. The installer pins this version an
 Use `marginroom comments 'REVIEW_URL' --json` for feedback and `marginroom open ./article.html --new-version-of 'REVIEW_URL' --browser` for a revision. Loopback links are local to the service host. Installation does not restart an existing service.
 
 MIT; based on markmyword by Alexa Griffith. This is an unsigned test prerelease, not a production compatibility guarantee.
+
+## alpha.2 CLI changes
+
+Commander 15.1.0 supplies command-specific help and strict argument errors, including JSON errors. Default comments are readable threads; `--json` keeps the previous machine schema and exact record data. Default open also prints the next comments command. Terminal controls in untrusted feedback are removed only from text rendering. No frontend visual changes or new authorization. Existing hosted services require a separate, coordinated Bun cutover; installing the CLI does not restart them. alpha.1 assets are not replaced.

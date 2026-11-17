@@ -30,6 +30,7 @@
     "test:storage": "bun test/bun-storage.mjs"
   },
   "dependencies": {
+    "commander": "15.1.0",
     "cookie": "^0.7.2",
     "express": "^5.2.1",
     "linkedom": "0.18.15",

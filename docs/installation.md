@@ -2,14 +2,14 @@
 
 ## Platforms and verification limits
 
-Release `v0.1.0-alpha.1` supplies archives for macOS arm64, macOS x86_64, and Linux x86_64 glibc. Linux installation and the installed CLI/service journey are exercised on Linux. macOS binaries are real Bun cross-builds with inspected Mach-O CPU headers and embedded assets, **not executed on macOS**. No authorized Mac is documented in the supplied environment. Windows, Linux ARM and musl are unsupported. Bun's own OS/CPU minimums apply; see [official executable targets](https://bun.sh/docs/bundler/executables).
+Release `v0.1.0-alpha.2` supplies archives for macOS arm64, macOS x86_64, and Linux x86_64 glibc. Linux installation and the installed CLI/service journey are exercised on Linux. macOS binaries are real Bun cross-builds with inspected Mach-O CPU headers and embedded assets, **not executed on macOS**. No authorized Mac is documented in the supplied environment. Windows, Linux ARM and musl are unsupported. Bun's own OS/CPU minimums apply; see [official executable targets](https://bun.sh/docs/bundler/executables).
 
 macOS builds have no Developer ID signature or Apple notarization (an internal/ad-hoc code signature is not Developer ID). Gatekeeper may block downloaded software. Only if you trust the source and verified digest, follow [Apple's app-specific Open Anyway instructions](https://support.apple.com/en-us/102445) in System Settings → Privacy & Security after attempting launch. Do not disable Gatekeeper globally or bypass malware/damaged-app alerts. This test release does not establish Mac runtime compatibility.
 
 ## Installer
 
 ```sh
-curl -fsSL https://github.com/TomCC7/marginroom/releases/download/v0.1.0-alpha.1/install.sh | sh
+curl -fsSL https://github.com/TomCC7/marginroom/releases/download/v0.1.0-alpha.2/install.sh | sh
 marginroom open ./article.html --browser
 ```
 

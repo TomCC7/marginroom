@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import path from 'node:path';
-import {parseArgs} from 'node:util';
+import {argumentsFor} from '../lib/cli/arguments.mjs';
+import {threads,shellQuote,safe} from '../lib/cli/render.mjs';
 import {randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {profile,readJSON,readCredential,atomic} from '../lib/cli/profile.mjs';
@@ -13,8 +14,8 @@ if(process.argv[2]==='--service'){
 }else{
 let json=process.argv.includes('--json');
 try{
- const {values:v,positionals:p}=parseArgs({allowPositionals:true,options:{json:{type:'boolean'},browser:{type:'boolean'},help:{type:'boolean'},'data-dir':{type:'string'},server:{type:'string'},'assets-dir':{type:'string'},'include-resource':{type:'string',multiple:true},'new-version-of':{type:'string'},status:{type:'string'},'token-file':{type:'string'},'host-db':{type:'string'},out:{type:'string'}}});
- if(v.help||!p.length){console.log('marginroom open FILE [--assets-dir DIR] [--new-version-of URL] [--browser] [--json]\nmarginroom comments URL [--status open|all|accepted|rejected|stale|withdrawn] --json\nmarginroom pair --out PRIVATE_JSON [--data-dir DIR]\nmarginroom pair --host-db EXISTING_DB --server ORIGIN --out PRIVATE_JSON\nOptions: --data-dir DIR; --server ORIGIN --token-file PRIVATE_JSON\nLocal links are loopback-only. See the CLI workflow documentation.');process.exit(0);}
+ const parsed=argumentsFor(process.argv.slice(2));if(!parsed)process.exit(0);
+ const {values:v,positionals:p}=parsed;
  if(p[0]==='pair'){
   if(p.length!==1||!v.out||Boolean(v.server)!==Boolean(v['host-db']))throw new CliError('invalid_arguments','Managed service: pair --out FILE [--data-dir DIR]; existing host: pair --host-db DB --server ORIGIN --out FILE');
   let service,credential;
@@ -46,7 +47,7 @@ try{
   const status=v.status||'open';if(!['open','all','accepted','rejected','stale','withdrawn'].includes(status))throw new CliError('invalid_status','Unsupported status');
   const data=await request(service.origin,`/api/suggestions/${target.doc}?status=${status}`,{token:service.token});
   const records=data.suggestions;if(!Array.isArray(records))throw new CliError('invalid_response','Missing suggestions',6);
-  console.log(JSON.stringify({schemaVersion:1,instanceId:(await instance(service.origin)).instanceId,document:target.doc,reviewUrl:p[1],status,complete:true,records}));
+  console.log(json?JSON.stringify({schemaVersion:1,instanceId:(await instance(service.origin)).instanceId,document:target.doc,reviewUrl:p[1],status,complete:true,records}):threads(records));
  }else{
   const {bundle,absolute}=await collect(p[1],v['assets-dir'],v['include-resource']);
   if(explicit){const info=await instance(explicit);const credentials=v['token-file']?await readCredential(path.resolve(v['token-file'])):null;if(!credentials?.token)throw new CliError('pairing_required','Use --token-file for an explicitly paired instance',4);await instance(explicit,credentials.instanceId);service={origin:explicit,instanceId:info.instanceId,token:credentials.token};}else service=await localService(dir);
@@ -56,8 +57,8 @@ try{
   const result=await request(service.origin,'/api/imports',{token:service.token,body:{...bundle,source,previous}});
   const reviewUrl=`${service.origin}/viewer.html?doc=${result.document}`;
   if(v.browser){const {token}=await request(service.origin,'/api/management/handoff',{token:service.token,body:{doc:result.document}});const manage=`${service.origin}/claim.html#${token}`;const command=process.platform==='darwin'?'open':process.platform==='win32'?'explorer':'xdg-open';const child=spawn(command,[manage],{stdio:'ignore',detached:true});child.on('error',()=>console.error('Browser launch failed; share URL remains valid.'));child.unref();}
-  console.log(v.json?JSON.stringify({schemaVersion:1,instanceId:service.instanceId,...result,reviewUrl,localOnly:!explicit,warnings:['Static declared dependencies only; dynamic resources and backend APIs are not replicated.',...(result.external.length?['External resources require network access.']:[])]}):reviewUrl);
+  console.log(v.json?JSON.stringify({schemaVersion:1,instanceId:service.instanceId,...result,reviewUrl,localOnly:!explicit,warnings:['Static declared dependencies only; dynamic resources and backend APIs are not replicated.',...(result.external.length?['External resources require network access.']:[])]}):`${reviewUrl}\n\nRead feedback:\n  marginroom comments ${shellQuote(reviewUrl)}`);
  }
-}catch(e){const error={code:e.code||'invalid_arguments',message:e.message};if(json)console.log(JSON.stringify({schemaVersion:1,error}));else console.error(`Error: ${error.message}`);process.exitCode=e.exit||2;}
+}catch(e){const error={code:e.code||'invalid_arguments',message:e.message};if(json)console.log(JSON.stringify({schemaVersion:1,error}));else console.error(`Error: ${safe(error.message)}`);process.exitCode=e.exit||2;}
 
 }

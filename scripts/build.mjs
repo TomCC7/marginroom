@@ -10,7 +10,7 @@ const repo=path.resolve(import.meta.dir,'..'),out=path.resolve(process.argv[2]||
 const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8'}).trim();
 const sourceCommit=git('rev-parse','HEAD'),sourceDirty=!!git('status','--porcelain');
 assert(!sourceDirty,'Commit the source tree before building a versioned distribution');
-const pkg=JSON.parse(await readFile(path.join(repo,'package.json'))),version='0.1.0-alpha.1';
+const pkg=JSON.parse(await readFile(path.join(repo,'package.json'))),version='0.1.0-alpha.2';
 const allow=JSON.parse(await readFile(path.join(repo,'release/publication-allowlist.json'))).paths;
 const publicFiles=allow.filter(p=>p.startsWith('public/')&&!p.startsWith('public/metal-arm-plan'));
 const stage=await mkdtemp(path.join(tmpdir(),'marginroom-build-'));
