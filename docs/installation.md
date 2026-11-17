@@ -4,7 +4,7 @@
 
 Release archives support macOS arm64, macOS x86_64 and Linux x86_64 with glibc. Windows, Linux ARM and musl are unsupported. Bun's OS/CPU minimums apply; see [executable targets](https://bun.sh/docs/bundler/executables).
 
-The v0.1.1 release passed native installed CLI/service smoke tests on Linux x86_64 and both macOS architectures in [CI run 44041965110](https://github.com/TomCC7/marginroom/actions/runs/44041965110). These checks cover CLI/service operation; physical GUI and Safari behavior require separate device tests.
+The v0.1.2 release passed native installed CLI/service smoke tests on Linux x86_64 and both macOS architectures in [CI run 44199926996](https://github.com/TomCC7/marginroom/actions/runs/44199926996). These checks cover CLI/service operation; physical GUI and Safari behavior require separate device tests.
 
 macOS binaries have no Developer ID signature or Apple notarization. Gatekeeper may block a download. After attempting launch, follow [Apple's app-specific Open Anyway instructions](https://support.apple.com/en-us/102445) in System Settings, Privacy & Security, only if you trust the source and have verified the digest. Do not disable Gatekeeper globally or bypass malware/damaged-app alerts.
 

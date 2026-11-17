@@ -5,16 +5,16 @@ Publish releases through GitHub Actions. Maintainers use its build and native sm
 ## Publish a release
 
 1. Merge reviewed changes into `main` and check the required tests on the commit to publish.
-2. Choose an unpublished version. v0.1.1 is already published; the next-version example below is for a future release:
+2. Choose an unpublished release tag and a reviewed commit. Set `RELEASE_TAG` and `RELEASE_COMMIT` to those values before running:
    ```sh
-   git tag v0.1.2 <commit-sha>
-   git push origin v0.1.2
+   git tag "$RELEASE_TAG" "$RELEASE_COMMIT"
+   git push origin "$RELEASE_TAG"
    ```
 3. Watch the `Release` workflow. It builds `linux-x64`, `darwin-arm64` and `darwin-x64`, then runs installed CLI/service smoke on `ubuntu-24.04`, `macos-15` and `macos-15-intel` before publishing.
 4. Select that workflow run and check the release:
    ```sh
    gh run watch <run-id> --exit-status
-   gh release view v0.1.2
+   gh release view "$RELEASE_TAG"
    ```
    Check for all three archives, `manifest-*.json`, `manifest.json`, `SHA256SUMS`, `install.sh`, `LICENSE` and `RELEASE-NOTES.md`.
 
