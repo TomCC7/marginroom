@@ -27,7 +27,8 @@
     "test:agent-migration": "bun test/agent-migration.mjs",
     "build": "bun scripts/build.mjs",
     "check:sqlite": "bun check-sqlite.mjs",
-    "test:storage": "bun test/bun-storage.mjs"
+    "test:storage": "bun test/bun-storage.mjs",
+    "test:ssg-math": "bun test/ssg-math-installed.mjs"
   },
   "dependencies": {
     "commander": "15.1.0",
