@@ -103,6 +103,7 @@ document.addEventListener('bridge-status',()=>{statusCopy=null});
 function status(text,kind='saved'){ $('#hs-status').dataset.bridgeStatus='false';statusCopy=typeof text==='function'?text:()=>text;text=statusCopy();const e=$('#hs-status');e.className='saved '+kind;e.querySelector('.txt').textContent=text}
 function toast(t){toastCopy=typeof t==='function'?t:()=>t;t=toastCopy();$('#toast').textContent=t;$('#toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').hidden=true,4000)}
 function errorText(error){
+ if(error.code===503&&error.reason==='maintenance')return tr('errors.maintenance');
  const known=new Set(['range_overlap','revision_stale','unsupported_anchor','span_stale','not_your_doc','edit_not_allowed','suggest_not_allowed','rate_limited']);
  const message=error.reason?(known.has(error.reason)?tr('review.'+error.reason):tr('errors.reason',{reason:error.reason})):error.message;
  return message+(typeof error.existingId==='string'?tr('review.existingRevision',{id:error.existingId.slice(0,8)}):'');
@@ -379,7 +380,7 @@ async function sendComment(){
   if(id)await api(`/api/suggest/${encodeURIComponent(records.find(r=>r.id===id)?.sourceDocId||docId)}/${encodeURIComponent(id)}/replies`,{body,author:myName,requestId:showComposer.requestId});
   else{const res=await api(`/api/suggest/${encodeURIComponent(docId)}`,{anchor:selected.anchor,quote:selected.quote,baseText:selected.baseText,rangeStart:selected.rangeStart,rangeEnd:selected.rangeEnd,body,kind:composeKind,author:myName,requestId:selected.requestId||(selected.requestId=crypto.randomUUID?.()||'c'+Date.now())});id=res.suggestion.id}
   busy=false;closeComposer(true);await refresh();openDiscussion(id);status(()=>tr('review.commentSaved'));getSelection()?.removeAllRanges();
- }catch(e){toast(()=>errorText(e));status(()=>tr('review.commentFailed'),'error')}finally{busy=false;$('#send-comment').disabled=false}
+ }catch(e){toast(()=>errorText(e));status(()=>e.reason==='maintenance'?errorText(e):tr('review.commentFailed'),'error')}finally{busy=false;$('#send-comment').disabled=false}
 }
 
 function cancelDraft(){if(!draft||busy)return;const saved=draft;inlineEditor.stop();staticPreview?.send({type:'inline-stop'});draft=null;composing=false;$('#draft-actions').hidden=true;decorate();if(staticPreview?.active)staticPreview.send({type:'restore-selection',anchor:saved.anchor,start:saved.rangeStart,end:saved.rangeEnd});else inlineEditor.restoreSelection(getBlock(saved.anchor),saved.rangeStart,saved.rangeEnd);status(()=>tr('review.draftCanceled'))}
@@ -392,7 +393,7 @@ async function submitDraft(){
   const serialized=JSON.stringify(payload);if(current.attempt&&current.attempt!==serialized){current.requestId=crypto.randomUUID();payload.requestId=current.requestId}current.attempt=JSON.stringify(payload);
   const res=await api(`/api/revision/${encodeURIComponent(docId)}`,payload);
   inlineEditor.stop();staticPreview?.send({type:'inline-stop'});draft=null;$('#draft-actions').hidden=true;await refresh();active=res.snapshot.records.find(r=>r.canUpdate)?.id||null;render();status(()=>tr('review.revisionSaved'));toast(()=>tr('review.sourceUnchanged'));
- }catch(e){toast(()=>errorText(e));status(()=>tr('review.draftRetained'),'error')}finally{busy=false;$('#submit-draft').disabled=false}
+ }catch(e){toast(()=>errorText(e));status(()=>e.reason==='maintenance'?errorText(e):tr('review.draftRetained'),'error')}finally{busy=false;$('#submit-draft').disabled=false}
 }
 function beginInput(e,sel=getSelection()){
  if(e.target.closest?.('[data-inline-editor]'))return;

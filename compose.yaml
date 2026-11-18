@@ -3,6 +3,7 @@ services:
     build: .
     image: marginroom-private-alpha:local
     init: true
+    stop_grace_period: ${MMW_STOP_GRACE_PERIOD:-35s}
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-development}
@@ -10,6 +11,8 @@ services:
       PORT: "3939"
       HS_DB_PATH: /data/app.db
       HS_DOCS_DIR: /data/docs
+      MMW_MAINTENANCE_FILE: /data/maintenance.flag
+      MMW_SHUTDOWN_TIMEOUT_MS: ${MMW_SHUTDOWN_TIMEOUT_MS:-30000}
     ports:
       - "127.0.0.1:${MMW_PORT:-3939}:3939"
     volumes:

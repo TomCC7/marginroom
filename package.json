@@ -1,6 +1,6 @@
 {
   "name": "marginroom",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Imported HTML review with comments and paragraph suggestions",
   "type": "module",
@@ -24,6 +24,7 @@
     "test:agent": "bun test/agent-workflow.mjs",
     "test:versions": "bun test/version-feedback.mjs",
     "test:inherited-resolve": "bun test/inherited-resolve.mjs",
+    "test:maintenance": "bun test/maintenance.test.mjs",
     "test:import-recovery": "bun test/import-recovery.mjs",
     "test:existing-host": "bun test/existing-host.mjs",
     "test:agent-migration": "bun test/agent-migration.mjs",
@@ -57,6 +58,7 @@
     "public/",
     "skills/",
     "docs/agent-workflow.md",
+    "docs/maintenance-routes.md",
     "docs/operations.md",
     "docs/user-guide.md",
     "README.md",

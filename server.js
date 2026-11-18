@@ -5,6 +5,7 @@
 // SQLite. Identity is owner-vs-guest (HMAC-signed cookie, OWNER_KEY promotes):
 // anyone may suggest, but editing/restoring/accepting is gated to the doc owner.
 import express from 'express';
+import { maintenanceControl, installShutdown } from './maintenance.js';
 import {machineAuth,machineInstance,digest} from './machine-auth.js';
 import {documentImports,validateBundle,safePath as safeBundlePath} from './document-imports.js';
 import {importLimits} from './import-limits.js';
@@ -49,7 +50,7 @@ async function embeddedFrontend(req,res,next) {
   const asset=embeddedPublic.get(name);if(!asset)return next();
   res.type(path.extname(name)).send(Buffer.from(await asset.arrayBuffer()));
 }
-const PORT = process.env.PORT || 3939;
+const PORT = Number(process.env.PORT || 3939);
 const HOST = process.env.HOST || '127.0.0.1';
 const MAX_TEXT = 50_000;
 const MAX_DOC_BYTES = LIMITS.MAX_DOC_BYTES; // per-file size cap (default 2 MB)
@@ -222,6 +223,9 @@ async function readDocConfig(id) {
 export function createApp(db, opts = {}) {
   const BUNDLE_LIMITS=importLimits();
   const app = express();
+  const maintenance = maintenanceControl();
+  app.locals.maintenance = maintenance;
+  app.use(maintenance.middleware);
   app.set('trust proxy', true); // behind Fly's proxy; needed for correct client IP
   // Body limit tracks the file-size cap plus headroom for JSON overhead, so a
   // paste up to MAX_DOC_BYTES isn't rejected by the parser before our own check.
@@ -285,13 +289,13 @@ export function createApp(db, opts = {}) {
       res.json({series:chain.some(v=>v.doc===current.series)?current.series:null,versions:chain.reverse().map(({doc,previous,created})=>({doc,previous:ids.has(previous)?previous:null,created}))});
     }catch(e){res.status(e.status||500).json({error:e.message});}
   });
-  app.post('/api/versions-locate',async(req,res)=>{
+  app.post('/api/versions-locate',maintenance.track(async(req,res)=>{
     const {record:recordId,target}=req.body||{};const record=getSuggestion(db,recordId);if(!record||!canReadDiscussion(req,record.doc_id)||!canReadDiscussion(req,target))return res.status(403).json({error:'view_only'});
     try{if(!visibleAncestry(req,target).some(v=>v.doc===record.doc_id))return res.status(400).json({error:'unrelated_versions'});
       const source=await readDocHtml(record.doc_id),html=await readDocHtml(target);
       res.json({sourceVersion:record.doc_id,targetVersion:target,record:record.id,...await locateAcross(db,record,source,{doc:target,html})});
     }catch(e){res.status(e.status||500).json({error:e.message});}
-  });
+  }));
   // Imports are visible only after their synchronous SQLite publication commit.
   app.use((req,res,next)=>{const id=/^\/api\/(?:doc|raw|doc-meta|suggestions)\/(review-[a-f0-9-]+)$/.exec(req.path)?.[1];if(id&&!imports.get(id))return res.status(404).json({error:'doc_not_found'});next();});
   app.use('/bundles/:doc' , (req,res,next)=>{
@@ -305,7 +309,7 @@ export function createApp(db, opts = {}) {
     }
     express.static(path.join(imports.root,req.params.doc),{dotfiles:'deny',index:false,redirect:false})(req,res,next);
   });
-  app.use(Bun.isStandaloneExecutable ? embeddedFrontend : express.static(PUBLIC_DIR));
+  app.use(Bun.isStandaloneExecutable ? maintenance.track(embeddedFrontend) : express.static(PUBLIC_DIR));
   app.get('/api/whoami', (req, res) => {
     noStore(res);
     res.json({ isOwner: !!req.caller?.isOwner, docLimit: LIMITS.GUEST_DOC_LIMIT });
@@ -324,17 +328,17 @@ export function createApp(db, opts = {}) {
 
   // GET /api/assets -> { assets: [name, ...] }  (basenames already on the box, so
   // the landing page only asks the user for images we don't already have).
-  app.get('/api/assets', readLimiter, async (_req, res) => {
+  app.get('/api/assets', readLimiter, maintenance.track(async (_req, res) => {
     noStore(res);
     res.json({ assets: await listAssets() });
-  });
+  }));
 
   // POST /api/upload-asset { name, dataBase64 } -> { ok, name }
   // Stores an image the uploaded doc references into docs/assets/ (shared, flat).
   // Owner or guest may add assets (they're inert files, served static); we cap
   // size, allow only image extensions, and reject any non-basename to prevent
   // traversal. Not clobbered if it already exists — same name = same image here.
-  app.post('/api/upload-asset', uploadLimiter, async (req, res) => {
+  app.post('/api/upload-asset', uploadLimiter, maintenance.track(async (req, res) => {
     const { name, dataBase64 } = req.body || {};
     if (!isValidAssetName(name)) return res.status(400).json({ error: 'invalid_asset_name' });
     if (typeof dataBase64 !== 'string' || dataBase64.length === 0) {
@@ -362,14 +366,14 @@ export function createApp(db, opts = {}) {
     }
     noStore(res);
     res.json({ ok: true, name });
-  });
+  }));
 
   // GET /api/docs -> { docs: [id, ...] }  (for the landing page)
   // Scoped per viewer: the owner sees every doc; a guest sees only docs they
   // created PLUS any doc with no owner row (the seed/demo docs, public to all).
   // This keeps the hosted site from being one shared bucket — a guest's uploads
   // aren't visible to other guests, and the owner's work isn't listed publicly.
-  app.get('/api/docs', readLimiter, async (req, res) => {
+  app.get('/api/docs', readLimiter, maintenance.track(async (req, res) => {
     noStore(res);
     const all = (await listDocs()).filter(id=>!/^review-[a-f0-9-]+$/.test(id)||imports.get(id));
     const { token, isOwner } = req.caller;
@@ -392,11 +396,11 @@ export function createApp(db, opts = {}) {
     const owners = ownerMap(db);
     const visible = all.filter((id) => !(id in owners) || owners[id] === token);
     res.json({ docs: visible });
-  });
+  }));
 
   // Exact-link lookup has the same public reading policy and ID bounds as
   // /api/doc. It does not add the document to another caller's mine listing.
-  app.get('/api/doc-meta/:id', readLimiter, async (req, res) => {
+  app.get('/api/doc-meta/:id', readLimiter, maintenance.track(async (req, res) => {
     noStore(res);
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
@@ -404,7 +408,7 @@ export function createApp(db, opts = {}) {
     if (html == null) return res.status(404).json({ error: 'doc_not_found' });
     const titleHtml = await readRawHtml(id) ?? html;
     res.json(docMetadata(req, id, titleHtml));
-  });
+  }));
 
   // Summaries use existing persisted timestamps, never file modification times.
   // Do not expose even discussion activity to callers denied the suggestions API.
@@ -441,7 +445,7 @@ export function createApp(db, opts = {}) {
   // POST /api/upload { id, html, overwrite? } -> { ok, id }
   // Writes a new document to docs/<id>.html. HTML is trusted styling but we
   // strip active content (scripts/handlers/js: URLs) so the stored file is inert.
-  app.post('/api/upload', uploadLimiter, async (req, res) => {
+  app.post('/api/upload', uploadLimiter, maintenance.track(async (req, res) => {
     const { id, html, overwrite } = req.body || {};
     const { token, isOwner } = req.caller;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
@@ -519,11 +523,11 @@ export function createApp(db, opts = {}) {
     setDocOwner(db, id, isOwner ? 'owner' : token, new Date().toISOString());
     noStore(res);
     res.json({ ok: true, id, interactive });
-  });
+  }));
 
   // DELETE /api/doc/:id — remove a document (file + all SQLite state). Allowed
   // for the owner, or the guest who created it (frees their one slot).
-  app.delete('/api/doc/:id', writeLimiter, async (req, res) => {
+  app.delete('/api/doc/:id', writeLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     const { token, isOwner } = req.caller;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
@@ -540,12 +544,12 @@ export function createApp(db, opts = {}) {
     deleteDocData(db)(id);
     noStore(res);
     res.json({ ok: true, id });
-  });
+  }));
 
   // GET /api/doc/:id -> { id, baseHtml, overlay, config, hasRaw }
   // hasRaw=true means this is an INTERACTIVE doc with an original kept at
   // <id>.raw.html — the viewer then uses the sandboxed-iframe path (see /api/raw).
-  app.get('/api/doc/:id', readLimiter, async (req, res) => {
+  app.get('/api/doc/:id', readLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     const baseHtml = await readDocHtml(id);
@@ -562,21 +566,21 @@ export function createApp(db, opts = {}) {
       canEdit: mine || access === 'edit',
       canSuggest: mine || access !== 'view',
     });
-  });
+  }));
 
   // GET /api/access/:id -> { access, isDocOwner }   PUT { level } -> { ok, access }
   // The link-access level (view/suggest/edit) is the owner's control over what a
   // guest with the link may do. Reading it is open (the viewer needs it to render
   // the right modes); changing it is restricted to the owner / the doc's owner.
-  app.get('/api/access/:id', readLimiter, async (req, res) => {
+  app.get('/api/access/:id', readLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     if (await readDocHtml(id) == null) return res.status(404).json({ error: 'doc_not_found' });
     noStore(res);
     res.json({ access: getDocAccess(db, id), isDocOwner: ownsDoc(req, id) });
-  });
+  }));
 
-  app.put('/api/access/:id', writeLimiter, async (req, res) => {
+  app.put('/api/access/:id', writeLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     if (await readDocHtml(id) == null) return res.status(404).json({ error: 'doc_not_found' });
@@ -590,7 +594,7 @@ export function createApp(db, opts = {}) {
     setDocAccess(db, id, level);
     noStore(res);
     res.json({ ok: true, access: level });
-  });
+  }));
 
   // GET /api/raw/:id -> the un-stripped ORIGINAL bytes of an interactive doc, as
   // JSON { id, rawHtml }. This is the ONLY way the viewer gets the runnable HTML,
@@ -601,7 +605,7 @@ export function createApp(db, opts = {}) {
   //   Defense in depth: even the JSON response is marked no-store + nosniff and
   //   carries a CSP sandbox directive, so a browser that somehow renders it as a
   //   document still gets an opaque, script-only-sandboxed context.
-  app.get('/api/raw/:id', readLimiter, async (req, res) => {
+  app.get('/api/raw/:id', readLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     const rawHtml = await readRawHtml(id);
@@ -612,7 +616,7 @@ export function createApp(db, opts = {}) {
     const imported=imports.get(id);
     const resourceBase=imported ? `/bundles/${id}/${imported.entry.split('/').slice(0,-1).join('/')}${imported.entry.includes('/')?'/':''}` : null;
     res.json({ id, rawHtml, resourceBase, renderHtml:imported?bundleProjection(rawHtml,imported.entry,`/bundles/${id}/`):rawHtml });
-  });
+  }));
 
   // POST /api/snapshot/:id { html } -> { ok, html }
   // The static "edited snapshot" download for interactive docs. The viewer asks the
@@ -623,7 +627,7 @@ export function createApp(db, opts = {}) {
   // upload, but do not promise an inert download: regex cleanup is not a complete
   // HTML sanitizer. Exported HTML must still be treated as untrusted. No stored
   // state is touched by this endpoint.
-  app.post('/api/snapshot/:id', writeLimiter, async (req, res) => {
+  app.post('/api/snapshot/:id', writeLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     // Only snapshot docs that exist and actually have a runnable original — a static
@@ -639,7 +643,7 @@ export function createApp(db, opts = {}) {
     noStore(res);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.json({ ok: true, html: clean });
-  });
+  }));
 
   // POST /api/patch-download/:id { edits:[{from,to}] } -> { ok, html, applied, unmatched }
   // The "original interactive" download for a self-unpacking bundle. The bundle
@@ -650,7 +654,7 @@ export function createApp(db, opts = {}) {
   // are left byte-for-byte untouched; edits whose `from` isn't found come back in
   // `unmatched` (the client can fall back or warn). We introduce no executable
   // content: only the doc's own payload text changes.
-  app.post('/api/patch-download/:id', writeLimiter, async (req, res) => {
+  app.post('/api/patch-download/:id', writeLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     const rawHtml = await readRawHtml(id);
@@ -667,7 +671,7 @@ export function createApp(db, opts = {}) {
     noStore(res);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.json({ ok: true, html: result.html, applied: result.applied, unmatched: result.unmatched });
-  });
+  }));
 
   // Owner-only gate for the review DECISIONS on a doc (direct edit, restore,
   // accept/reject). Suggesting stays open so any reviewer can propose changes;
@@ -713,7 +717,7 @@ export function createApp(db, opts = {}) {
   });
 
   // POST /api/edit/:id { anchor, text } -> { ok, overlay }
-  app.post('/api/edit/:id', writeLimiter, async (req, res) => {
+  app.post('/api/edit/:id', writeLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     if (await readDocHtml(id) == null) return res.status(404).json({ error: 'doc_not_found' });
@@ -730,7 +734,7 @@ export function createApp(db, opts = {}) {
     const overlay = setBlockAndSnapshot(db)(id, anchor, escapeText(text), ts, null);
     noStore(res);
     res.json({ ok: true, overlay });
-  });
+  }));
 
   // GET /api/versions/:id -> { versions: [{id, ts, label}] }
   app.get('/api/versions/:id', readLimiter, (req, res) => {
@@ -766,7 +770,7 @@ export function createApp(db, opts = {}) {
   // --- suggestions (tracked changes; owner can suggest + accept/reject) ---
 
   // GET /api/suggestions/:id -> { suggestions: [...] }  (open only)
-  app.get('/api/suggestions/:id', readLimiter, async (req, res) => {
+  app.get('/api/suggestions/:id', readLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     if (await readDocHtml(id) == null) return res.status(404).json({ error: 'doc_not_found' });
@@ -801,10 +805,10 @@ export function createApp(db, opts = {}) {
       if(historyStamp()!==snapshot)return res.status(409).json({error:'history_changed_retry'});
       res.json({suggestions,total,complete:nextOffset===null,nextOffset,snapshot});
     }catch(e){res.status(e.status||500).json({error:e.status?e.message:'history_unavailable'});}
-  });
+  }));
 
   // POST /api/suggest/:id { anchor, quote, body, kind, author } -> { ok, suggestion }
-  app.post('/api/suggest/:id', writeLimiter, async (req, res) => {
+  app.post('/api/suggest/:id', writeLimiter, maintenance.track(async (req, res) => {
     const { id } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     const originalHtml=await readDocHtml(id);
@@ -892,10 +896,10 @@ export function createApp(db, opts = {}) {
     db.prepare('UPDATE suggestions SET source_hash=? WHERE id=?').run(createHash('sha256').update(originalHtml).digest('hex'),suggestion.id);
     noStore(res);
     res.json({ ok: true, suggestion });
-  });
+  }));
 
   // Replies follow the existing document-scoped singular mutation route family.
-  app.post('/api/suggest/:id/:sid/replies', writeLimiter, async (req, res) => {
+  app.post('/api/suggest/:id/:sid/replies', writeLimiter, maintenance.track(async (req, res) => {
     const { id, sid } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     if (await readDocHtml(id) == null) return res.status(404).json({ error: 'doc_not_found' });
@@ -919,10 +923,10 @@ export function createApp(db, opts = {}) {
     });
     noStore(res);
     res.json({ ok: true, reply, suggestion: getSuggestion(db, sid) });
-  });
+  }));
 
   // POST /api/suggest/:id/:sid/accept -> { ok, overlay }
-  app.post('/api/suggest/:id/:sid/accept', writeLimiter, async (req, res) => {
+  app.post('/api/suggest/:id/:sid/accept', writeLimiter, maintenance.track(async (req, res) => {
     const { id, sid } = req.params;
     if (!isValidDocId(id)) return res.status(400).json({ error: 'invalid_doc_id' });
     if (!ownsDoc(req, id)) return res.status(403).json({ error: 'not_your_doc' });
@@ -931,7 +935,7 @@ export function createApp(db, opts = {}) {
       noStore(res);
       res.status(result.error?409:200).json(result);
     } catch(e) { if(e instanceof RevisionError)return res.status(e.status).json(e.response);throw e }
-  });
+  }));
 
   // Server facts and history/status commit share an immediate transaction.
   app.post('/api/suggest/:id/:sid/resolve-stale', writeLimiter, (req,res) => {
@@ -970,7 +974,7 @@ export function createApp(db, opts = {}) {
 
   // In-app feedback → GitHub issue. Its own same-origin + honeypot + per-IP
   // limiter live in feedback-api.js; the GITHUB_TOKEN stays server-side.
-  app.post('/api/feedback', makeFeedbackHandler({ now: opts.now }));
+  app.post('/api/feedback', maintenance.track(makeFeedbackHandler({ now: opts.now })));
 
   // JSON error handler. Body-parser rejects an over-limit request BEFORE our own
   // size check with a PayloadTooLargeError (413); surface it as clean JSON with
@@ -1008,8 +1012,11 @@ async function seedDocs() {
 export async function startServer() {
   await seedDocs();
   const db = openDb();
-  createApp(db).listen(PORT, HOST, () => {
-    console.log(`Marginroom on http://${HOST}:${PORT}  (open / to list + add files)`);
+  const app = createApp(db);
+  const server = app.listen(PORT, HOST);
+  installShutdown(server, db, app.locals.maintenance);
+  server.once('listening', () => {
+    console.log(`Marginroom on http://${HOST}:${server.address().port}  (open / to list + add files)`);
   });
 }
 

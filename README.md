@@ -58,4 +58,10 @@ Local review links work only on the service host. To review from another device,
 
 [User guide](docs/user-guide.md) · [Agent workflow](skills/marginroom/SKILL.md) · [Build from source](docs/installation.md#source-builds) · [Hosting and backups](docs/operations.md)
 
+### Maintenance and deploys
+
+In v0.1.4+, the service account can `touch` the file configured by `MMW_MAINTENANCE_FILE` without a restart. Reads stay available; new writes return `503` with `Retry-After`, and the browser keeps unsent input. Poll the running instance's `/api/maintenance/status` for `maintenance: true` and `inflight: 0` before sending `SIGTERM`. Wait for exit before replacing the service, then verify the new instance and remove the flag to reopen writes. `SIGTERM` and `SIGINT` stop the listener and allow up to 30 seconds for admitted requests to finish (configurable via `MMW_SHUTDOWN_TIMEOUT_MS`).
+
+See [the deploy runbook](docs/operations.md#maintenance-and-graceful-deploys) for paths, Compose commands and the one-time upgrade caveat for pre-v0.1.4 instances.
+
 [MIT](LICENSE). Based on [markmyword](https://github.com/alexagriffith/markmyword) by Alexa Griffith.

@@ -58,4 +58,10 @@ marginroom open ./article.html --new-version-of '原审稿页面URL' --browser
 
 [使用指南](docs/user-guide.md) · [Agent 工作流](skills/marginroom/SKILL.md) · [从源码构建](docs/installation.md#source-builds) · [托管与备份](docs/operations.md)
 
+### 维护与部署
+
+从 v0.1.4 起，服务账号可用 `touch` 创建 `MMW_MAINTENANCE_FILE` 指定的标志文件，无需 root 或重启。读取照常；新写请求返回 `503` 和 `Retry-After`，浏览器会保留未提交的输入。部署脚本应轮询运行中实例的 `/api/maintenance/status`，确认 `maintenance: true` 且 `inflight: 0` 后发送 `SIGTERM`。等旧进程退出再替换服务，验证新实例正常后移除标志文件以恢复写入。`SIGTERM` / `SIGINT` 停止接收新连接，默认最多等待 30 秒排空已接收请求，可通过 `MMW_SHUTDOWN_TIMEOUT_MS` 调整。
+
+默认路径、Compose 命令以及从低于 v0.1.4 的版本首次升级的注意事项，见[部署手册](docs/operations.md#maintenance-and-graceful-deploys)。
+
 采用 [MIT 许可证](LICENSE)。基于 Alexa Griffith 的 [markmyword](https://github.com/alexagriffith/markmyword) 开发。

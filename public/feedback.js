@@ -193,7 +193,8 @@ function mount() {
         setTimeout(close, 2200);
       } else {
         status.className = 'fb-status err';
-        bind(status,'feedback.failed',{reason:typeof data.error==='string'?data.error:'request_failed'});
+        if (resp.status === 503 && data.error === 'maintenance') bind(status,'errors.maintenance');
+        else bind(status,'feedback.failed',{reason:typeof data.error==='string'?data.error:'request_failed'});
       }
     } catch {
       status.className = 'fb-status err';

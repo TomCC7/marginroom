@@ -303,6 +303,10 @@ function scheduleSave(anchor, el) {
   saveTimers.set(anchor, setTimeout(() => saveBlock(anchor), 800));
 }
 
+async function maintenanceResponse(res) {
+  return res.status === 503 && (await res.clone().json().catch(() => null))?.error === 'maintenance';
+}
+
 async function saveBlock(anchor) {
   if (!pending.has(anchor)) return;
   const text = pending.get(anchor);
@@ -320,6 +324,11 @@ async function saveBlock(anchor) {
       // This call still counts toward inflight until the finally below, so "last
       // one out" is inflight === 1 here, not 0.
       if (inflight === 1 && pending.size === 0) setStatus('saved', ()=>tr('notice.allSaved'));
+      return;
+    }
+    if (await maintenanceResponse(res)) {
+      if (!pending.has(anchor)) pending.set(anchor, text);
+      setStatus('error', ()=>tr('errors.maintenance'));
       return;
     }
     // A 4xx is a PERMANENT refusal (not permitted, bad request), not a blip:
@@ -518,6 +527,7 @@ async function restore(versionId, when) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ versionId }),
     });
+    if (await maintenanceResponse(res)) { setStatus('error', ()=>tr('errors.maintenance')); return; }
     if (!res.ok) throw new Error();
     const { overlay } = await res.json();
     // Re-render clean base, re-anchor, re-apply restored overlay.
@@ -661,7 +671,7 @@ function openSuggestPopup(el, opts = {}) {
     // across the packed anchor list; base_text carries the original paragraphs
     // (blank-line separated) so accept can re-split against them.
     const spanOcc = multi ? (kind === 'rewrite' ? -2 : -1) : (span ? span.spanOcc : -1);
-    await submitSuggestion({
+    const submitted = await submitSuggestion({
       anchor,
       quote: target,
       body,
@@ -669,7 +679,7 @@ function openSuggestPopup(el, opts = {}) {
       spanOcc,
       baseText: multi ? multi.phrase : (span ? blockFull : ''),
     });
-    closeSuggestPopup();
+    if (submitted) closeSuggestPopup();
   };
 
   // Position near the block (block mode) or the selection (span/multi mode).
@@ -713,10 +723,10 @@ function openCommentPopup(el) {
   pop.querySelector('.hs-sp-submit').onclick = async () => {
     const body = ta.value.trim();
     if (!body) { ta.focus(); return; }
-    await submitSuggestion({
+    const submitted = await submitSuggestion({
       anchor: commentAnchor, quote: what, body, kind: 'comment', spanOcc: -1, baseText: '',
     });
-    closeSuggestPopup();
+    if (submitted) closeSuggestPopup();
   };
   decorateComposer(pop);
   document.body.appendChild(pop);
@@ -765,8 +775,8 @@ function openFrameCommentPopup({ anchor, isText, snippet, rect }) {
   pop.querySelector('.hs-sp-submit').onclick = async () => {
     const body = ta.value.trim();
     if (!body) { ta.focus(); return; }
-    await submitSuggestion({ anchor, quote: label, body, kind, spanOcc: -1, baseText: '' });
-    closeSuggestPopup();
+    const submitted = await submitSuggestion({ anchor, quote: label, body, kind, spanOcc: -1, baseText: '' });
+    if (submitted) closeSuggestPopup();
   };
   decorateComposer(pop);
   document.body.appendChild(pop);
@@ -835,12 +845,15 @@ async function submitSuggestion({ anchor, quote, body, kind, spanOcc = -1, baseT
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ anchor, quote, body, kind, author: myName, spanOcc, baseText: bt }),
     });
+    if (await maintenanceResponse(res)) { setStatus('error', ()=>tr('errors.maintenance')); return false; }
     if (!res.ok) throw new Error();
     setStatus('saved', 'Suggestion added');
     await loadSuggestions();
     document.body.classList.add('hs-show-suggest');
+    return true;
   } catch {
     setStatus('error', 'Suggestion failed');
+    return false;
   }
 }
 
@@ -964,6 +977,7 @@ function wireShare() {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ level }),
       });
+      if (await maintenanceResponse(res)) { sel.value = prev; toast(tr('errors.maintenance')); return; }
       if (!res.ok) throw new Error(`access ${res.status}`);
       access = level;
       paintShareNote();
@@ -1086,7 +1100,9 @@ async function resolveSuggestion(sid, action) {
     }
     // Non-OK: give an honest, specific reason instead of a dead-end "Could not…".
     const err = await res.json().catch(() => ({}));
-    if (res.status === 409 && err.error === 'span_stale') {
+    if (res.status === 503 && err.error === 'maintenance') {
+      setStatus('error', ()=>tr('errors.maintenance'));
+    } else if (res.status === 409 && err.error === 'span_stale') {
       setStatus('error', 'The highlighted phrase changed — suggestion is now stale, not applied.');
       await loadSuggestions();
     } else if (res.status === 409) {
@@ -1406,6 +1422,7 @@ async function downloadSnapshot() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: liveHtml }),
     });
+    if (await maintenanceResponse(res)) { setStatus('error', ()=>tr('errors.maintenance')); return; }
     if (!res.ok) throw new Error('snapshot failed');
     const { html } = await res.json();
     saveHtmlFile(html, 'snapshot');
@@ -1456,6 +1473,7 @@ async function downloadOriginal() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ edits }),
       });
+      if (await maintenanceResponse(res)) { setStatus('error', ()=>tr('errors.maintenance')); return; }
       if (!res.ok) throw new Error('patch failed');
       const out = await res.json();
       saveHtmlFile(out.html, 'reviewed');

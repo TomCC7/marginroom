@@ -208,7 +208,7 @@ async function deleteDoc(doc) {
   } catch (error) {
     put($('#actionError'),errorMessage(error)); setBusy(false);
     // Do not leave stale deletion authority on the page after a failed check.
-    doc.canDelete = false; render();
+    if (error.data?.error !== 'maintenance') { doc.canDelete = false; render(); }
   }
 }
 function share(doc) {
@@ -225,6 +225,7 @@ function errorMessage(error) {
   if(error.copy)return error.copy;
   if (error.userMessage) return error.userMessage;
   const code = error.data?.error;
+  if (error.status === 503 && code === 'maintenance') return copy('errors.maintenance');
   const errors = {
     invalid_doc_id: copy('errors.invalid_doc_id'),
     empty_html: copy('errors.empty_html'), not_html: copy('errors.not_html'),

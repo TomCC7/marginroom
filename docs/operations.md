@@ -70,6 +70,17 @@ Compose passes only settings listed in `compose.yaml`. Add limit overrides to it
 
 For native development, run `bun install --frozen-lockfile` with Bun 1.4.4. Explicitly export stable `SESSION_SECRET`, `OWNER_KEY`, an absolute `HS_DB_PATH`, and an absolute `HS_DOCS_DIR` pointing to a **fresh disposable directory** before `bun run start`. The server does not load `.env` automatically. With no session secret native runs use a per-boot random secret; with no owner key owner-key recovery is disabled. Native operators must securely create `identity.json` matching the two exported secrets in their data directory to use the backup tools. The image's automatic initialization is the recommended quickstart.
 
+## Maintenance and graceful deploys
+
+On v0.1.4 and newer, configure `MMW_MAINTENANCE_FILE` to an absolute path in a persistent, service-account-writable directory outside the served document tree. By default it is `maintenance.flag` alongside `HS_DB_PATH` (or `./data/maintenance.flag`). `touch` enables it, `rm` disables it, and neither needs a restart. All HTTP methods except GET, HEAD and OPTIONS return `503` with `Retry-After: 30` during maintenance, including POST routes that only render or locate data. Already-admitted requests keep running. The [route inventory](maintenance-routes.md) lists the gated routes.
+
+1. Set the flag on the **running** instance. In Compose: `docker compose exec -T app touch /data/maintenance.flag`.
+2. From the host, poll the **actual listener** (not a cached proxy): `curl -fsS http://127.0.0.1:3939/api/maintenance/status`. Adjust host/port to the configured bind. Proceed once JSON shows `maintenance: true` and `inflight: 0`; bound the polling loop and fail if the endpoint is unavailable, the flag is off, or it does not drain. The endpoint is read-only, not cached, and exposes only these aggregate fields without authentication; optionally restrict its path at the reverse proxy. The probe excludes itself. Live reads may still arrive after a zero count.
+3. Send the old process `SIGTERM` (or `docker compose stop app`) and wait for exit before backing up or replacing it. `SIGINT` works too. The listener closes, and admitted requests have up to `MMW_SHUTDOWN_TIMEOUT_MS` milliseconds (default `30000`) to finish before SQLite closes. A timeout logs `forcing exit` and disconnects unfinished requests; both normal drain and timeout exit with code `0`, so check the log if a clean drain is required. Keep your supervisor's stop timeout higher than the application timeout (Compose defaults to `MMW_STOP_GRACE_PERIOD=35s`).
+4. Start the replacement with the same data and flag path, verify reads and the enabled status, then remove the flag (`docker compose exec -T app rm /data/maintenance.flag`). Verify `maintenance: false` before declaring writes open. Leave the flag set if replacement verification fails.
+
+An older running binary does not honor the flag or provide a drain probe. For the first upgrade from a pre-v0.1.4 instance, arrange a separate operator-approved maintenance window covering **all** ingress paths and writers. Do not assume this runbook can safely stop that old binary just because the replacement supports it.
+
 ## Backup and restore
 
 A backup must include SQLite review state/history/ownership, the entire document tree including raw interactive HTML/config/assets, and persistent identity secrets. Copying only `app.db` omits files and identity and can miss SQLite WAL data.
