@@ -2,15 +2,24 @@
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import {openDb, setDocAccess} from '../db.js';
 import {machineAuth, digest} from '../machine-auth.js';
 import {launchBrowser} from './helpers/browser.mjs';
 const root=await mkdtemp(path.join(process.env.TMPDIR,'inherited-resolve-'));
 const out=process.env.RESOLVE_ARTIFACTS||root;await mkdir(out,{recursive:true});
 process.env.HS_DOCS_DIR=root;process.env.OWNER_KEY='resolve-fixture-owner';process.env.SESSION_SECRET='resolve-fixture-secret';process.env.MMW_WRITE_PER_MIN='10000';process.env.MMW_READ_PER_MIN='10000';
-const db=openDb(root+'/test.db'),machine=machineAuth(db).issue();
-const {createApp}=await import('../server.js');const server=await new Promise(resolve=>{const s=createApp(db).listen(0,'127.0.0.1',()=>resolve(s))});
-const origin='http://127.0.0.1:'+server.address().port;
+const binary=process.env.TEST_BINARY;let db,machine,server,origin,service;
+if(binary){
+ await mkdir(root+'/home');await writeFile(root+'/seed.html','<html><body><p>Isolated service seed.</p></body></html>');
+ await promisify(execFile)(binary,['open',root+'/seed.html','--data-dir',root+'/state','--json'],{env:{...process.env,HOME:root+'/home'}});
+ service=JSON.parse(await readFile(root+'/state/service.json'));origin=service.origin;machine=JSON.parse(await readFile(root+'/state/credentials.json'));db=openDb(root+'/state/app.db');
+}else{
+ db=openDb(root+'/test.db');machine=machineAuth(db).issue();
+ const {createApp}=await import('../server.js');server=await new Promise(resolve=>{const s=createApp(db).listen(0,'127.0.0.1',()=>resolve(s))});origin='http://127.0.0.1:'+server.address().port;
+}
+const docsRoot=binary?root+'/state/documents':root;
 let browser;const checks=[];const pass=s=>{checks.push(s);console.log('PASS '+s)};
 async function api(route,body,token=machine.token){const r=await fetch(origin+route,{method:body?'POST':'GET',headers:{...(token?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()}}
 async function version(html,previous){const bytes=Buffer.from(html),r=await api('/api/imports',{entry:'index.html',source:'resolve-fixture',previous,files:[{path:'index.html',data:bytes.toString('base64'),sha256:digest(bytes)}]});assert.equal(r.status,200,JSON.stringify(r));return r.data.document}
@@ -29,7 +38,7 @@ try{
  const stale=db.prepare('SELECT * FROM suggestions WHERE body=?').get('CANVAS ORIGINAL BODY');assert.match(stale.anchor,/^c3:[a-f0-9]{64}:self$/);await sourcePage.close();
  await api(`/api/suggest/${v1}/${exact.id}/replies`,{body:'ORIGINAL REPLY'},null);await api(`/api/suggest/${v1}/${stale.id}/replies`,{body:'CANVAS REPLY'},null);
  const original=db.prepare('SELECT * FROM suggestions ORDER BY id').all(),replies=db.prepare('SELECT * FROM suggestion_replies ORDER BY id').all();
- const sources=new Map(await Promise.all([v1,v2,v3].map(async id=>[id,await readFile(root+'/'+id+'.html','utf8')])));
+ const sources=new Map(await Promise.all([v1,v2,v3].map(async id=>[id,await readFile(docsRoot+'/'+id+'.html','utf8')])));
  const page=await entitled.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/viewer.html?doc='+v3);await page.waitForSelector('#thread-'+stale.id);
  assert.equal((await (await entitled.request.get(origin+'/api/doc/'+v3)).json()).isDocOwner,false);
  if(process.env.REPRO){assert.equal(await page.locator('#thread-'+stale.id+' [data-resolve]').count(),0);assert.equal(await page.locator('#thread-'+exact.id+' [data-resolve]').count(),0);pass('BASELINE reproduced: source-entitled human sees no Resolve on outdated canvas or located inherited comment');}
@@ -84,8 +93,18 @@ try{
  // Native mobile click, not DOM dispatch.
  await page.locator('#thread-'+stale.id+' [data-resolve]').click();await page.waitForSelector('#thread-'+stale.id+' [data-reopen]');
  pass('narrow desktop and 390/360 phone sidebar action fits; real mobile-size Resolve click succeeds');
- for(const row of original){const actual=db.prepare('SELECT * FROM suggestions WHERE id=?').get(row.id);assert.deepEqual({...actual,status:row.status},row)}assert.deepEqual(db.prepare('SELECT * FROM suggestion_replies ORDER BY id').all(),replies);for(const [id,source]of sources)assert.equal(await readFile(root+'/'+id+'.html','utf8'),source);assert.equal(db.prepare("SELECT count(*) n FROM documents WHERE overlay_json!='{}'").get().n,0);assert.deepEqual(errors,[]);
+ for(const row of original){const actual=db.prepare('SELECT * FROM suggestions WHERE id=?').get(row.id);assert.deepEqual({...actual,status:row.status},row)}assert.deepEqual(db.prepare('SELECT * FROM suggestion_replies ORDER BY id').all(),replies);for(const [id,source]of sources)assert.equal(await readFile(docsRoot+'/'+id+'.html','utf8'),source);assert.equal(db.prepare("SELECT count(*) n FROM documents WHERE overlay_json!='{}'").get().n,0);assert.deepEqual(errors,[]);
  pass('original IDs/locators/body/author/replies and all source HTML unchanged; no rewrite overlay or browser errors');
  }
- await writeFile(out+'/receipt.json',JSON.stringify({checks,root,baseline:process.env.REPRO?'1a8030d':undefined},null,2));console.log('ARTIFACT_ROOT '+out);
-}finally{await browser?.close();await new Promise(r=>server.close(r));db.close()}
+ await writeFile(out+'/receipt.json',JSON.stringify({checks,root,binary:binary||'source Bun',baseline:process.env.REPRO?'1a8030d':undefined},null,2));console.log('ARTIFACT_ROOT '+out);
+}finally{
+ await browser?.close();
+ if(server)await new Promise(r=>server.close(r));
+ if(service){
+  assert.equal((await (await fetch(origin+'/api/instance')).json()).instanceId,service.instanceId);
+  assert((await readFile(`/proc/${service.pid}/cmdline`,'utf8')).includes(binary+'\0--service\0'+root+'/state'));
+  process.kill(service.pid,'SIGTERM');
+  for(let i=0;i<100;i++){try{await fetch(origin+'/api/instance');await new Promise(r=>setTimeout(r,25))}catch{break}}
+ }
+ db.close();
+}
