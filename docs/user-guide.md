@@ -44,6 +44,8 @@ The document owner or administrator handles decisions in **Discussion** or **Lis
 
 These actions update the review in place. Use the pending/handled and comment/revision filters to find the remaining work.
 
+**Inherited comments:** Resolve/Reopen requires human management access to the **original source document**, not ownership of the version you are reading. This remains available when the inherited target is outdated or missing: closing a conversation does not accept a source edit. The one original thread is updated for the source and every descendant view; Pending/Handled and counts refresh on other open versions and after reload. Its original ID, passage, body and replies are retained. A failed request leaves it pending. Inherited rewrite proposals cannot be applied from the descendant. Ordinary reviewers (including the comment's author), read-only visitors and machine/delegated tokens gain no decision permission. For paired-machine uploads, use the existing per-source browser management handoff (`marginroom open … --browser`); granting management of only the newest version does not grant management of its predecessors. A card without source management explains the requirement.
+
 Open **More actions (⋯)** and choose **Export accepted HTML** to download the accepted document without pending proposals or review controls. Uploaded `<img src>` images are embedded, including animated GIFs. See [current limits](#current-limits) for resources the export does not bundle.
 
 The same menu offers **Version history** and, with edit permission, **Edit source directly**. Direct editing changes the review document instead of submitting a proposal. Only the owner or administrator can restore a historical version.

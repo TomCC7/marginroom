@@ -1,5 +1,7 @@
 # Marginroom v@VERSION@
 
+Local candidate: not published or deployed. This candidate has no new native macOS/Safari execution claim; see the local verification handoff for tested targets.
+
 Standalone HTML review CLI and embedded local service for Linux x64 glibc, macOS arm64 and macOS Intel.
 
 ```sh
@@ -10,6 +12,8 @@ marginroom open ./article.html --browser
 No Node/Bun runtime, checkout or sudo needed. The installer pins this version and checks a target-specific archive SHA256 before atomic installation. `SHA256SUMS` and manifests identify all artifacts and the exact source commit @SOURCE_COMMIT@.
 
 Version feedback: new versions project authorized ancestor comments and nested replies into the right-side Discussion and `marginroom comments`, including later source discussions, without copying or modifying old records. Ordinary human reviewers can read their permitted chain without management authority. Exact guarded targets attach to current text; changed, duplicate and unverifiable targets retain original context and source links. Pending inherited rewrites remain discussion, not source edits. Delegated one-document tokens cannot read ancestors.
+
+Inherited comment lifecycle fix: Resolve/Reopen is available to human managers of the **original source document**, even when the current version's target is outdated or missing. It updates the one original thread across source and descendant views, without accepting any rewrite or changing HTML, quotes or replies. Current-version ownership, comment authorship and ordinary reviewer access do not grant source management. Paired uploaders can use the existing per-source browser management handoff; machine bearer and delegated read-only tokens still cannot resolve. Unauthorized readers see an explanation. Failed requests leave the thread pending.
 
 Retained import repair: finite configurable 16 MB/file, 64 MB/bundle and 1,024-file defaults; lexical JavaScript dependency analysis; isolated root-relative static resources under explicit `--assets-dir`; logical KaTeX/MathML comment text with UTF-16 ranges and conservative legacy lookup. See [import policy and limitations](https://github.com/TomCC7/marginroom/blob/@SOURCE_COMMIT@/docs/agent-workflow.md#imports). This does not crawl dynamic SSG routes or grant same-origin/storage access; nonlinear formula text ranges remain element-comment-only. Existing documents and records are not migrated.
 

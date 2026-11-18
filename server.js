@@ -792,7 +792,10 @@ export function createApp(db, opts = {}) {
         if(s.doc_id===id){suggestions.push(s.kind==='rewrite'&&(s.status==='open'||s.status==='stale')?{...s,invalid_reason:revisions.invalidReason(id,s,html)}:s);continue;}
         const placement=await locateAcross(db,s,sources.get(s.doc_id),{doc:id,html},placementCache);
         suggestions.push({...s,inherited:true,sourceDocId:s.doc_id,sourceVersion:{document:s.doc_id,created:versions.get(s.doc_id).created},viewDocId:id,placement,
-          canReply:!req.caller.machine&&canSuggestDoc(req,s.doc_id),canManageSource:machines.manages(req,s.doc_id)});
+          canReply:!req.caller.machine&&canSuggestDoc(req,s.doc_id),canManageSource:machines.manages(req,s.doc_id),
+          // Match native reject/reopen authorization, including the browser-only boundary.
+          // Placement and ownership of the viewed descendant confer no source authority.
+          canResolveComment:s.kind==='comment'&&!req.caller.machine&&ownsDoc(req,s.doc_id)});
       }
       const nextOffset=offset+rows.length<total?offset+rows.length:null;
       if(historyStamp()!==snapshot)return res.status(409).json({error:'history_changed_retry'});
